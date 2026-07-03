@@ -10,6 +10,7 @@ action_contract:
   id: libero_delta_eef_gripper_v1
   accepted_representations:
     - delta_eef_pose_gripper
+    - absolute_eef_pose_gripper
   shape:
     - T
     - 7

@@ -22,6 +22,7 @@ class RuntimeEnvelope(BaseModel):
         "target.observe",
         "target.observation",
         "target.action_chunk",
+        "target.benchmark",
         "target.execution_status",
         "target.heartbeat",
         "target.cancel",

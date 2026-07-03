@@ -28,6 +28,7 @@ class LiberoTargetAdapter(BaseTargetAdapter):
             gripper_qpos = raw_obs["robot0_gripper_qpos"]
         except KeyError as exc:
             raise AdapterError(f"LIBERO observation missing key: {exc.args[0]}") from exc
+        eef_mat = raw_obs.get("robot0_eef_mat")
 
         state = np.concatenate(
             [
@@ -39,30 +40,40 @@ class LiberoTargetAdapter(BaseTargetAdapter):
         if state.shape != (8,):
             raise AdapterError(f"LIBERO proprio state must have shape [8], got {state.shape}")
 
+        sensors = {
+            "front_rgb": {
+                "kind": "image",
+                "observation_key": "agentview_image",
+                "data": _image_array(front_rgb, "agentview_image"),
+                "dtype": "uint8",
+                "layout": "HWC",
+            },
+            "wrist_rgb": {
+                "kind": "image",
+                "observation_key": "robot0_eye_in_hand_image",
+                "data": _image_array(wrist_rgb, "robot0_eye_in_hand_image"),
+                "dtype": "uint8",
+                "layout": "HWC",
+            },
+            "proprio": {
+                "kind": "vector",
+                "observation_key": "libero_eef_axisangle_gripper_step",
+                "data": state,
+                "dtype": "float32",
+            },
+        }
+        if eef_mat is not None:
+            sensors["eef_mat"] = {
+                "kind": "matrix",
+                "observation_key": "robot0_eef_mat",
+                "data": _eef_matrix_or_none(eef_mat),
+                "dtype": "float32",
+                "shape": [3, 3],
+            }
+
         return {
             "observation_id": raw_obs.get("observation_id", f"libero_obs_{target_info.get('step_index', 0)}"),
-            "sensors": {
-                "front_rgb": {
-                    "kind": "image",
-                    "observation_key": "agentview_image",
-                    "data": _image_array(front_rgb, "agentview_image"),
-                    "dtype": "uint8",
-                    "layout": "HWC",
-                },
-                "wrist_rgb": {
-                    "kind": "image",
-                    "observation_key": "robot0_eye_in_hand_image",
-                    "data": _image_array(wrist_rgb, "robot0_eye_in_hand_image"),
-                    "dtype": "uint8",
-                    "layout": "HWC",
-                },
-                "proprio": {
-                    "kind": "vector",
-                    "observation_key": "libero_eef_axisangle_gripper_step",
-                    "data": state,
-                    "dtype": "float32",
-                },
-            },
+            "sensors": sensors,
             "target_info": target_info,
             "libero": {
                 "benchmark_name": raw_obs.get("benchmark_name", target_info.get("benchmark_name")),
@@ -150,3 +161,12 @@ def _gripper_state(gripper_qpos: Any) -> np.ndarray:
     if values.size == 1:
         values = np.repeat(values, 2)
     return values[:2].astype(np.float32)
+
+
+def _eef_matrix_or_none(eef_mat: Any) -> np.ndarray | None:
+    if eef_mat is None:
+        return None
+    matrix = np.asarray(eef_mat, dtype=np.float32)
+    if matrix.shape != (3, 3):
+        raise AdapterError(f"LIBERO `robot0_eef_mat` must have shape [3,3], got {matrix.shape}")
+    return np.ascontiguousarray(matrix)

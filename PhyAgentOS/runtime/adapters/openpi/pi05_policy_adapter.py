@@ -44,12 +44,16 @@ class OpenPIPi05Adapter(BaseOpenPIAdapter):
         if state_array.shape != (8,):
             raise AdapterError(f"OpenPI pi0.5 state must have shape [8], got {state_array.shape}")
 
-        return {
+        payload = {
             "observation/image": image_array,
             "observation/wrist_image": wrist_array,
             "observation/state": state_array,
             "prompt": str(session_ctx["task_description"]),
         }
+        if _is_xvla_session(session_ctx):
+            payload["observation/eef_mat"] = _optional_matrix(sensors.get("eef_mat", {}).get("data"))
+            payload["session_id"] = session_ctx.get("session_id")
+        return payload
 
     def from_policy_output(
         self,
@@ -73,3 +77,20 @@ class OpenPIPi05Adapter(BaseOpenPIAdapter):
         else:
             array = array.astype(np.uint8, copy=False)
         return np.ascontiguousarray(array)
+
+
+def _optional_matrix(matrix: Any) -> np.ndarray | None:
+    if matrix is None:
+        return None
+    array = np.asarray(matrix, dtype=np.float32)
+    if array.shape != (3, 3):
+        raise AdapterError(f"OpenPI pi0.5 `eef_mat` must have shape [3,3], got {array.shape}")
+    return np.ascontiguousarray(array)
+
+
+def _is_xvla_session(session_ctx: dict[str, Any]) -> bool:
+    benchmark = session_ctx.get("benchmark") or {}
+    policy_id = benchmark.get("policy_id") if isinstance(benchmark, dict) else None
+    if str(policy_id or "").lower() == "xvla":
+        return True
+    return "xvla" in str(session_ctx.get("skillruntime_ref", "")).lower()

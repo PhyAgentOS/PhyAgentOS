@@ -99,6 +99,15 @@ class RemoteTargetProxy(BaseRolloutTarget):
             skillruntime_id=self._skillruntime_id,
         )
 
+    def run_benchmark(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.call(
+            "target.benchmark",
+            payload,
+            session_id=self._session_id,
+            skillruntime_id=self._skillruntime_id,
+            expected_response_type="target.benchmark",
+        )
+
     def cancel(self, reason: str) -> None:
         self.client.call(
             "target.cancel",

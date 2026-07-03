@@ -19,6 +19,7 @@ LIBERO_DEFAULT_CONFIG = {
     "camera_width": 256,
     "action_dim": 7,
     "max_chunk_size": 50,
+    "control_mode": "relative",
 }
 
 
@@ -55,6 +56,15 @@ class LiberoRemoteTargetProxy(RemoteTargetProxy):
     def _with_libero_config(self, session_ctx: dict[str, Any]) -> dict[str, Any]:
         metadata = dict(session_ctx.get("metadata", {}))
         libero_config = {**LIBERO_DEFAULT_CONFIG, **self.config, **metadata.get("libero", {})}
+        benchmark = session_ctx.get("benchmark") or {}
+        if isinstance(benchmark, dict):
+            suite_id = benchmark.get("suite_id")
+            if suite_id:
+                libero_config["benchmark_name"] = str(suite_id)
+            if benchmark.get("task_index") is not None:
+                libero_config["task_id"] = int(benchmark["task_index"])
+            if benchmark.get("instance_id") is not None:
+                libero_config["init_state_id"] = int(benchmark["instance_id"])
         metadata["libero"] = libero_config
         return {
             **session_ctx,

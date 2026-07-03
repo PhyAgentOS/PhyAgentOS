@@ -111,6 +111,13 @@ class TargetSessionHandle:
         self.session_state.heartbeat()
         return result
 
+    def run_benchmark(self, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self._target.run_benchmark(payload)
+        self.session_state.last_status = result
+        self.session_state.step_index = int(result.get("num_steps", self.session_state.step_index) or 0)
+        self.session_state.heartbeat()
+        return result
+
     def stop(self, reason: str) -> None:
         self.session_state.cancelled = True
         self._target.cancel(reason)
