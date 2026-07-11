@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/imgs/logo_en.png" alt="PhyAgentOS" width="560">
 
-  <h3>Cognitive-Physical Decoupling — A Session-Centered Runtime for Embodied Intelligence</h3>
+  <h3>Self-Evolving Physical Agent Operating System<br>A Unified Runtime Foundation for Embodied Intelligence</h3>
 
   <p>
     <a href="https://github.com/PhyAgentOS/PhyAgentOS/stargazers">
@@ -32,7 +32,8 @@
 
 | Version | Date | Update |
 |:------|:-----|:-------|
-| ![v0.1.6](https://img.shields.io/badge/v0.1.6-47A882) | 2026-06-27 | Support for  Behavior 1K; SessionVerfier for Agent verification; VerifySessionTool|
+| ![v0.1.7](https://img.shields.io/badge/v0.1.7-11648A) | 2026-07-11 | General Game Agent: 3-game progressive environment (Minecraft → Stardew Valley → Don't Starve); Epistemic Memory for long-horizon experience accumulation; Self-evolving analytics pipeline |
+| ![v0.1.6](https://img.shields.io/badge/v0.1.6-47A882) | 2026-06-27 | Support for Behavior 1K; SessionVerifier for Agent verification; VerifySessionTool |
 | ![v0.1.5](https://img.shields.io/badge/v0.1.5-47A882) | 2026-06-11 | Cleaned protocol files and docs; game scenario separated to `general-game-agent` branch; main branch now focused on sim & real |
 | ![v0.1.4](https://img.shields.io/badge/v0.1.4-11648A) | 2026-06-5 | Optimize the user-friendly onboarding process; Communication Protocol Specification; More reasonable coding standards; Game Agent & Benchmarking ready |
 | ![v0.1.3](https://img.shields.io/badge/v0.1.3-11648A) | 2026-05-25 | Strict separation of `PolicySkillRuntime` / `BuiltinSkillRuntime`; Game Agent & Benchmarking ready |
@@ -42,15 +43,31 @@
 
 ---
 
+## 🧭 The Three Paradigms & What's Missing
+
+Three approaches dominate embodied intelligence today — and each leaves a gap that PhyAgentOS fills:
+
+| Paradigm | What It Does | What It Doesn't Do |
+|:--|:--|:--|
+| **VLA (π0, OpenVLA, FluxVLA)** | End-to-end visuomotor control — "see → act" | No task decomposition, no failure recovery, no cross-embodiment reuse |
+| **Code-as-Policies (LLM→Code→Robot)** | Generate executable plans from language | Fragile to real-world variation; no closed-loop verification; brittle across hardware |
+| **World Models (video→prediction)** | Predict future states from current observations | Predictions ≠ actions; no execution grounding, no safety guardrails |
+
+**PhyAgentOS doesn't replace any of these — it orchestrates them.** It sits between models and hardware as a unified runtime that answers: *what to call, who executes it, how to verify success, and what to do when it fails.*
+
+---
+
 ## 🤔 Why PhyAgentOS?
 
 Traditional "LLM-direct-to-hardware" approaches tightly couple reasoning to execution — switching robots means rewriting the entire pipeline. PhyAgentOS changes this through **Cognitive-Physical Decoupling + Session-Centered Runtime**:
 
 <table>
-<tr><td width="32">🔌</td><td><b>One Codebase, Any Hardware</b> — Adding a new robot means implementing one Target Adapter (~100 lines); zero changes to the scheduling layer.</td></tr>
+<tr><td width="32">🔌</td><td><b>One Codebase, Any Hardware</b> — Adding a new robot means implementing one Target Adapter (~100 lines); zero changes to the scheduling layer. 19 embodiments supported across real robots, simulators, and games.</td></tr>
 <tr><td>🛡️</td><td><b>Three Safety Layers</b> — Critic validation → Strict Preflight → Target-side SafetyGuard; mandatory for real-robot deployment.</td></tr>
 <tr><td>📋</td><td><b>Fully Auditable</b> — State, actions, and perception results are written to Markdown + YAML files; every step is traceable and reproducible.</td></tr>
 <tr><td>🔄</td><td><b>Zero-Friction Migration</b> — The same Session protocol runs identically across sim and real targets.</td></tr>
+<tr><td>🎮</td><td><b>Game → Sim → Real Closed Loop</b> — Validate cognitive strategies in low-cost game environments (Minecraft / Stardew Valley / Don't Starve), then migrate the same intelligence layer to simulation (LIBERO / Behavior 1K) and real robots with zero cognitive-layer changes.</td></tr>
+<tr><td>🧠</td><td><b>Self-Evolving</b> — Epistemic Memory accumulates long-horizon experience; Lessons learned from failures are recorded and reused. Benchmarking is orchestration: auto-evaluate policies (π0, π0.5, OpenVLA, X-VLA), aggregate evidence, and evolve.</td></tr>
 </table>
 
 <br>
@@ -91,6 +108,11 @@ Traditional "LLM-direct-to-hardware" approaches tightly couple reasoning to exec
   <td>Runtime validation checks (target / sensor / perception / adapter contract / action contract / tool); failures are <code>rejected</code> before execution starts</td>
 </tr>
 <tr>
+  <td>✅</td>
+  <td><b>SessionVerifier</b></td>
+  <td>Semantic verification of execution results — compares initial vs. final RGB observations, task definitions, and workspace history; marks sessions <code>succeeded</code> / <code>failed</code> / <code>replanned</code> with evidence stored in <code>LESSONS.md</code></td>
+</tr>
+<tr>
   <td>📝</td>
   <td><b>File Protocol Matrix</b></td>
   <td><code>TARGETS.md</code> · <code>SKILLRUNTIME.md</code> · <code>SESSIONS.md</code> · <code>ENVIRONMENT.md</code> · <code>LESSONS.md</code> + external YAML configs</td>
@@ -105,7 +127,36 @@ Traditional "LLM-direct-to-hardware" approaches tightly couple reasoning to exec
   <td><b>Fleet Mode</b></td>
   <td>Multi-robot coordination with shared + per-robot workspaces, priority-based serial scheduling</td>
 </tr>
+<tr>
+  <td>🧠</td>
+  <td><b>Epistemic Memory</b></td>
+  <td>Long-horizon experience accumulation across sessions; lessons from failures are automatically recorded, retrieved, and applied to future tasks — enabling self-evolution over deployment cycles</td>
+</tr>
+<tr>
+  <td>📊</td>
+  <td><b>Benchmarking as Orchestration</b></td>
+  <td>Evaluation is a first-class skill: auto-select benchmarks, queue tasks, execute in parallel, aggregate evidence, and produce experiment reports — currently supporting π0, π0.5, OpenVLA, and X-VLA on LIBERO and Behavior 1K</td>
+</tr>
 </table>
+
+---
+
+## 🎮 Game → Sim → Real Pipeline
+
+PhyAgentOS enables a unique **three-stage validation closed loop** where the intelligence layer stays constant and only the execution target changes:
+
+```
+Game (Cognitive Validation)       Sim (Policy Benchmarking)        Real (Physical Deployment)
+─────────────────────────         ────────────────────────         ──────────────────────────
+Minecraft → Stardew Valley        LIBERO → Behavior 1K             Franka · Go2 · PIPER
+    → Don't Starve                                                 AgileX · RM65-B · BOBABOT
+         │                                │                              │
+         └────────同一个 Session 协议，零认知层改动────────────────┘
+```
+
+1. **Game**: Low-cost, high-concurrency environments to validate planning, memory, and decision-making with minimal physics complexity
+2. **Sim**: Benchmark policies on standard embodied tasks; "evaluation as orchestration" — the agent picks, queues, runs, and reports
+3. **Real**: The same protocols, same intelligence layer, now driving physical robots with full safety guardrails
 
 ---
 
@@ -262,8 +313,9 @@ PhyAgentOS/
 | | Kind | Location | Examples |
 |:--|:-----|:-----|:-----|
 | 🐛 | `debug` | Local | echo / mock / dry-run — zero-hardware protocol pipeline validation |
-| 🧪 | `simulation` | Remote | RoboCasa, LIBERO — benchmark evaluation & batch experience mining |
-| 🤖 | `real_robot` | Remote | Franka, Go2, XLeRobot, AgileX PIPER — real-world deployment |
+| 🎮 | `game` | Local | Minecraft, Stardew Valley, Don't Starve — cognitive validation with minimal physics |
+| 🧪 | `simulation` | Remote | RoboCasa, LIBERO, Behavior 1K — benchmark evaluation & batch experience mining |
+| 🤖 | `real_robot` | Remote | Franka, Go2, PIPER AgileX, RM65-B RealMan, BOBABOT, XLeRobot — 7 real robots, 12+ sim variants, 19 total embodiments |
 
 > All targets are registered in `TARGETS.md`, identified by `target_adapter://` URI.
 > More examples & demos → [Project Website](https://phy-agent-os.net/)
