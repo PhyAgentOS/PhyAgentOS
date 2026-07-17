@@ -1,0 +1,40 @@
+version: runtime_sensor_config_v1
+target_id: dummy_sim
+sensors:
+  - id: front_rgb
+    modality: rgb
+    role: primary_scene_camera
+    source: dummy_sim/image
+    observation_key: image
+    frame_id: dummy_camera
+    enabled: true
+    resolution: [16, 16]
+    required_fields:
+      - source
+      - observation_key
+      - frame_id
+      - resolution
+  - id: wrist_rgb
+    modality: rgb
+    role: manipulation_close_view
+    source: dummy_sim/wrist_image
+    observation_key: wrist_image
+    frame_id: dummy_wrist_camera
+    enabled: true
+    resolution: [16, 16]
+  - id: proprio
+    modality: proprio
+    role: robot_state
+    source: dummy_sim/state
+    observation_key: state
+    enabled: true
+observation_schema:
+  image:
+    dtype: uint8
+    shape: [16, 16, 3]
+  wrist_image:
+    dtype: uint8
+    shape: [16, 16, 3]
+  state:
+    dtype: float32
+    shape: [8]

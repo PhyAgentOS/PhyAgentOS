@@ -10,6 +10,7 @@ from PhyAgentOS.runtime.adapters.behavior1k.target_adapter import Behavior1kTarg
 from PhyAgentOS.runtime.adapters.go2.target_adapter import Go2BuiltinTargetAdapter
 from PhyAgentOS.runtime.adapters.isaacsim.target_adapter import IsaacSimTargetAdapter
 from PhyAgentOS.runtime.adapters.libero.target_adapter import LiberoTargetAdapter
+from PhyAgentOS.runtime.adapters.scout.target_adapter import ScoutTargetAdapter
 from PhyAgentOS.runtime.adapters.openpi.b1k_dummy_policy_adapter import Behavior1kDummyPolicyAdapter
 from PhyAgentOS.runtime.adapters.openpi.b1k_openpi_policy_adapter import Behavior1kOpenPIPolicyAdapter
 from PhyAgentOS.runtime.adapters.openpi.dummy_openpi_adapter import DummyOpenPIAdapter
@@ -84,6 +85,7 @@ register_target_adapter("target_adapter://libero_mock_adapter", LiberoTargetAdap
 register_target_adapter("target_adapter://isaacsim_adapter", IsaacSimTargetAdapter)
 register_target_adapter("target_adapter://behavior1k_openpi_adapter", Behavior1kTargetAdapter)
 register_target_adapter("target_adapter://go2_builtin_adapter", Go2BuiltinTargetAdapter)
+register_target_adapter("target_adapter://scout_adapter", ScoutTargetAdapter)
 register_policy_adapter("policy_adapter://dummy_openpi_adapter", DummyOpenPIAdapter)
 register_policy_adapter("policy_adapter://b1k_dummy_policy_adapter", Behavior1kDummyPolicyAdapter)
 register_policy_adapter("policy_adapter://b1k_openpi_policy_adapter", Behavior1kOpenPIPolicyAdapter)

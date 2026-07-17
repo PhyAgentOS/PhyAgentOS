@@ -28,8 +28,26 @@ def read_yaml_block(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _safe_str(val: Any) -> Any:
+    """Sanitize strings that may contain newlines to prevent YAML dump bugs.
+
+    PyYAML's safe_dump sometimes produces incorrect indentation for
+    multi-line strings (e.g. error tracebacks), resulting in invalid
+    YAML blocks in SESSIONS.md.  We replace embedded newlines with
+    a single space so the string stays single-line and safe to dump.
+    """
+    if isinstance(val, str):
+        return val.replace("\n", " ").replace("\r", " ")
+    if isinstance(val, dict):
+        return {k: _safe_str(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_safe_str(item) for item in val]
+    return val
+
+
 def dump_yaml_block(title: str, data: dict[str, Any]) -> str:
     """Serialize data as a Markdown document with a fenced YAML block."""
+    data = _safe_str(data)
     yaml_text = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
     return f"# {title}\n\n```yaml\n{yaml_text}```\n"
 

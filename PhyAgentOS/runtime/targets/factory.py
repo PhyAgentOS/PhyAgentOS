@@ -13,6 +13,7 @@ from PhyAgentOS.runtime.targets.remote.behavior1k.proxy import Behavior1KRemoteT
 from PhyAgentOS.runtime.targets.remote.isaacsim.proxy import IsaacSimRemoteTargetProxy
 from PhyAgentOS.runtime.targets.remote.libero.proxy import LiberoRemoteTargetProxy
 from PhyAgentOS.runtime.targets.remote.proxy import RemoteTargetProxy
+from PhyAgentOS.runtime.targets.remote.scout.proxy import ScoutRemoteTargetProxy
 from PhyAgentOS.runtime.watchdog.errors import TargetBuildError
 
 LocalTargetFactory = Callable[[TargetSpec], BaseRolloutTarget]
@@ -91,9 +92,14 @@ def build_behavior1k_remote_target_proxy(target: TargetSpec, client: TargetWSCli
     return Behavior1KRemoteTargetProxy(client, config=target.config)
 
 
+def build_scout_remote_target_proxy(target: TargetSpec, client: TargetWSClient) -> ScoutRemoteTargetProxy:
+    return ScoutRemoteTargetProxy(client, config=target.config)
+
+
 register_local_target_runtime("DummySimTargetRuntime", build_dummy_sim_target)
 register_remote_target_runtime("RemoteTargetProxy", build_remote_target_proxy)
 register_remote_target_runtime("Go2RemoteTargetProxy", build_go2_remote_target_proxy)
 register_remote_target_runtime("LiberoRemoteTargetProxy", build_libero_remote_target_proxy)
 register_remote_target_runtime("IsaacSimRemoteTargetProxy", build_isaacsim_remote_target_proxy)
 register_remote_target_runtime("Behavior1KRemoteTargetProxy", build_behavior1k_remote_target_proxy)
+register_remote_target_runtime("ScoutRemoteTargetProxy", build_scout_remote_target_proxy)

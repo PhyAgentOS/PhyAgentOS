@@ -1,0 +1,22 @@
+{
+  "benchmark": null,
+  "error_code": null,
+  "error_message": null,
+  "metadata": {
+    "artifacts": {},
+    "final_status": {},
+    "message": "turn_right",
+    "num_steps": 3,
+    "return_value": 3.0
+  },
+  "num_steps": 0,
+  "policy_latency_ms": {
+    "mean": null
+  },
+  "return_value": null,
+  "session_id": "sess_scout_turn_right_15_fwd_0_1m_turn_right_15_2",
+  "skillruntime_id": "scout2_builtin_command",
+  "status": "succeeded",
+  "success": true,
+  "target_id": "scout2_real_builtin"
+}

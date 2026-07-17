@@ -221,6 +221,40 @@ targets:
       max_chunk_size: 50
       max_steps: 200
       chunk_size: 1
+  - id: scout2_real_builtin
+    target_class: remote
+    target_kind: real_robot
+    embodiment: scout2
+    enabled: false                    # 使用时改为 true
+    workspace: workspaces/scout2_real
+    supported_skillruntimes:
+      - scout2_builtin_command
+    runtime:
+      target_runtime: ScoutRemoteTargetProxy
+      target_endpoint: targetws://127.0.0.1:9020
+      target_adapter: target_adapter://scout_adapter
+      runtime_contract_ref: configs/runtime/contracts/scout2_builtin.runtime.yaml
+    observation:
+      observation_type: multimodal
+      empty_observation_allowed: false
+      channels:
+        - camera
+        - odom
+        - lidar
+    perception:
+      enabled: false
+      strict_preflight: true
+    config:
+      scout_ip: 192.168.101.150         # 替换为你的 Scout IP
+      ros_master_uri: http://192.168.101.150:11311
+      network_interface: wlo1
+      action_dim: 2                    # linear_x, angular_z
+      max_chunk_size: 1
+      control_hz: 20
+      safety_limits:
+        linear_x: [-0.5, 0.5]          # 前后速度 m/s
+        angular_z: [-1.0, 1.0]         # 旋转速度 rad/s
+        duration_s: [0.1, 3.0]         # 移动时长秒
   - id: go2_real_builtin
     target_class: remote
     target_kind: real_robot

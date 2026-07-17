@@ -1,0 +1,50 @@
+version: runtime_target_contract_v1
+target_id: pipergo2_isaac_remote
+target_adapter: target_adapter://isaacsim_adapter
+observation:
+  schema_source: target.describe
+  require_describe_observation_schema: true
+  allow_extra_channels: true
+  timestamp_required: false
+action_contract:
+  id: isaac_joint_control_v1
+  accepted_representations:
+    - joint_position_delta
+    - joint_position_absolute
+  shape:
+    - T
+    - 8
+  dtype: float32
+  normalized: false
+  frame: robot_base
+  control_mode: joint_position
+  control_hz: 20
+  components:
+    - {name: j0, unit: rad}
+    - {name: j1, unit: rad}
+    - {name: j2, unit: rad}
+    - {name: j3, unit: rad}
+    - {name: j4, unit: rad}
+    - {name: j5, unit: rad}
+    - {name: j6, unit: rad}
+    - {name: gripper, unit: normalized}
+  chunk:
+    max_chunk_size: 50
+    preferred_chunk_size: 4
+    preferred_replan_after_steps: 4
+    switch_policy: hard_switch
+safety:
+  require_target_side_validation: true
+  stop_on_nan: true
+  stop_on_timeout: true
+capabilities:
+  available_bridges:
+    - bridge://safety_clamp
+  benchmark:
+    name: IsaacSim
+    describe_includes_task_list: false
+    status_includes_episode_summary: false
+  agent_tools:
+    - execute_step
+  tf_frames:
+    - robot_base

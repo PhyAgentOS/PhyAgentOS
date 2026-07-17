@@ -1,0 +1,22 @@
+{
+  "benchmark": null,
+  "error_code": null,
+  "error_message": null,
+  "metadata": {
+    "artifacts": {},
+    "final_status": {},
+    "message": "stop",
+    "num_steps": 1,
+    "return_value": 1.0
+  },
+  "num_steps": 0,
+  "policy_latency_ms": {
+    "mean": null
+  },
+  "return_value": null,
+  "session_id": "sess_scout_stop",
+  "skillruntime_id": "scout2_builtin_command",
+  "status": "succeeded",
+  "success": true,
+  "target_id": "scout2_real_builtin"
+}

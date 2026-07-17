@@ -1,0 +1,48 @@
+version: runtime_target_contract_v1
+target_id: go2_real_builtin
+target_adapter: target_adapter://go2_builtin_adapter
+observation:
+  schema_source: empty
+  require_describe_observation_schema: false
+  allow_extra_channels: false
+  timestamp_required: false
+action_contract:
+  id: go2_builtin_command_v1
+  accepted_representations:
+    - builtin_command
+  shape:
+    - 1
+    - 1
+  dtype: object
+  normalized: false
+  frame: robot_base
+  control_mode: builtin_sport_client
+  control_hz: 10
+  components:
+    - {name: command, unit: enum}
+  chunk:
+    max_chunk_size: 1
+    preferred_chunk_size: 1
+    preferred_replan_after_steps: 1
+    switch_policy: hard_switch
+safety:
+  require_target_side_validation: true
+  max_linear_velocity_mps: 0.5
+  max_angular_velocity_radps: 0.5
+  stop_on_nan: true
+  stop_on_timeout: true
+  operator_override_required: false
+capabilities:
+  agent_tools:
+    - execute_step
+  supported_commands:
+    - stand_up
+    - balance_stand
+    - recovery_stand
+    - stand_down
+    - squat
+    - damp
+    - stop
+    - move
+  tf_frames:
+    - robot_base

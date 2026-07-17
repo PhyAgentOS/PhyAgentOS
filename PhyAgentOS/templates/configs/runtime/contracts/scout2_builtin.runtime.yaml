@@ -1,0 +1,51 @@
+version: runtime_target_contract_v1
+target_id: scout2_real_builtin
+target_adapter: target_adapter://scout_adapter
+observation:
+  schema_source: target.describe
+  require_describe_observation_schema: true
+  allow_extra_channels: true
+  timestamp_required: false
+action_contract:
+  id: scout_builtin_command_v1
+  accepted_representations:
+    - builtin_command
+  shape:
+    - 1
+    - 1
+  dtype: object
+  normalized: false
+  frame: robot_base
+  control_mode: diff_drive
+  control_hz: 20
+  components:
+    - {name: linear_x, unit: m/s}
+    - {name: angular_z, unit: rad/s}
+  chunk:
+    max_chunk_size: 1
+    preferred_chunk_size: 1
+    preferred_replan_after_steps: 1
+    switch_policy: hard_switch
+safety:
+  require_target_side_validation: true
+  max_linear_velocity_mps: 0.5
+  max_angular_velocity_radps: 1.0
+  stop_on_nan: true
+  stop_on_timeout: true
+capabilities:
+  agent_tools:
+    - execute_step
+  supported_commands:
+    - forward
+    - backward
+    - turn_left
+    - turn_right
+    - move_straight
+    - turn_angle
+    - stop
+    - nav_to
+    - describe_scene
+  tf_frames:
+    - robot_base
+    - odom
+    - base_link
