@@ -99,13 +99,9 @@ include = [
 [tool.hatch.build.targets.sdist]
 include = [
     "PhyAgentOS/",
-    "bridge/",
     "README.md",
     "LICENSE",
 ]
-
-[tool.hatch.build.targets.wheel.force-include]
-"bridge" = "PhyAgentOS/bridge"
 
 [tool.ruff]
 line-length = 100

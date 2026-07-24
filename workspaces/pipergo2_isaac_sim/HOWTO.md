@@ -88,5 +88,5 @@ python scripts/run_runtime_watchdog.py \
 ## 四、改任务内容
 
 - **说什么 / 做什么**：改 `workspaces/.../SESSIONS.md` 里对应 session 的 `execution.steps`
-- **desk 坐标**：改 `rollout/configs/pipergo2_manipulation_gui.json` 的 `waypoints`
+- **desk 坐标**：改 `external/isaac_env/configs/pipergo2_manipulation_gui.json` 的 `waypoints`
 - **改完 rollout 配置**：重启终端 A

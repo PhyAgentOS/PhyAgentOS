@@ -123,6 +123,7 @@ Traditional "LLM-direct-to-hardware" approaches tightly couple reasoning to exec
 git clone https://github.com/PhyAgentOS/PhyAgentOS.git && cd PhyAgentOS
 pip install -e .            # Python ≥ 3.11
 pip install -e ".[dev]"     # Dev dependencies
+
 ```
 </td>
 </tr>

@@ -5,7 +5,7 @@ Does NOT import PhyAgentOS. Speaks TargetWS msgpack-over-websocket.
 
 Launch (behavior env, from repo root):
 
-  bash b1k_integration/scripts/start_behavior1k_server.sh --gui --port 9004
+  bash external/b1k_bench/scripts/start_behavior1k_server.sh --gui --port 9004
 
 Or:
 

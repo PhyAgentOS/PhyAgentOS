@@ -10,16 +10,19 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 # Git / project root: .../PhyAgentOS
 REPO_ROOT = PACKAGE_ROOT.parent
 
-ROLLOUT_ROOT = REPO_ROOT / "rollout"
+ISAAC_ENV_ROOT = REPO_ROOT / "external" / "isaac_env"
 WORKSPACES_ROOT = REPO_ROOT / "workspaces"
-B1K_INTEGRATION_ROOT = REPO_ROOT / "b1k_integration"
+B1K_BENCH_ROOT = REPO_ROOT / "external" / "b1k_bench"
 
 
 def ensure_import_paths() -> None:
-    """Prepend repo root so ``PhyAgentOS`` and ``rollout`` import cleanly."""
+    """Prepend repo root and external/ so ``PhyAgentOS``, ``isaac_env`` and ``b1k_bench`` import cleanly."""
     root = str(REPO_ROOT)
     if root not in sys.path:
         sys.path.insert(0, root)
+    ext_root = str(REPO_ROOT / "external")
+    if ext_root not in sys.path:
+        sys.path.insert(0, ext_root)
 
 
 def resolve_repo_path(path: str | Path) -> Path:
@@ -29,9 +32,9 @@ def resolve_repo_path(path: str | Path) -> Path:
     return (REPO_ROOT / candidate).resolve()
 
 
-def rollout_config(name: str) -> Path:
-    """Return ``rollout/configs/<name>`` under the repo root."""
-    return (ROLLOUT_ROOT / "configs" / name).resolve()
+def isaac_env_config(name: str) -> Path:
+    """Return ``external/isaac_env/configs/<name>`` under the repo root."""
+    return (ISAAC_ENV_ROOT / "configs" / name).resolve()
 
 
 def workspace_path(name: str) -> Path:

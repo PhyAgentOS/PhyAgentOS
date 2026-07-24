@@ -6,9 +6,9 @@ Runs in the Isaac/InternUtopia conda environment. Does NOT import PhyAgentOS
 Launch (Isaac env, from repo root):
 
   python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \\
-    --config rollout/configs/pipergo2_manipulation.json --gui --port 9003
+    --config external/isaac_env/configs/pipergo2_manipulation.json --gui --port 9003
 
-Legacy rollout WS remains available via ``python -m rollout --port 8765``.
+Legacy rollout WS remains available via ``python -m external.rollout --port 8765``.
 """
 
 from __future__ import annotations
@@ -36,6 +36,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[5]
 def _ensure_rollout_import_paths() -> None:
     if str(_REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(_REPO_ROOT))
+    ext_root = str(_REPO_ROOT / "external")
+    if ext_root not in sys.path:
+        sys.path.insert(0, ext_root)
 
 
 def _pack_array(obj: Any) -> Any:
@@ -480,7 +483,7 @@ def _run_targetws_server(server: TargetWsServer, host: str, port: int) -> None:
 
 def serve_blocking(host: str, port: int, config: dict[str, Any], *, gui: bool) -> None:
     _ensure_rollout_import_paths()
-    from rollout.server import create_runner
+    from isaac_env.server import create_runner
 
     runner = create_runner(config, gui=gui)
     runtime = IsaacSimRuntime(runner, config.get("targetws") or config.get("isaacsim") or {})
@@ -511,7 +514,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Isaac Sim TargetWS server")
     parser.add_argument(
         "--config",
-        default=str(_REPO_ROOT / "rollout/configs/pipergo2_manipulation.json"),
+        default=str(_REPO_ROOT / "external" / "rollout" / "configs" / "pipergo2_manipulation.json"),
         help="Rollout JSON config",
     )
     parser.add_argument("--host", default="0.0.0.0")
@@ -532,7 +535,7 @@ def main() -> None:
 
     gui = bool(args.gui) and not args.headless
     _ensure_rollout_import_paths()
-    from rollout.bootstrap import bootstrap_rollout_process
+    from isaac_env.bootstrap import bootstrap_rollout_process
 
     bootstrap_rollout_process(config, gui=gui)
     serve_blocking(args.host, args.port, config, gui=gui)

@@ -110,7 +110,7 @@ python scripts/run_runtime_watchdog.py \
 |---|---|---|
 | LIBERO | `PhyAgentOS/runtime/targets/remote/libero/server.py` | `PhyAgentOS.runtime.policy.openpi.lerobot_pi0_server` |
 | Isaac Sim | `PhyAgentOS/runtime/targets/remote/isaacsim/server.py` | Dummy/OpenPI 或 CommandSim |
-| BEHAVIOR-1K | `b1k_integration/scripts/start_behavior1k_server.sh` | `start_b1k_openpi_policy_server.sh` |
+| BEHAVIOR-1K | `external/b1k_bench/scripts/start_behavior1k_server.sh` | `start_b1k_openpi_policy_server.sh` |
 
 旧 `hal/hal_watchdog.py --driver ...` 不属于 v0.1.6 当前运行入口。
 

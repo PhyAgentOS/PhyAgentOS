@@ -10,8 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+ext_root = str(ROOT / "external")
+if ext_root not in sys.path:
+    sys.path.insert(0, ext_root)
 
-from rollout.protocol import decode_message, encode_message
+from isaac_env.protocol import decode_message, encode_message
 
 try:
     from websockets.sync.client import connect

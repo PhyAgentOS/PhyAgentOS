@@ -4,7 +4,7 @@
 
 ```bash
 python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \
-  --config rollout/configs/merom_multi_robot.json --gui --port 9003
+  --config external/isaac_env/configs/merom_multi_robot.json --gui --port 9003
 ```
 
 ## 终端 B 示例

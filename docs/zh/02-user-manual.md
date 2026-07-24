@@ -18,6 +18,12 @@ python -m pip install -e .
 
 # 需要运行测试时
 python -m pip install -e ".[dev]"
+
+# 可选：克隆外部集成
+cd external
+git clone https://github.com/PhyAgentOS/isaac-env.git isaac_env
+git clone https://github.com/PhyAgentOS/b1k-bench.git b1k_bench
+cd ..
 ```
 
 安装后可用的顶层命令：
@@ -182,9 +188,11 @@ python scripts/run_runtime_watchdog.py \
 
 ### 7.2 Isaac Sim TargetWS
 
+> **前提**：需要在 `external/` 下克隆 `isaac_env`，见 [安装](#1-安装)。
+
 ```bash
 python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \
-  --config rollout/configs/pipergo2_manipulation.json \
+  --config external/isaac_env/configs/pipergo2_manipulation.json \
   --gui --port 9003
 ```
 
@@ -192,7 +200,7 @@ Merom 多机器人场景使用：
 
 ```bash
 python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \
-  --config rollout/configs/merom_multi_robot.json \
+  --config external/isaac_env/configs/merom_multi_robot.json \
   --gui --port 9003
 ```
 
@@ -200,20 +208,22 @@ Runtime Endpoint 为 `targetws://127.0.0.1:9003`。命令型 Session 由 `Comman
 
 ### 7.3 BEHAVIOR-1K
 
+> **前提**：需要在 `external/` 下克隆 `b1k_bench`，见 [安装](#1-安装)。
+
 ```bash
 # Terminal A: TargetWS
-bash b1k_integration/scripts/start_behavior1k_server.sh --gui --port 9004
+bash external/b1k_bench/scripts/start_behavior1k_server.sh --gui --port 9004
 
 # Terminal B: Policy server
 export CHECKPOINT_DIR=/path/to/pi0_b1k/checkpoint
-bash b1k_integration/scripts/start_b1k_openpi_policy_server.sh
+bash external/b1k_bench/scripts/start_b1k_openpi_policy_server.sh
 
 # Terminal C: E2E
-python b1k_integration/scripts/run_b1k_openpi_real_e2e.py \
-  --workspace b1k_integration/workspaces/behavior1k_eval
+python external/b1k_bench/scripts/run_b1k_openpi_real_e2e.py \
+  --workspace external/b1k_bench/workspaces/behavior1k_eval
 ```
 
-详细依赖和任务配置见 `b1k_integration/README.md` 与其 workspace 文档。
+详细依赖和任务配置见 `external/b1k_bench/README.md` 与其 workspace 文档。
 
 ### 7.4 当前不支持的旧启动方式
 

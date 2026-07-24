@@ -18,7 +18,7 @@ Behavior1kTargetAdapter → Behavior1KRemoteTargetProxy → TargetWS RPC
 **Terminal A** — simulation server (GUI):
 
 ```bash
-bash b1k_integration/scripts/start_behavior1k_server.sh --gui --port 9004
+bash external/b1k_bench/scripts/start_behavior1k_server.sh --gui --port 9004
 ```
 
 **Terminal B** — single smoke session:
@@ -26,7 +26,7 @@ bash b1k_integration/scripts/start_behavior1k_server.sh --gui --port 9004
 ```bash
 conda activate paos
 python scripts/run_runtime_watchdog.py \
-  --workspace b1k_integration/workspaces/behavior1k_eval \
+  --workspace external/b1k_bench/workspaces/behavior1k_eval \
   --session-id sess_b1k_turning_on_radio_0_smoke \
   --once
 ```
@@ -34,7 +34,7 @@ python scripts/run_runtime_watchdog.py \
 **Benchmark orchestration** (default backend is `runtime_watchdog`):
 
 ```bash
-python b1k_integration/scripts/run_benchmark.py \
+python external/b1k_bench/scripts/run_benchmark.py \
   --benchmark behavior-1k \
   --suite smoke3 \
   --policy dummy_baseline \

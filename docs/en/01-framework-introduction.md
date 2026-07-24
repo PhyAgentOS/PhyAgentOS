@@ -139,8 +139,8 @@ PhyAgentOS/
 │   ├── communication/             # Envelopes, msgpack, TargetWS
 │   └── schemas/                   # Runtime Pydantic schemas
 ├── PhyAgentOS/templates/          # Workspace and runtime templates
-├── rollout/                       # Isaac Sim rollout service
-├── b1k_integration/               # BEHAVIOR-1K integration
+├── external/isaac_env/              # Isaac Sim rollout service
+├── external/b1k_bench/      # BEHAVIOR-1K integration
 ├── scripts/                       # Initialization, Watchdog, and E2E tools
 └── tests/                         # Unit and runtime tests
 ```

@@ -24,10 +24,10 @@ echo "[start_isaacsim_gui] DISPLAY=$DISPLAY"
 
 case "$SCENE" in
   pipergo2)
-    CONFIG="rollout/configs/pipergo2_manipulation_gui.json"
+    CONFIG="external/isaac_env/configs/pipergo2_manipulation_gui.json"
     ;;
   merom)
-    CONFIG="rollout/configs/merom_multi_robot_gui.json"
+    CONFIG="external/isaac_env/configs/merom_multi_robot_gui.json"
     ;;
   *)
     echo "Usage: $0 [pipergo2|merom] [port]" >&2

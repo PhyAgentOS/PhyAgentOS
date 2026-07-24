@@ -6,19 +6,19 @@ Standalone TargetWS server wrapping Isaac Sim rollout (InternUtopia).
 
 ```bash
 python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \
-  --config rollout/configs/pipergo2_manipulation.json --gui --port 9003
+  --config external/isaac_env/configs/pipergo2_manipulation.json --gui --port 9003
 ```
 
 Merom multi-robot:
 
 ```bash
 python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \
-  --config rollout/configs/merom_multi_robot.json --gui --port 9003
+  --config external/isaac_env/configs/merom_multi_robot.json --gui --port 9003
 ```
 
 Runtime endpoint: `targetws://127.0.0.1:9003`
 
-Legacy rollout WebSocket (unchanged): `python -m rollout --config ... --gui --port 8765`
+Legacy rollout WebSocket (unchanged): `python -m external.rollout --config ... --gui --port 8765`
 
 ## Agent tools
 

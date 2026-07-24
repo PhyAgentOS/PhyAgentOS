@@ -123,6 +123,7 @@
 git clone https://github.com/PhyAgentOS/PhyAgentOS.git && cd PhyAgentOS
 pip install -e .            # Python ≥ 3.11
 pip install -e ".[dev]"     # 开发依赖
+
 ```
 </td>
 </tr>

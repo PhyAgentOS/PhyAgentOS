@@ -18,6 +18,12 @@ python -m pip install -e .
 
 # For tests
 python -m pip install -e ".[dev]"
+
+# Optional: clone external integrations
+cd external
+git clone https://github.com/PhyAgentOS/isaac-env.git isaac_env
+git clone https://github.com/PhyAgentOS/b1k-bench.git b1k_bench
+cd ..
 ```
 
 Installed top-level commands:
@@ -184,9 +190,11 @@ python scripts/run_runtime_watchdog.py \
 
 ### 7.2 Isaac Sim TargetWS
 
+> **Prerequisite**: clone `isaac_env` under `external/`, see [Install](#1-install).
+
 ```bash
 python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \
-  --config rollout/configs/pipergo2_manipulation.json \
+  --config external/isaac_env/configs/pipergo2_manipulation.json \
   --gui --port 9003
 ```
 
@@ -194,7 +202,7 @@ For the Merom multi-robot scene:
 
 ```bash
 python PhyAgentOS/runtime/targets/remote/isaacsim/server.py \
-  --config rollout/configs/merom_multi_robot.json \
+  --config external/isaac_env/configs/merom_multi_robot.json \
   --gui --port 9003
 ```
 
@@ -202,20 +210,22 @@ The Runtime endpoint is `targetws://127.0.0.1:9003`. Command Sessions use `Comma
 
 ### 7.3 BEHAVIOR-1K
 
+> **Prerequisite**: clone `b1k_bench` under `external/`, see [Install](#1-install).
+
 ```bash
 # Terminal A: TargetWS
-bash b1k_integration/scripts/start_behavior1k_server.sh --gui --port 9004
+bash external/b1k_bench/scripts/start_behavior1k_server.sh --gui --port 9004
 
 # Terminal B: policy server
 export CHECKPOINT_DIR=/path/to/pi0_b1k/checkpoint
-bash b1k_integration/scripts/start_b1k_openpi_policy_server.sh
+bash external/b1k_bench/scripts/start_b1k_openpi_policy_server.sh
 
 # Terminal C: E2E
-python b1k_integration/scripts/run_b1k_openpi_real_e2e.py \
-  --workspace b1k_integration/workspaces/behavior1k_eval
+python external/b1k_bench/scripts/run_b1k_openpi_real_e2e.py \
+  --workspace external/b1k_bench/workspaces/behavior1k_eval
 ```
 
-See `b1k_integration/README.md` and its workspace documentation for dependency and task configuration.
+See `external/b1k_bench/README.md` and its workspace documentation for dependency and task configuration.
 
 ### 7.4 Retired Startup Paths
 

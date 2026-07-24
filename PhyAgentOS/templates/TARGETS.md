@@ -200,7 +200,7 @@ targets:
     target_class: remote
     target_kind: simulation
     enabled: false
-    workspace: b1k_integration/workspaces/behavior1k_eval
+    workspace: external/b1k_bench/workspaces/behavior1k_eval
     supported_skillruntimes:
       - behavior1k_vla
     runtime:
