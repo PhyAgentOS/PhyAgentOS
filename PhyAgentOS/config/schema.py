@@ -1,5 +1,6 @@
 """Configuration schema using Pydantic."""
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -461,18 +462,22 @@ class Config(BaseSettings):
             kw = kw.lower()
             return kw in model_lower or kw.replace("-", "_") in model_normalized
 
+        def _has_api_key(spec, p: ProviderConfig) -> bool:
+            if p.api_key:
+                return True
+            return bool(spec.env_key and os.environ.get(spec.env_key))
+
         # Explicit provider prefix wins — prevents `github-copilot/...codex` matching openai_codex.
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and model_prefix and normalized_prefix == spec.name:
-                if spec.is_oauth or spec.is_local or p.api_key:
-                    return p, spec.name
+                return p, spec.name
 
         # Match by keyword (order follows PROVIDERS registry)
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and any(_kw_matches(kw) for kw in spec.keywords):
-                if spec.is_oauth or spec.is_local or p.api_key:
+                if spec.is_oauth or spec.is_local or _has_api_key(spec, p):
                     return p, spec.name
 
         # Fallback: configured local providers can route models without
@@ -490,7 +495,7 @@ class Config(BaseSettings):
             if spec.is_oauth:
                 continue
             p = getattr(self.providers, spec.name, None)
-            if p and p.api_key:
+            if p and _has_api_key(spec, p):
                 return p, spec.name
         return None, None
 
@@ -505,9 +510,27 @@ class Config(BaseSettings):
         return name
 
     def get_api_key(self, model: str | None = None) -> str | None:
-        """Get API key for the given model. Falls back to first available key."""
-        p = self.get_provider(model)
-        return p.api_key if p else None
+        """Get API key for the given model. Config value wins, then provider env var."""
+        p, name = self._match_provider(model)
+        if not p:
+            return None
+        return self.get_provider_api_key(name)
+
+    def get_provider_api_key(self, provider_name: str | None) -> str | None:
+        """Get API key for a specific provider. Config value wins, then provider env var."""
+        from PhyAgentOS.providers.registry import find_by_name
+
+        if not provider_name:
+            return None
+        p = getattr(self.providers, provider_name, None)
+        if not p:
+            return None
+        if p.api_key:
+            return p.api_key
+        spec = find_by_name(provider_name)
+        if spec and spec.env_key:
+            return os.environ.get(spec.env_key)
+        return None
 
     def get_api_base(self, model: str | None = None) -> str | None:
         """Get API base URL for the given model. Applies default URLs for gateway/local providers."""

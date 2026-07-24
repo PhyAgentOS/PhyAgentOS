@@ -1,6 +1,7 @@
 """Providers manager for handling multiple LLM providers and modes."""
 
 from typing import Any
+
 from loguru import logger
 
 from PhyAgentOS.config.schema import Config
@@ -40,7 +41,7 @@ class ProvidersManager:
         """
         p = self._config.get_provider(model_id)
         return LiteLLMProvider(
-            api_key=p.api_key if p else None,
+            api_key=self._config.get_api_key(model_id),
             api_base=self._config.get_api_base(model_id),
             default_model=model_id,
             extra_headers=p.extra_headers if p else None,

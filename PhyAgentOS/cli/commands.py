@@ -243,7 +243,7 @@ def onboard():
         if not shared_workspace.exists():
             shared_workspace.mkdir(parents=True, exist_ok=True)
             console.print(f"[green]✓[/green] Created shared workspace at {shared_workspace}")
-        created = registry.sync_layout()
+        registry.sync_layout()
         for instance in registry.instances(enabled_only=True):
             if instance.workspace.exists():
                 console.print(f"[green]✓[/green] Ready robot workspace {instance.robot_id} at {instance.workspace}")
@@ -264,13 +264,14 @@ def onboard():
 
 def _make_provider(config: Config, model: str | None = None, provider_name_override: str | None = None):
     """Create the appropriate LLM provider from config."""
+    from PhyAgentOS.providers.azure_openai_provider import AzureOpenAIProvider
     from PhyAgentOS.providers.base import GenerationSettings
     from PhyAgentOS.providers.openai_codex_provider import OpenAICodexProvider
-    from PhyAgentOS.providers.azure_openai_provider import AzureOpenAIProvider
 
     model = model or config.agents.defaults.model
     provider_name = provider_name_override or config.get_provider_name(model)
     p = getattr(config.providers, provider_name, None) if provider_name_override else config.get_provider(model)
+    api_key = config.get_provider_api_key(provider_name)
 
     # OpenAI Codex (OAuth)
     if provider_name == "openai_codex" or model.startswith("openai-codex/"):
@@ -279,19 +280,19 @@ def _make_provider(config: Config, model: str | None = None, provider_name_overr
     elif provider_name == "custom":
         from PhyAgentOS.providers.custom_provider import CustomProvider
         provider = CustomProvider(
-            api_key=p.api_key if p else "no-key",
+            api_key=api_key or "no-key",
             api_base=(p.api_base if p else None) or config.get_api_base(model) or "http://localhost:8000/v1",
             default_model=model,
         )
     # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
     elif provider_name == "azure_openai":
-        if not p or not p.api_key or not p.api_base:
+        if not p or not api_key or not p.api_base:
             console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
             console.print("Set them in ~/.PhyAgentOS/config.json under providers.azure_openai section")
             console.print("Use the model field to specify the deployment name.")
             raise typer.Exit(1)
         provider = AzureOpenAIProvider(
-            api_key=p.api_key,
+            api_key=api_key,
             api_base=p.api_base,
             default_model=model,
         )
@@ -299,12 +300,12 @@ def _make_provider(config: Config, model: str | None = None, provider_name_overr
         from PhyAgentOS.providers.litellm_provider import LiteLLMProvider
         from PhyAgentOS.providers.registry import find_by_name
         spec = find_by_name(provider_name)
-        if not model.startswith("bedrock/") and not (p and p.api_key) and not (spec and (spec.is_oauth or spec.is_local)):
+        if not model.startswith("bedrock/") and not api_key and not (spec and (spec.is_oauth or spec.is_local)):
             console.print("[red]Error: No API key configured.[/red]")
             console.print("Set one in ~/.PhyAgentOS/config.json under providers section")
             raise typer.Exit(1)
         provider = LiteLLMProvider(
-            api_key=p.api_key if p else None,
+            api_key=api_key,
             api_base=(p.api_base if p else None) or config.get_api_base(model),
             default_model=model,
             extra_headers=p.extra_headers if p else None,
@@ -392,7 +393,7 @@ def _make_session_verifier(config: Config, provider, *, episode_token: str | Non
     service_provider_spec = {
         "provider_name": provider_name,
         "model": model,
-        "api_key": provider_config.api_key if provider_config else None,
+        "api_key": config.get_provider_api_key(provider_name),
         "api_base": provider_config.api_base if provider_config else None,
         "extra_headers": provider_config.extra_headers if provider_config else None,
         "temperature": 0.0,
@@ -637,7 +638,6 @@ def agent(
     from PhyAgentOS.bus.queue import MessageBus
     from PhyAgentOS.config.paths import get_cron_dir
     from PhyAgentOS.cron.service import CronService
-
     from PhyAgentOS.embodiment_registry import EmbodimentRegistry
 
     config = _load_runtime_config(config, workspace)
@@ -1013,7 +1013,7 @@ def status():
                 else:
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
-                has_key = bool(p.api_key)
+                has_key = bool(config.get_provider_api_key(spec.name))
                 console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
 
 
