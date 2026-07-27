@@ -14,7 +14,10 @@
   <p>
     <img src="https://img.shields.io/badge/Python-≥3.11-3776AB?logo=python&logoColor=white" alt="Python">
     <img src="https://img.shields.io/badge/License-MIT-3DA639" alt="License">
-    <a href="https://sysu-hcp-eai.github.io/PhyAgentOS-website/">
+    <a href="https://arxiv.org/pdf/2607.16636">
+      <img src="https://img.shields.io/badge/📄_技术报告-arXiv-b31b1b?logo=arxiv&logoColor=white" alt="技术报告">
+    </a>
+    <a href="https://phy-agent-os.net/">
       <img src="https://img.shields.io/badge/🌐_Website-online-FF6B35" alt="Website">
     </a>
     <a href="https://github.com/PhyAgentOS/PhyAgentOS">
@@ -106,6 +109,11 @@
   <td><b>Fleet 模式</b></td>
   <td>多机器人协同，shared + per-robot 工作区，优先级串行调度</td>
 </tr>
+<tr>
+  <td>🖥️</td>
+  <td><b>内置 TUI</b></td>
+  <td><code>paos tui</code> — 全屏界面：平铺对话 + 实时状态/日志窗格、Provider 与设置管理、莫兰迪主题</td>
+</tr>
 </table>
 
 ---
@@ -145,7 +153,8 @@ paos onboard
 **启动 Agent**
 
 ```bash
-paos agent
+paos agent    # CLI 对话
+paos tui      # 全屏 TUI
 ```
 </td>
 </tr>
@@ -264,15 +273,15 @@ PhyAgentOS/
 
 | 文档 | 面向 | 说明 |
 |:-----|:-----|:-----|
-| [🌐 项目网站](https://phy-agent-os.net/docs/en/architecture.html) | 所有人 | 完整文档、架构详解、Demo 演示 |
-| [📘 用户手册](https://phy-agent-os.net/docs/en/api-reference.html) | 使用者 | 安装部署、运行操作指南 |
-| [📙 开发指南](https://phy-agent-os.net/docs/en/developer-guide.html) | 开发者 | 二次开发、硬件接入、插件编写 |
+| [🌐 项目网站](https://phy-agent-os.net/) | 所有人 | 完整文档、架构详解、Demo 演示 |
+| [📘 用户手册](https://phy-agent-os.net/docs/api-reference/) | 使用者 | 安装部署、运行操作指南 |
+| [📙 开发指南](https://phy-agent-os.net/docs/developer-guide/) | 开发者 | 二次开发、硬件接入、插件编写 |
 
 ---
 
 ## 🤝 参与贡献
 
-欢迎提交 PR 和 Issue，我们的开发计划可以在此处查看👉 [开发计划](https://phy-agent-os.net/docs/en/developer-guide.html)。
+欢迎提交 PR 和 Issue，我们的开发计划可以在此处查看👉 [开发计划](https://phy-agent-os.net/docs/developer-guide/)。
 
 ---
 

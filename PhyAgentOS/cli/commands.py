@@ -976,6 +976,21 @@ def channels_login():
 
 
 # ============================================================================
+# TUI
+# ============================================================================
+
+
+@app.command()
+def tui(
+    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+):
+    """Launch the PhyAgentOS Terminal User Interface."""
+    from PhyAgentOS.tui.app import run_tui
+
+    run_tui(config_path=config)
+
+
+# ============================================================================
 # Status Commands
 # ============================================================================
 
