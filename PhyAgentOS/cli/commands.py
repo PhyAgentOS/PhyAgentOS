@@ -264,9 +264,9 @@ def onboard():
 
 def _make_provider(config: Config, model: str | None = None, provider_name_override: str | None = None):
     """Create the appropriate LLM provider from config."""
+    from PhyAgentOS.providers.azure_openai_provider import AzureOpenAIProvider
     from PhyAgentOS.providers.base import GenerationSettings
     from PhyAgentOS.providers.openai_codex_provider import OpenAICodexProvider
-    from PhyAgentOS.providers.azure_openai_provider import AzureOpenAIProvider
 
     model = model or config.agents.defaults.model
     provider_name = provider_name_override or config.get_provider_name(model)
@@ -637,7 +637,6 @@ def agent(
     from PhyAgentOS.bus.queue import MessageBus
     from PhyAgentOS.config.paths import get_cron_dir
     from PhyAgentOS.cron.service import CronService
-
     from PhyAgentOS.embodiment_registry import EmbodimentRegistry
 
     config = _load_runtime_config(config, workspace)
@@ -973,6 +972,21 @@ def channels_login():
         console.print(f"[red]Bridge failed: {e}[/red]")
     except FileNotFoundError:
         console.print("[red]npm not found. Please install Node.js.[/red]")
+
+
+# ============================================================================
+# TUI
+# ============================================================================
+
+
+@app.command()
+def tui(
+    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+):
+    """Launch the PhyAgentOS Terminal User Interface."""
+    from PhyAgentOS.tui.app import run_tui
+
+    run_tui(config_path=config)
 
 
 # ============================================================================

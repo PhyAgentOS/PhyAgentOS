@@ -1,0 +1,310 @@
+/* PhyAgentOS TUI — Morandi palette, refined minimal style
+   高级感 = 克制：细圆角边框、发丝分割线、留白、扁平按钮、柔和选中 */
+
+Screen {
+    background: $background;
+}
+
+AppHeader {
+    height: 1;
+    padding: 0 1;
+    background: $panel;
+}
+
+.header-title {
+    width: 1fr;
+    color: $accent;
+    text-style: bold;
+}
+
+.header-right {
+    width: auto;
+    color: $text-muted;
+    content-align: right middle;
+}
+
+Footer {
+    background: $panel;
+    color: $text-muted;
+}
+
+ChatScreen, ProvidersScreen, ChannelsScreen, SettingsScreen {
+    layout: vertical;
+}
+
+/* ---------- Tiling chat screen ---------- */
+#tile-main {
+    width: 100%;
+    height: 1fr;
+    layout: horizontal;
+}
+
+#tile-left {
+    width: 2fr;
+    height: 100%;
+    layout: vertical;
+    padding: 0 1;
+}
+
+#tile-right {
+    width: 1fr;
+    height: 100%;
+    layout: vertical;
+    border-left: solid $boost;
+}
+
+/* Section titles: accent bar + bold caps + hairline */
+.section-title {
+    height: 2;
+    layout: horizontal;
+    margin-top: 1;
+    border-bottom: solid $boost;
+}
+
+.section-title .title-bar {
+    width: 1;
+    height: 1;
+    background: $primary;
+}
+
+.section-title .title-text {
+    height: 1;
+    padding: 0 1;
+    color: $primary;
+    text-style: bold;
+}
+
+ChatView {
+    height: 1fr;
+    border: round $boost;
+    padding: 0 1;
+    margin: 1 0 0 0;
+}
+
+ChatView:focus-within {
+    border: round $primary;
+}
+
+ChatInput {
+    height: auto;
+    max-height: 10;
+    border: round $boost;
+    padding: 0 1;
+    margin: 1 0 1 0;
+}
+
+ChatInput:focus-within {
+    border: round $primary;
+}
+
+StatusPane {
+    height: auto;
+    padding: 1 2;
+    color: $text;
+    border-bottom: solid $boost;
+}
+
+LogView {
+    height: 1fr;
+    border: none;
+    padding: 0 1;
+    background: $surface;
+    color: $text-muted;
+}
+
+/* ---------- Menu overlay ---------- */
+MenuOverlay {
+    width: 100%;
+    height: 100%;
+    background: $background 75%;
+    align: center middle;
+}
+
+#menu-box {
+    width: 36;
+    height: auto;
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+}
+
+.overlay-title {
+    color: $primary;
+    text-style: bold;
+    padding-bottom: 1;
+}
+
+#menu-list {
+    height: auto;
+    background: $surface;
+    border: none;
+}
+
+#menu-list:focus {
+    border: none;
+}
+
+#menu-list ListItem {
+    padding: 0 1;
+    height: 1;
+}
+
+#menu-list ListItem.--highlight {
+    background: $boost;
+    color: $text;
+    text-style: bold;
+}
+
+/* ---------- Sub screens ---------- */
+#providers-main, #channels-main, #settings-wrap {
+    width: 100%;
+    height: 1fr;
+    layout: vertical;
+    padding: 0 1;
+}
+
+#providers-body {
+    layout: horizontal;
+    height: 1fr;
+    margin-top: 1;
+}
+
+.hint {
+    color: $text-muted;
+    padding: 0 1;
+}
+
+/* Providers Screen */
+#provider-list-container {
+    width: 32;
+    border-right: solid $boost;
+}
+
+#provider-form-container {
+    width: 1fr;
+    padding: 0 2;
+}
+
+#provider-form {
+    height: auto;
+}
+
+/* Settings Screen */
+#settings-main {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#settings-footer {
+    height: auto;
+    padding: 1 0 1 0;
+}
+
+.settings-group {
+    height: auto;
+    border: round $boost;
+    padding: 1 2;
+    margin-bottom: 1;
+}
+
+.settings-group-title {
+    text-style: bold;
+    color: $accent;
+    padding-bottom: 1;
+}
+
+/* ---------- Common widgets ---------- */
+DataTable {
+    height: auto;
+}
+
+DataTable .datatable--header {
+    background: $surface;
+    color: $text-muted;
+    text-style: bold;
+}
+
+DataTable .datatable--cursor {
+    background: $boost;
+    color: $text;
+}
+
+Input {
+    border: none;
+    border-bottom: solid $boost;
+    background: $surface;
+}
+
+Input:focus {
+    border: none;
+    border-bottom: solid $primary;
+}
+
+Select {
+    border: none;
+    background: $surface;
+    width: 1fr;
+}
+
+Select:focus {
+    border: none;
+}
+
+Select > SelectCurrent {
+    border: none;
+    border-bottom: solid $boost;
+    background: $surface;
+}
+
+Select:focus > SelectCurrent {
+    border-bottom: solid $primary;
+}
+
+Select > SelectOverlay {
+    background: $surface;
+    border: round $boost;
+}
+
+Select > SelectOverlay > .select--option-highlighted,
+Select > SelectOverlay > *:hover {
+    background: $boost;
+    color: $text;
+}
+
+.form-row {
+    layout: horizontal;
+    height: auto;
+    margin-bottom: 1;
+}
+
+.form-label {
+    width: 20;
+    content-align: right middle;
+    padding-right: 1;
+    color: $text-muted;
+}
+
+.form-input {
+    width: 1fr;
+}
+
+Button {
+    margin: 0 1;
+    border: none;
+    background: $boost;
+    color: $text;
+    text-style: bold;
+}
+
+Button:hover, Button:focus {
+    border: none;
+    background: $primary;
+    color: $background;
+}
+
+Button.-primary {
+    border: none;
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}

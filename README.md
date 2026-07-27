@@ -14,6 +14,9 @@
   <p>
     <img src="https://img.shields.io/badge/Python-≥3.11-3776AB?logo=python&logoColor=white" alt="Python">
     <img src="https://img.shields.io/badge/License-MIT-3DA639" alt="License">
+    <a href="https://arxiv.org/pdf/2607.16636">
+      <img src="https://img.shields.io/badge/📄_Tech_Report-arXiv-b31b1b?logo=arxiv&logoColor=white" alt="Tech Report">
+    </a>
     <a href="https://phy-agent-os.net/">
       <img src="https://img.shields.io/badge/🌐_Website-online-FF6B35" alt="Website">
     </a>
@@ -106,6 +109,11 @@ Traditional "LLM-direct-to-hardware" approaches tightly couple reasoning to exec
   <td><b>Fleet Mode</b></td>
   <td>Multi-robot coordination with shared + per-robot workspaces, priority-based serial scheduling</td>
 </tr>
+<tr>
+  <td>🖥️</td>
+  <td><b>Built-in TUI</b></td>
+  <td><code>paos tui</code> — full-screen interface with tiling chat, live status/logs panes, provider &amp; settings management, and Morandi themes</td>
+</tr>
 </table>
 
 ---
@@ -145,7 +153,8 @@ paos onboard
 **Start Agent**
 
 ```bash
-paos agent
+paos agent    # CLI chat
+paos tui      # full-screen TUI
 ```
 </td>
 </tr>
@@ -267,15 +276,15 @@ PhyAgentOS/
 
 | Document | Audience | Description |
 |:-----|:-----|:-----|
-| [🌐 Website](https://phy-agent-os.net/docs/en/architecture.html) | Everyone | Full docs, architecture details, demos |
-| [📘 User Manual](https://phy-agent-os.net/docs/en/api-reference.html) | Users | Installation, deployment, and operation guide |
-| [📙 Dev Guide](https://phy-agent-os.net/docs/en/developer-guide.html) | Developers | Secondary development, hardware integration, plugin authoring |
+| [🌐 Website](https://phy-agent-os.net/) | Everyone | Full docs, architecture details, demos |
+| [📘 User Manual](https://phy-agent-os.net/docs/api-reference/) | Users | Installation, deployment, and operation guide |
+| [📙 Dev Guide](https://phy-agent-os.net/docs/developer-guide/) | Developers | Secondary development, hardware integration, plugin authoring |
 
 ---
 
 ## 🤝 Contributing
 
-PRs and Issues are welcome! Check our development roadmap here → [Dev Plan](https://phy-agent-os.net/docs/en/developer-guide.html).
+PRs and Issues are welcome! Check our development roadmap here → [Dev Plan](https://phy-agent-os.net/docs/developer-guide/).
 
 ---
 
