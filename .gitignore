@@ -29,3 +29,5 @@ asserts/
 checkpoints/
 openpi_turning_on_radio/
 external
+.vscode
+.idea
