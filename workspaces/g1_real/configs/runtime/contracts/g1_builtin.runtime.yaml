@@ -1,0 +1,76 @@
+version: runtime_target_contract_v1
+
+target_id: g1_real_builtin
+
+target_adapter: target_adapter://g1_builtin_adapter
+
+observation:
+  schema_source: empty
+  require_describe_observation_schema: false
+  allow_extra_channels: false
+  timestamp_required: false
+
+action_contract:
+  id: g1_builtin_command_v1
+  accepted_representations:
+    - builtin_command
+  shape:
+    - 1
+    - 1
+  dtype: object
+  normalized: false
+  frame: robot_base
+  control_mode: builtin_loco_api
+  control_hz: 10
+  components:
+    - {name: command, unit: enum}
+    - {name: params, unit: object}
+  chunk:
+    max_chunk_size: 1
+    preferred_chunk_size: 1
+    preferred_replan_after_steps: 1
+    switch_policy: hard_switch
+
+safety:
+  require_target_side_validation: true
+  max_linear_velocity_mps: 0.8
+  max_angular_velocity_radps: 0.5
+  stop_on_nan: true
+  stop_on_timeout: true
+  operator_override_required: false
+
+capabilities:
+  agent_tools:
+    - execute_step
+    - execute_arm_action
+  supported_commands:
+    # Loco posture
+    - squat2stand
+    - balance_stand
+    - lie2stand
+    - stand2squat
+    - sit
+    - damp
+    - zero_torque
+    - stop_move
+    # Velocity control
+    - move
+    # Arm gestures
+    - release_arm
+    - two_hand_kiss
+    - left_kiss
+    - right_kiss
+    - hands_up
+    - clap
+    - high_five
+    - hug
+    - heart
+    - right_heart
+    - reject
+    - right_hand_up
+    - x_ray
+    - face_wave
+    - high_wave
+    - shake_hand
+  tf_frames:
+    - robot_base
