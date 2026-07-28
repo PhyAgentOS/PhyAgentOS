@@ -8,6 +8,7 @@ from typing import Any
 from PhyAgentOS.runtime.adapters.bridges import SafetyClampBridge
 from PhyAgentOS.runtime.adapters.behavior1k.target_adapter import Behavior1kTargetAdapter
 from PhyAgentOS.runtime.adapters.go2.target_adapter import Go2BuiltinTargetAdapter
+from PhyAgentOS.runtime.adapters.g1.target_adapter import G1BuiltinTargetAdapter
 from PhyAgentOS.runtime.adapters.isaacsim.target_adapter import IsaacSimTargetAdapter
 from PhyAgentOS.runtime.adapters.libero.target_adapter import LiberoTargetAdapter
 from PhyAgentOS.runtime.adapters.scout.target_adapter import ScoutTargetAdapter
@@ -79,6 +80,7 @@ def _require_uri(value: str, prefix: str) -> str:
     return value[len(prefix) :]
 
 
+register_target_adapter("target_adapter://g1_builtin_adapter", G1BuiltinTargetAdapter)
 register_target_adapter("target_adapter://dummy_sim_adapter", DummySimTargetAdapter)
 register_target_adapter("target_adapter://libero_adapter", LiberoTargetAdapter)
 register_target_adapter("target_adapter://libero_mock_adapter", LiberoTargetAdapter)
