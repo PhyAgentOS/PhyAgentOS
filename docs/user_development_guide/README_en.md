@@ -124,7 +124,11 @@ Validate failure paths first: unknown Runtime, invalid endpoint, missing Adapter
 
 ## 8. Real-Robot Requirements
 
-No real-robot Target is registered in the current public Runtime. An ecosystem integration must implement target-side emergency stop, workspace/velocity/force limits, command freshness, operator override, disconnect stop, and idempotent cancel/close. Passing current Preflight is not real-robot safety certification.
+The current `preview` Runtime registers the constrained `go2_real_builtin`
+real-robot Target. Other physical-robot integrations must still implement
+target-side emergency stop, workspace/velocity/force limits, command freshness,
+operator override, disconnect stop, and idempotent cancel/close. Passing
+current Preflight is not real-robot safety certification.
 
 ## 9. Merge Gates
 
@@ -143,6 +147,7 @@ HAL v3 continues toward strict Environment Contracts, real-robot SafetyGuard, de
 
 ## Related Documentation
 
+- [Unitree Go2 Quick Start Guide](UNITREE_GO2_QUICK_START_en.md)
 - [Developer Manual](../en/03-developer-manual.md)
 - [Communication Architecture](COMMUNICATION_en.md)
 - [Operations Manual](../user_manual/README_en.md)

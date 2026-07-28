@@ -136,7 +136,10 @@ pytest tests/runtime
 
 ## 8. 真机接入要求
 
-当前公共 Runtime 尚未注册 real-robot Target。生态集成必须在 Target 侧实现安全边界，至少包括急停、范围/速度/力限制、命令时效、Operator Override、断连停止和幂等 cancel/close。现有 Preflight 通过不代表完成真机安全认证。
+当前 `preview` Runtime 已注册受约束的 `go2_real_builtin` real-robot Target。
+其他真机生态集成仍必须在 Target 侧实现安全边界，至少包括急停、范围/速度/力
+限制、命令时效、Operator Override、断连停止和幂等 cancel/close。现有
+Preflight 通过不代表完成真机安全认证。
 
 ## 9. 合入门禁
 
@@ -155,6 +158,7 @@ HAL v3 规划继续完善 strict Environment Contract、real-robot SafetyGuard�
 
 ## 相关文档
 
+- [Unitree Go2 快速接入手册](UNITREE_GO2_QUICK_START.md)
 - [开发者手册](../zh/03-developer-manual.md)
 - [通信架构](COMMUNICATION.md)
 - [运行手册](../user_manual/README.md)

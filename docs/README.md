@@ -18,6 +18,7 @@ The PhyAgentOS development team maintains this directory as the public documenta
 
 - [运行手册](user_manual/README.md)：部署检查、Session 运维与故障分层
 - [集成开发指南](user_development_guide/README.md)：Target/Skill/Policy/Perception 接入闭环
+- [Unitree Go2 快速接入手册](user_development_guide/UNITREE_GO2_QUICK_START.md)：有线网络、SDK、TargetWS、真机安全启动与排障
 - [通信架构](user_development_guide/COMMUNICATION.md)：消息、文件协议与 Runtime RPC 边界
 
 ## English
@@ -31,6 +32,7 @@ Supplementary manuals:
 
 - [Operations Manual](user_manual/README_en.md): deployment checks, Session operations, and failure layers
 - [Integration Development Guide](user_development_guide/README_en.md): Target/Skill/Policy/Perception integration loop
+- [Unitree Go2 Quick Start Guide](user_development_guide/UNITREE_GO2_QUICK_START_en.md): wired networking, SDK, TargetWS, safe physical startup, and troubleshooting
 - [Communication Architecture](user_development_guide/COMMUNICATION_en.md): messaging, file protocols, and Runtime RPC boundaries
 
 ## Architecture Diagrams / 架构图
