@@ -74,7 +74,7 @@ G1 supports 16 preset arm gestures via `G1ArmActionClient`:
 
 - Use `skillruntime://g1_builtin_command`.
 - Every executable G1 session must include structured `execution.steps`.
-- For movement, prefer an explicit posture sequence: `squat2stand`, `balance_stand`, then `move`.
+- Robot boots into standing-locked / ready-to-move state; no need for `squat2stand` or `balance_stand` before movement. Direct `move` is sufficient.
 - For `move`, velocity fields must be nested under `params`, for example:
   `steps: [{command: move, params: {vx: 0.8, vy: 0.0, vyaw: 0.0, step: 0.5}}]`
 
