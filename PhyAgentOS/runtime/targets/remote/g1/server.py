@@ -569,7 +569,9 @@ class G1BuiltinRuntime:
                 raise TargetProtocolError("G1 move command requires params.vx/params.vy/params.vyaw/params.step")
             clipped = _clip_move_params(params)
             move_result = self.loco_backend.move(**clipped)
-            # Auto-stop after movement
+            # Wait for the actual movement duration before stopping
+            duration_s = clipped.get("duration_s", 0.5)
+            time.sleep(duration_s)
             try:
                 self.loco_backend.stop_move()
             except Exception:
