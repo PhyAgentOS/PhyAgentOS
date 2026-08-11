@@ -5,11 +5,11 @@ from __future__ import annotations
 from statistics import mean
 
 from PhyAgentOS.runtime.adapters.factory import build_policy_adapter
+from PhyAgentOS.runtime.errors import PolicyProtocolError
 from PhyAgentOS.runtime.policy.base_client import BasePolicyClient
 from PhyAgentOS.runtime.schemas import AdapterPlan
 from PhyAgentOS.runtime.sessions.models import EnvironmentRequest, SkillContext, SkillRuntimeResult
 from PhyAgentOS.runtime.skillruntime.policy.base import PolicySkillRuntime
-from PhyAgentOS.runtime.watchdog.errors import PolicyProtocolError
 
 
 class OpenPISkillRuntime(PolicySkillRuntime):

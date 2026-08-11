@@ -6,9 +6,9 @@ from typing import Any
 
 import numpy as np
 
+from PhyAgentOS.runtime.errors import SchemaValidationError
 from PhyAgentOS.runtime.perception.config_resolver import ResolvedPerceptionPlan, sensor_by_id
 from PhyAgentOS.runtime.perception.sensor_frame import SensorFrame
-from PhyAgentOS.runtime.watchdog.errors import SchemaValidationError
 
 
 class SensorFrameBuilder:

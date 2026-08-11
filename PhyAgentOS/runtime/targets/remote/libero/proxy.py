@@ -7,9 +7,8 @@ from typing import Any
 import numpy as np
 
 from PhyAgentOS.runtime.communication.target_ws_client import TargetWSClient
+from PhyAgentOS.runtime.errors import TargetProtocolError
 from PhyAgentOS.runtime.targets.remote.proxy import RemoteTargetProxy
-from PhyAgentOS.runtime.watchdog.errors import TargetProtocolError
-
 
 LIBERO_DEFAULT_CONFIG = {
     "benchmark_name": "libero_spatial",

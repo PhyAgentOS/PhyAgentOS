@@ -5,10 +5,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from PhyAgentOS.runtime.errors import AdapterError
 from PhyAgentOS.runtime.schemas import AdapterPlan
 from PhyAgentOS.runtime.sessions.models import SkillContext, SkillRuntimeResult
 from PhyAgentOS.runtime.skillruntime.builtin.base import BuiltinSkillRuntime
-from PhyAgentOS.runtime.watchdog.errors import AdapterError
 
 
 class CommandSimSkillRuntime(BuiltinSkillRuntime):

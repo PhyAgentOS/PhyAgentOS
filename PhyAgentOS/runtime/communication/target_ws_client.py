@@ -8,7 +8,7 @@ from urllib.parse import urlparse, urlunparse
 
 from PhyAgentOS.runtime.communication.envelope import RuntimeEnvelope
 from PhyAgentOS.runtime.communication.msgpack_codec import decode_msgpack, encode_msgpack
-from PhyAgentOS.runtime.watchdog.errors import TargetConnectionError, TargetProtocolError
+from PhyAgentOS.runtime.errors import TargetConnectionError, TargetProtocolError
 
 
 class TargetWSClient:

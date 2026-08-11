@@ -13,9 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from PhyAgentOS.runtime.errors import PolicyProtocolError
 from PhyAgentOS.runtime.policy.msgpack_numpy import packb, unpackb
-from PhyAgentOS.runtime.watchdog.errors import PolicyProtocolError
-
 
 WEBSOCKET_KEEPALIVE_DISABLED = {
     "ping_interval": None,

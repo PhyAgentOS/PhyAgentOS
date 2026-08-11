@@ -9,11 +9,10 @@ from PhyAgentOS.plugins.perception_plugins.base import BasePerceptionPlugin
 from PhyAgentOS.plugins.perception_plugins.dummy_segmenter import DummySegmenter
 from PhyAgentOS.plugins.perception_plugins.rgbd_object_builder import RGBDObjectBuilder
 from PhyAgentOS.plugins.perception_plugins.sim_oracle import SimOraclePlugin
+from PhyAgentOS.runtime.errors import SchemaValidationError
 from PhyAgentOS.runtime.perception.config_resolver import ResolvedPerceptionPlan
 from PhyAgentOS.runtime.perception.sensor_frame import SensorFrame
 from PhyAgentOS.runtime.schemas.perception import EnvironmentDelta
-from PhyAgentOS.runtime.watchdog.errors import SchemaValidationError
-
 
 _BUILTIN_PLUGINS: dict[str, type[BasePerceptionPlugin]] = {
     "dummy_segmenter": DummySegmenter,

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 
+from PhyAgentOS.runtime.errors import SchemaValidationError
 from PhyAgentOS.runtime.perception.config_resolver import (
     PerceptionConfigResolver,
     ResolvedPerceptionPlan,
@@ -14,7 +15,6 @@ from PhyAgentOS.runtime.perception.config_resolver import (
 )
 from PhyAgentOS.runtime.perception.diagnostics import PreflightResult
 from PhyAgentOS.runtime.schemas.perception import PerceptionModelSpec
-from PhyAgentOS.runtime.watchdog.errors import SchemaValidationError
 
 
 class PerceptionPreflightError(SchemaValidationError):

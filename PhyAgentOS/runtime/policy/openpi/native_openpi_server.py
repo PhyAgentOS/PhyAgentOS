@@ -18,9 +18,8 @@ from typing import Any
 
 import numpy as np
 
+from PhyAgentOS.runtime.errors import PolicyProtocolError
 from PhyAgentOS.runtime.policy.msgpack_numpy import packb, unpackb
-from PhyAgentOS.runtime.watchdog.errors import PolicyProtocolError
-
 
 _DEFAULT_LIBERO_CHECKPOINTS = {
     "pi0_libero": "gs://openpi-assets/checkpoints/pi0_libero",

@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+from PhyAgentOS.runtime.errors import SchemaValidationError
 from PhyAgentOS.runtime.schemas.perception import (
     PerceptionConfigDocument,
     PerceptionModelSpec,
@@ -15,7 +16,6 @@ from PhyAgentOS.runtime.schemas.perception import (
     PerceptionPluginCandidate,
 )
 from PhyAgentOS.runtime.schemas.sensor_config import SensorConfigDocument, SensorSpec
-from PhyAgentOS.runtime.watchdog.errors import SchemaValidationError
 from PhyAgentOS.runtime.watchdog.scheduler import ScheduledSession
 
 

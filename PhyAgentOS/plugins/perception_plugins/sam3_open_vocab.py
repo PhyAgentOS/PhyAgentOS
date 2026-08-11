@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from PhyAgentOS.plugins.perception_plugins.base import BasePerceptionPlugin
+from PhyAgentOS.runtime.errors import SchemaValidationError
 from PhyAgentOS.runtime.perception.sensor_frame import SensorFrame
 from PhyAgentOS.runtime.schemas.perception import EnvironmentDelta
-from PhyAgentOS.runtime.watchdog.errors import SchemaValidationError
 
 
 class SAM3OpenVocabPlugin(BasePerceptionPlugin):

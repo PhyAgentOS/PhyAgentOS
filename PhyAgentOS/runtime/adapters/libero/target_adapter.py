@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 
 from PhyAgentOS.runtime.adapters.base import BaseTargetAdapter
-from PhyAgentOS.runtime.watchdog.errors import AdapterError
+from PhyAgentOS.runtime.errors import AdapterError
 
 
 class LiberoTargetAdapter(BaseTargetAdapter):

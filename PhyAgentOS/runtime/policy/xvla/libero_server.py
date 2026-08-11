@@ -17,8 +17,8 @@ os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("USE_FLAX", "0")
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 
+from PhyAgentOS.runtime.errors import PolicyProtocolError
 from PhyAgentOS.runtime.policy.msgpack_numpy import packb, unpackb
-from PhyAgentOS.runtime.watchdog.errors import PolicyProtocolError
 
 
 class XVLALiberoPolicy:

@@ -9,13 +9,13 @@ from typing import Any
 import numpy as np
 import websocket
 
-from PhyAgentOS.runtime.policy.base_client import BasePolicyClient
-from PhyAgentOS.runtime.policy.msgpack_numpy import packb, unpackb
-from PhyAgentOS.runtime.watchdog.errors import (
+from PhyAgentOS.runtime.errors import (
     PolicyConnectionError,
     PolicyProtocolError,
     PolicyTimeoutError,
 )
+from PhyAgentOS.runtime.policy.base_client import BasePolicyClient
+from PhyAgentOS.runtime.policy.msgpack_numpy import packb, unpackb
 
 
 class OpenPIClientPolicyWrapper(BasePolicyClient):

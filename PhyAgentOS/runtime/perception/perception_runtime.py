@@ -6,12 +6,15 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from PhyAgentOS.runtime.perception.config_resolver import PerceptionConfigResolver, ResolvedPerceptionPlan
+from PhyAgentOS.runtime.errors import SchemaValidationError
+from PhyAgentOS.runtime.perception.config_resolver import (
+    PerceptionConfigResolver,
+    ResolvedPerceptionPlan,
+)
 from PhyAgentOS.runtime.perception.environment_writer import EnvironmentWriter
 from PhyAgentOS.runtime.perception.plugin_pipeline import PerceptionPluginPipeline
 from PhyAgentOS.runtime.perception.preflight import PerceptionPreflightChecker
 from PhyAgentOS.runtime.perception.sensor_frame_builder import SensorFrameBuilder
-from PhyAgentOS.runtime.watchdog.errors import SchemaValidationError
 from PhyAgentOS.runtime.watchdog.scheduler import ScheduledSession
 
 

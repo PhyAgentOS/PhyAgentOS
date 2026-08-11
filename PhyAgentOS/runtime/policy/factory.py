@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from PhyAgentOS.runtime.policy.base_client import BasePolicyClient
+from PhyAgentOS.runtime.errors import PolicyConnectionError
 from PhyAgentOS.runtime.policy.b1k_websocket_client import Behavior1kWebsocketPolicyClient
+from PhyAgentOS.runtime.policy.base_client import BasePolicyClient
 from PhyAgentOS.runtime.policy.dummy_client import DummyPolicyClient
 from PhyAgentOS.runtime.policy.openpi.client import OpenPIClientPolicyWrapper
-from PhyAgentOS.runtime.watchdog.errors import PolicyConnectionError
 
 
 def parse_policy_endpoint(endpoint: str) -> tuple[str, str, int]:

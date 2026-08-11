@@ -6,8 +6,8 @@ from typing import Any
 
 import numpy as np
 
+from PhyAgentOS.runtime.errors import TargetStepError
 from PhyAgentOS.runtime.targets.local.base import BaseLocalTarget
-from PhyAgentOS.runtime.watchdog.errors import TargetStepError
 
 
 class DummySimTarget(BaseLocalTarget):

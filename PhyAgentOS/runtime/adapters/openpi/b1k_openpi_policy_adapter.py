@@ -14,7 +14,7 @@ from PhyAgentOS.runtime.adapters.behavior1k.obs_keys import (
     RIGHT_WRIST_RGB_KEY,
 )
 from PhyAgentOS.runtime.adapters.openpi.base_openpi_adapter import BaseOpenPIAdapter
-from PhyAgentOS.runtime.watchdog.errors import AdapterError
+from PhyAgentOS.runtime.errors import AdapterError
 
 
 class Behavior1kOpenPIPolicyAdapter(BaseOpenPIAdapter):

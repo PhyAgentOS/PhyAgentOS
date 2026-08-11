@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import time
 import base64
 import hashlib
 import hmac
 import json
-from urllib.parse import urlparse
+import time
 from typing import Any
+from urllib.parse import urlparse
 
+from PhyAgentOS.runtime.errors import AdapterError
 from PhyAgentOS.runtime.schemas import AdapterPlan, BenchmarkJobRequest
 from PhyAgentOS.runtime.sessions.models import SkillContext, SkillRuntimeResult
 from PhyAgentOS.runtime.skillruntime.builtin.base import BuiltinSkillRuntime
-from PhyAgentOS.runtime.watchdog.errors import AdapterError
 
 
 class LiberoBenchmarkSkillRuntime(BuiltinSkillRuntime):

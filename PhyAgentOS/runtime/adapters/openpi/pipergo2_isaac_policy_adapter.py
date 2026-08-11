@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 
 from PhyAgentOS.runtime.adapters.openpi.base_openpi_adapter import BaseOpenPIAdapter
-from PhyAgentOS.runtime.watchdog.errors import AdapterError
+from PhyAgentOS.runtime.errors import AdapterError
 
 
 class PiperGo2IsaacPolicyAdapter(BaseOpenPIAdapter):

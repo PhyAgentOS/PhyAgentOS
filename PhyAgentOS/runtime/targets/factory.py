@@ -6,6 +6,7 @@ from collections.abc import Callable
 from urllib.parse import urlparse
 
 from PhyAgentOS.runtime.communication.target_ws_client import TargetWSClient
+from PhyAgentOS.runtime.errors import TargetBuildError
 from PhyAgentOS.runtime.schemas import TargetSpec
 from PhyAgentOS.runtime.targets.base import BaseRolloutTarget
 from PhyAgentOS.runtime.targets.local.dummy_sim_target import DummySimTarget
@@ -13,7 +14,6 @@ from PhyAgentOS.runtime.targets.remote.behavior1k.proxy import Behavior1KRemoteT
 from PhyAgentOS.runtime.targets.remote.isaacsim.proxy import IsaacSimRemoteTargetProxy
 from PhyAgentOS.runtime.targets.remote.libero.proxy import LiberoRemoteTargetProxy
 from PhyAgentOS.runtime.targets.remote.proxy import RemoteTargetProxy
-from PhyAgentOS.runtime.watchdog.errors import TargetBuildError
 
 LocalTargetFactory = Callable[[TargetSpec], BaseRolloutTarget]
 RemoteTargetFactory = Callable[[TargetSpec, TargetWSClient], BaseRolloutTarget]

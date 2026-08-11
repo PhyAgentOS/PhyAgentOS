@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from PhyAgentOS.runtime.adapters.base import BaseTargetAdapter
-from PhyAgentOS.runtime.watchdog.errors import AdapterError
+from PhyAgentOS.runtime.errors import AdapterError
 
 
 class Go2BuiltinTargetAdapter(BaseTargetAdapter):
