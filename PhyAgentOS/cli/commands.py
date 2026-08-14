@@ -339,6 +339,17 @@ def _make_forge_orchestrator(config: Config, provider, bus):
     )
 
 
+def _active_skill_runtime():
+    """Discover an explicitly started, healthy Skill runtime."""
+    from PhyAgentOS.skill_runtime.integration import discover_active_runtime
+
+    try:
+        return discover_active_runtime()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
 def _load_command_config(config: str | None = None, workspace: str | None = None) -> Config:
     """Load config and optionally override the active workspace."""
     from PhyAgentOS.config.loader import load_config, set_config_path
@@ -412,6 +423,7 @@ def gateway(
     bus = MessageBus()
     provider = _make_provider(config)
     forge_orchestrator = _make_forge_orchestrator(config, provider, bus)
+    active_skill_runtime = _active_skill_runtime()
     session_manager = SessionManager(config.workspace_path)
 
     # Create cron service first (callback set after agent creation)
@@ -436,6 +448,22 @@ def gateway(
         channels_config=config.channels,
         embodiment_registry=registry,
         forge_orchestrator=forge_orchestrator,
+        forge_tool_client=(
+            active_skill_runtime.client
+            if active_skill_runtime is not None
+            else None
+        ),
+        forge_tool_invocation_ids=(
+            active_skill_runtime.invocation_ids
+            if active_skill_runtime is not None
+            else None
+        ),
+        runtime_availability_provider=(
+            lambda name: (
+                active_skill_runtime is not None
+                and active_skill_runtime.skill_name == name
+            )
+        ),
     )
 
     # Set cron callback (needs agent)
@@ -607,6 +635,7 @@ def agent(
     bus = MessageBus()
     provider = _make_provider(config)
     forge_orchestrator = _make_forge_orchestrator(config, provider, bus)
+    active_skill_runtime = _active_skill_runtime()
 
     # Create cron service for tool usage (no callback needed for CLI unless running)
     cron_store_path = get_cron_dir() / "jobs.json"
@@ -633,6 +662,22 @@ def agent(
         channels_config=config.channels,
         embodiment_registry=registry,
         forge_orchestrator=forge_orchestrator,
+        forge_tool_client=(
+            active_skill_runtime.client
+            if active_skill_runtime is not None
+            else None
+        ),
+        forge_tool_invocation_ids=(
+            active_skill_runtime.invocation_ids
+            if active_skill_runtime is not None
+            else None
+        ),
+        runtime_availability_provider=(
+            lambda name: (
+                active_skill_runtime is not None
+                and active_skill_runtime.skill_name == name
+            )
+        ),
     )
 
     # Show spinner when logs are off (no output to miss); skip when logs are on
@@ -819,6 +864,165 @@ def agent(
                 await agent_loop.close_mcp()
 
         asyncio.run(run_interactive())
+
+
+# ============================================================================
+# Skill Runtime Commands
+# ============================================================================
+
+
+skill_app = typer.Typer(help="Manage installed Skill runtimes")
+app.add_typer(skill_app, name="skill")
+
+
+def _skill_runtime_error(error: Exception) -> None:
+    console.print(f"[red]Error: {error}[/red]")
+    raise typer.Exit(1)
+
+
+@skill_app.command("list")
+def skill_list():
+    """List locally installed Skill bundles."""
+    from PhyAgentOS.skill_runtime.catalog import SkillCatalog
+    from PhyAgentOS.skill_runtime.state import RuntimeStateStore
+
+    catalog = SkillCatalog()
+    states = RuntimeStateStore()
+    table = Table(title="Installed Skills")
+    table.add_column("Skill", style="cyan")
+    table.add_column("Version")
+    table.add_column("Profiles")
+    table.add_column("Runtime")
+    try:
+        manifests = catalog.list()
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    for manifest in manifests:
+        state = states.load(manifest.name)
+        table.add_row(
+            manifest.name,
+            manifest.version,
+            ", ".join(sorted(manifest.profiles)),
+            state.status if state is not None else "not started",
+        )
+    for name, error in catalog.errors().items():
+        table.add_row(name, "-", "-", f"[red]invalid: {error}[/red]")
+    console.print(table)
+
+
+@skill_app.command("inspect")
+def skill_inspect(skill_name: str = typer.Argument(..., help="Installed Skill name")):
+    """Inspect a Skill manifest and its last runtime state."""
+    from PhyAgentOS.skill_runtime.catalog import SkillCatalog
+    from PhyAgentOS.skill_runtime.state import RuntimeStateStore
+
+    try:
+        manifest = SkillCatalog().get(skill_name)
+        state = RuntimeStateStore().load(skill_name)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    console.print(f"[bold cyan]{manifest.name}[/bold cyan] {manifest.version}")
+    console.print(manifest.description)
+    console.print(f"Document: {manifest.skill_document.as_posix()}")
+    console.print(f"Gateway: {manifest.gateway_url}")
+    console.print(f"Tools: {', '.join(manifest.required_tools)}")
+    profile_table = Table(title="Runtime Profiles")
+    profile_table.add_column("Profile")
+    profile_table.add_column("Dataflow")
+    profile_table.add_column("Binaries")
+    profile_table.add_column("Assets")
+    for name, profile in sorted(manifest.profiles.items()):
+        profile_table.add_row(
+            name,
+            profile.dataflow.as_posix(),
+            str(len(profile.required_binaries)),
+            str(len(profile.required_assets)),
+        )
+    console.print(profile_table)
+    console.print(f"Runtime: {state.status if state is not None else 'not started'}")
+
+
+@skill_app.command("start")
+def skill_start(
+    skill_name: str = typer.Argument(..., help="Installed Skill name"),
+    profile: str = typer.Option(..., "--profile", "-p", help="Runtime profile"),
+):
+    """Start an installed Skill's named Dora dataflow."""
+    from PhyAgentOS.skill_runtime.manager import RuntimeManager
+
+    try:
+        state = RuntimeManager().start(skill_name, profile)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    console.print(
+        f"[green]✓[/green] Skill [cyan]{state.skill_name}[/cyan] is running "
+        f"(profile={state.profile}, flow={state.flow_name})"
+    )
+
+
+@skill_app.command("status")
+def skill_status(skill_name: str = typer.Argument(..., help="Installed Skill name")):
+    """Reconcile persisted state with Dora and Gateway health."""
+    from PhyAgentOS.skill_runtime.manager import RuntimeManager
+
+    try:
+        report = RuntimeManager().status(skill_name)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    if report.state is None:
+        console.print(f"Skill [cyan]{skill_name}[/cyan]: not started")
+        return
+    state = report.state
+    console.print(f"Skill: {state.skill_name}")
+    console.print(f"State: {state.status}")
+    console.print(f"Profile: {state.profile}")
+    console.print(f"Dora flow: {state.flow_name} ({'running' if report.flow_running else 'down'})")
+    console.print(f"Gateway GET /tools: {'ready' if report.gateway_ready else 'unavailable'}")
+    for tool_id, ready in report.tool_contexts.items():
+        console.print(f"Tool context {tool_id}: {'ready' if ready else 'not ready'}")
+    if state.last_error:
+        console.print(f"[red]Last error: {state.last_error}[/red]")
+
+
+@skill_app.command("logs")
+def skill_logs(
+    skill_name: str = typer.Argument(..., help="Installed Skill name"),
+    lines: int = typer.Option(200, "--lines", "-n", min=1, help="Lifecycle log lines"),
+):
+    """Show recent Skill runtime lifecycle logs."""
+    from PhyAgentOS.skill_runtime.manager import RuntimeManager
+
+    try:
+        content = RuntimeManager().read_logs(skill_name, lines=lines)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    if content:
+        console.print(content, end="")
+    else:
+        console.print("[dim]No lifecycle logs recorded.[/dim]")
+
+
+@skill_app.command("stop")
+def skill_stop(
+    skill_name: str = typer.Argument(..., help="Installed Skill name"),
+    force: bool = typer.Option(False, "--force", help="Force-stop despite active invocations"),
+):
+    """Stop a managed Skill dataflow without shutting down shared Dora services."""
+    from PhyAgentOS.skill_runtime.manager import RuntimeManager
+
+    try:
+        state = RuntimeManager().stop(skill_name, force=force)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    console.print(
+        f"[green]✓[/green] Skill [cyan]{state.skill_name}[/cyan] is {state.status}"
+    )
 
 
 # ============================================================================

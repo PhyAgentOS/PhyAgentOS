@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+from collections.abc import MutableSet
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from PhyAgentOS.config.schema import ChannelsConfig, ExecToolConfig
     from PhyAgentOS.cron.service import CronService
     from PhyAgentOS.forge.orchestrator import ForgeSessionOrchestrator
+    from PhyAgentOS.forge.tool_client import ForgeToolClient
 
 
 class AgentLoop:
@@ -71,6 +73,9 @@ class AgentLoop:
         channels_config: ChannelsConfig | None = None,
         embodiment_registry: EmbodimentRegistry | None = None,
         forge_orchestrator: ForgeSessionOrchestrator | None = None,
+        forge_tool_client: ForgeToolClient | None = None,
+        forge_tool_invocation_ids: MutableSet[str] | None = None,
+        runtime_availability_provider: Callable[[str], bool] | None = None,
     ):
         from PhyAgentOS.config.schema import ExecToolConfig
         self.bus = bus
@@ -86,6 +91,8 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
         self.forge_orchestrator = forge_orchestrator
+        self.forge_tool_client = forge_tool_client
+        self.forge_tool_invocation_ids = forge_tool_invocation_ids
 
         self.context = ContextBuilder(
             workspace,
@@ -94,6 +101,7 @@ class AgentLoop:
                 if forge_orchestrator is not None
                 else None
             ),
+            runtime_availability_provider=runtime_availability_provider,
         )
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
@@ -175,6 +183,15 @@ class AgentLoop:
                 ForgeResetTool(self.forge_orchestrator),
                 VerifyForgeSessionTool(self.forge_orchestrator),
                 CreateReplannedForgeSessionTool(self.forge_orchestrator),
+            ):
+                self.tools.register(tool)
+
+        if self.forge_tool_client is not None:
+            from PhyAgentOS.agent.tools.forge_tool_api import build_forge_tool_api_tools
+
+            for tool in build_forge_tool_api_tools(
+                self.forge_tool_client,
+                invocation_ids=self.forge_tool_invocation_ids,
             ):
                 self.tools.register(tool)
 
@@ -385,13 +402,15 @@ class AgentLoop:
                 ))
 
     async def close_mcp(self) -> None:
-        """Close MCP connections."""
+        """Close external tool client connections."""
         if self._mcp_stack:
             try:
                 await self._mcp_stack.aclose()
             except (RuntimeError, BaseExceptionGroup):
                 pass  # MCP SDK cancel scope cleanup is noisy but harmless
             self._mcp_stack = None
+        if self.forge_tool_client is not None:
+            await self.forge_tool_client.close()
 
     def stop(self) -> None:
         """Stop the agent loop."""

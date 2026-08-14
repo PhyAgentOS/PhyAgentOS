@@ -4,6 +4,15 @@
 
 This document is the technical contract for the only robot-execution path supported by PhyAgentOS. Gateway, Forge Runtime, Dora dataflows, policies, and hardware integrations remain external and are not modified by PAOS.
 
+`move-arm-by-ee` uses the parallel Gateway Tool API execution plane and an
+explicitly managed local Dora dataflow; it does not reuse the high-level
+`ForgeSessionOrchestrator`. See
+[move-arm-by-ee Skill Runtime](move-arm-by-ee-skill-runtime.md).
+
+For the as-built Skill/Tool/Endpoint/ToolCall/ToolSpec relationships, runtime
+boundaries, and the planned two-supply-chain download model, see
+[PAOS Skill Runtime and Forge Tool Architecture](skill-runtime-tool-architecture.md).
+
 ## 1. Design boundary
 
 ```text

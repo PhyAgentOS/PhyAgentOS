@@ -4,6 +4,14 @@
 
 本文是 PhyAgentOS 唯一机器人执行链的技术契约。Gateway、Forge Runtime、Dora dataflow、策略与硬件集成位于 PAOS 外部，不由 PAOS 修改。
 
+`move-arm-by-ee` 使用 Gateway Tool API，并由 `paos skill` 显式管理本地 Dora
+dataflow。它与本文的高层 Agent Session API 是并列执行面，不复用
+`ForgeSessionOrchestrator`。参见 [move-arm-by-ee Skill Runtime](move-arm-by-ee-skill-runtime.md)。
+
+当前已经实现的 Skill/Tool/Endpoint/ToolCall/ToolSpec 关系、运行时边界和后续双供应链
+下载设计，参见
+[PAOS Skill Runtime 与 Forge Tool 架构（当前实现）](skill-runtime-tool-architecture.md)。
+
 ## 1. 设计边界
 
 ```text

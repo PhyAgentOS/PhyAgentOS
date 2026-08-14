@@ -34,6 +34,26 @@ def get_logs_dir() -> Path:
     return get_data_subdir("logs")
 
 
+def get_skill_bundle_root() -> Path:
+    """Return the directory containing installed Skill bundles."""
+    return get_data_subdir("skills")
+
+
+def get_forge_runtime_root() -> Path:
+    """Return the local Forge runtime installation directory."""
+    return get_data_subdir("forge_runtime")
+
+
+def get_skill_runtime_state_dir() -> Path:
+    """Return the directory containing Skill runtime state."""
+    return ensure_dir(get_data_subdir("run") / "skills")
+
+
+def get_skill_runtime_logs_dir() -> Path:
+    """Return the directory containing Skill runtime lifecycle logs."""
+    return ensure_dir(get_logs_dir() / "skills")
+
+
 def get_workspace_path(workspace: str | None = None) -> Path:
     """Resolve and ensure the agent workspace path."""
     path = Path(workspace).expanduser() if workspace else Path.home() / ".PhyAgentOS" / "workspace"

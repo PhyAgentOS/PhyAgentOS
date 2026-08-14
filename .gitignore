@@ -24,4 +24,7 @@ SECURITY.md
 .kilo
 test
 tests/
+!tests/
+tests/*
+!tests/test_skills.py
 plan/

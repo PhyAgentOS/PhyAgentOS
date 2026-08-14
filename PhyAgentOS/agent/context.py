@@ -34,11 +34,15 @@ class ContextBuilder:
         workspace: Path,
         *,
         forge_context_provider: Callable[[], str] | None = None,
+        runtime_availability_provider: Callable[[str], bool] | None = None,
     ):
         self.workspace = workspace
         self.forge_context_provider = forge_context_provider
         self.memory = MemoryStore(workspace)
-        self.skills = SkillsLoader(workspace)
+        self.skills = SkillsLoader(
+            workspace,
+            runtime_availability_provider=runtime_availability_provider,
+        )
 
     def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
@@ -52,11 +56,16 @@ class ContextBuilder:
         if memory:
             parts.append(f"# Memory\n\n{memory}")
 
-        always_skills = self.skills.get_always_skills()
-        if always_skills:
-            always_content = self.skills.load_skills_for_context(always_skills)
-            if always_content:
-                parts.append(f"# Active Skills\n\n{always_content}")
+        active_skills = list(
+            dict.fromkeys(
+                self.skills.get_always_skills()
+                + self.skills.get_active_skills()
+            )
+        )
+        if active_skills:
+            active_content = self.skills.load_skills_for_context(active_skills)
+            if active_content:
+                parts.append(f"# Active Skills\n\n{active_content}")
 
         skills_summary = self.skills.build_skills_summary()
         if skills_summary:

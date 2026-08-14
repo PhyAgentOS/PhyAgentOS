@@ -4,7 +4,10 @@ import json
 import os
 import re
 import shutil
+from collections.abc import Callable
 from pathlib import Path
+
+from PhyAgentOS.config.loader import get_config_path
 
 # Default builtin skills directory (relative to this file)
 BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"
@@ -22,10 +25,18 @@ class SkillsLoader:
         self,
         workspace: Path,
         builtin_skills_dir: Path | None = None,
+        installed_skills_dir: Path | None = None,
+        runtime_availability_provider: Callable[[str], bool] | None = None,
     ):
         self.workspace = workspace
         self.workspace_skills = workspace / "skills"
+        self.installed_skills = (
+            installed_skills_dir
+            if installed_skills_dir is not None
+            else get_config_path().parent / "skills"
+        )
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
+        self.runtime_availability_provider = runtime_availability_provider
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
         """
@@ -47,6 +58,16 @@ class SkillsLoader:
                     if skill_file.exists():
                         skills.append({"name": skill_dir.name, "path": str(skill_file), "source": "workspace"})
 
+        # Installed skill bundles
+        if self.installed_skills.exists():
+            for skill_dir in self.installed_skills.iterdir():
+                if skill_dir.is_dir():
+                    skill_file = skill_dir / "SKILL.md"
+                    if skill_file.exists() and not any(s["name"] == skill_dir.name for s in skills):
+                        skills.append(
+                            {"name": skill_dir.name, "path": str(skill_file), "source": "installed"}
+                        )
+
         # Built-in skills
         if self.builtin_skills and self.builtin_skills.exists():
             for skill_dir in self.builtin_skills.iterdir():
@@ -57,7 +78,14 @@ class SkillsLoader:
 
         # Filter by requirements
         if filter_unavailable:
-            return [s for s in skills if self._check_requirements(self._get_skill_meta(s["name"]))]
+            return [
+                s
+                for s in skills
+                if self._check_requirements(
+                    self._get_skill_meta(s["name"]),
+                    skill_name=s["name"],
+                )
+            ]
         return skills
 
     def load_skill(self, name: str) -> str | None:
@@ -74,6 +102,11 @@ class SkillsLoader:
         workspace_skill = self.workspace_skills / name / "SKILL.md"
         if workspace_skill.exists():
             return workspace_skill.read_text(encoding="utf-8")
+
+        # Check installed bundles
+        installed_skill = self.installed_skills / name / "SKILL.md"
+        if installed_skill.exists():
+            return installed_skill.read_text(encoding="utf-8")
 
         # Check built-in
         if self.builtin_skills:
@@ -125,7 +158,7 @@ class SkillsLoader:
             path = s["path"]
             desc = escape_xml(self._get_skill_description(s["name"]))
             skill_meta = self._get_skill_meta(s["name"])
-            available = self._check_requirements(skill_meta)
+            available = self._check_requirements(skill_meta, skill_name=s["name"])
 
             lines.append(f"  <skill available=\"{str(available).lower()}\">")
             lines.append(f"    <name>{name}</name>")
@@ -134,7 +167,7 @@ class SkillsLoader:
 
             # Show missing requirements for unavailable skills
             if not available:
-                missing = self._get_missing_requirements(skill_meta)
+                missing = self._get_missing_requirements(skill_meta, skill_name=s["name"])
                 if missing:
                     lines.append(f"    <requires>{escape_xml(missing)}</requires>")
 
@@ -143,18 +176,29 @@ class SkillsLoader:
 
         return "\n".join(lines)
 
-    def _get_missing_requirements(self, skill_meta: dict) -> str:
+    def _get_missing_requirements(
+        self,
+        skill_meta: dict,
+        *,
+        skill_name: str | None = None,
+    ) -> str:
         """Get a description of missing requirements."""
         missing = []
         if not self._metadata_available(skill_meta):
             missing.append("available: false")
         requires = skill_meta.get("requires", {})
+        if not isinstance(requires, dict):
+            missing.append("invalid requires metadata")
+            return ", ".join(missing)
         for b in requires.get("bins", []):
             if not shutil.which(b):
                 missing.append(f"CLI: {b}")
         for env in requires.get("env", []):
             if not os.environ.get(env):
                 missing.append(f"ENV: {env}")
+        for runtime in self._runtime_requirements(requires, skill_name=skill_name):
+            if not self._runtime_available(runtime):
+                missing.append(f"runtime: {runtime}")
         return ", ".join(missing)
 
     def _get_skill_description(self, name: str) -> str:
@@ -180,18 +224,61 @@ class SkillsLoader:
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def _check_requirements(self, skill_meta: dict) -> bool:
+    def _check_requirements(
+        self,
+        skill_meta: dict,
+        *,
+        skill_name: str | None = None,
+    ) -> bool:
         """Check if skill requirements are met (bins, env vars)."""
         if not self._metadata_available(skill_meta):
             return False
         requires = skill_meta.get("requires", {})
+        if not isinstance(requires, dict):
+            return False
         for b in requires.get("bins", []):
             if not shutil.which(b):
                 return False
         for env in requires.get("env", []):
             if not os.environ.get(env):
                 return False
+        for runtime in self._runtime_requirements(requires, skill_name=skill_name):
+            if not self._runtime_available(runtime):
+                return False
         return True
+
+    @staticmethod
+    def _runtime_requirements(
+        requires: dict,
+        *,
+        skill_name: str | None,
+    ) -> list[str]:
+        value = requires.get("runtime", [])
+        if isinstance(value, str):
+            value = [value]
+        if value is True and skill_name:
+            return [skill_name]
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, str) and item.strip()]
+
+    def _runtime_available(self, name: str) -> bool:
+        return bool(
+            self.runtime_availability_provider
+            and self.runtime_availability_provider(name)
+        )
+
+    def get_active_skills(self) -> list[str]:
+        """Return available skills whose metadata requires an active runtime."""
+        result = []
+        for skill in self.list_skills(filter_unavailable=True):
+            meta = self._get_skill_meta(skill["name"])
+            requires = meta.get("requires", {})
+            if not isinstance(requires, dict):
+                continue
+            if self._runtime_requirements(requires, skill_name=skill["name"]):
+                result.append(skill["name"])
+        return result
 
     @staticmethod
     def _metadata_available(skill_meta: dict) -> bool:
