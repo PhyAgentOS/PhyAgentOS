@@ -2,9 +2,9 @@
 
 本文说明 Skill Runtime 的文件结构、九节点链路、仓库边界和最短开发流程。
 
-当前本地打包、安装和 MuJoCo 运行链已经实现。正式资源服务尚未上线；过渡期使用
-`move-arm-by-ee` 离线 Quick Start 包。未来 Node/Skill Bundle 将发布到 GitHub Release
-和对象存储，本地 manifest、digest 和 lock 契约保持不变。
+当前安装和 MuJoCo 运行链已经实现。正式资源服务尚未上线；过渡期可使用已有的
+`move-arm-by-ee` 离线 Quick Start 包。未来各节点 CI 将预构建 Node Bundle 并发布到
+GitHub Release/对象存储，PAOS 只负责下载、校验、安装和运行。
 
 ## 1. 文件结构
 
@@ -75,7 +75,6 @@ forge_gateway/
 核心仓库：
 
 - `PhyAgentOS`：Agent、Skill Runtime、CLI、Skill 源码；
-- `forge_runtime`：打包器、部署脚本、Quick Start、集成示例；
 - `forge`：`forge-msgs`、`forge-tool`、`forge-common`；
 - `forge_gateway`、`motion`、`controls`；
 - 两个 `policy_node` 仓；
@@ -97,34 +96,16 @@ forge_gateway/
 
 1. 只在节点权威仓修改代码和测试。
 2. 运行该仓 build/release 脚本。
-3. 递增版本和 `artifact_id`。
-4. 更新 Skill lock 和包索引。
+3. 由节点仓 CI 生成并发布预构建 Node Bundle。
+4. 资源服务登记 artifact/version/platform/arch/digest，Skill 更新 lock。
 5. 重新执行端到端验收。
-
-本地统一构建：
-
-```bash
-cd forge_runtime
-./deploy_move_arm_by_ee_skill.sh
-# 复用已有 binary
-./deploy_move_arm_by_ee_skill.sh --skip-build
-```
 
 ## 5. 无资源服务 Quick Start
 
-构建完整离线包：
-
-```bash
-cd forge_runtime
-./build_move_arm_by_ee_quick_start.sh
-# 复用已有 binary
-./build_move_arm_by_ee_quick_start.sh --skip-build
-```
-
-输出：
+当前过渡性交付物：
 
 ```text
-forge_runtime/dist/quick-start/
+PhyAgentOS/dist/forge/quick-start/
 ├── move-arm-by-ee-quick-start-0.2.0-linux-x86_64.tar.gz
 └── move-arm-by-ee-quick-start-0.2.0-linux-x86_64.tar.gz.sha256
 ```
@@ -157,11 +138,6 @@ paos agent -m "将夹爪向前移动5cm"
 ```bash
 cd PhyAgentOS
 uv run --extra dev pytest -q tests/test_skill_runtime_*.py
-
-cd ../forge_runtime
-uv run python -m pytest -q \
-  tests/test_package_paos_archive.py \
-  tests/test_package_move_arm_quick_start.py
 
 paos skill inspect move-arm-by-ee
 paos skill start move-arm-by-ee --profile mujoco

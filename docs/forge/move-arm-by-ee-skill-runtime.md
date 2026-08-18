@@ -564,7 +564,7 @@ uv run --extra dev paos skill stop move-arm-by-ee
 7. 检查 required environment；
 8. 拒绝复用占据相同 Gateway 地址的非托管服务；
 9. 启动或复用 Dora coordinator/daemon；
-10. 设置 `FORGE_RUNTIME_BIN=~/.PhyAgentOS/forge_runtime`；
+10. 将 `FORGE_RUNTIME_BIN` 设置为当前 Skill Environment 的 `bin/`；
 11. 从 dataflow 所在目录启动具名 Dora flow；
 12. 等待 flow running；
 13. 等待 Gateway `GET /tools`；
@@ -737,8 +737,8 @@ paos skill start move-arm-by-ee --profile mujoco
 
 ### 13.4 缺少二进制或资产
 
-`start` 的 preflight 会给出相对于 `~/.PhyAgentOS/forge_runtime` 的缺失路径。当前不会
-自动下载，必须先完整安装 Runtime Artifact Set。
+`start` 的 preflight 会报告 Skill Bundle 中缺失的资产或当前 Environment 中缺失的
+entrypoint。资源服务上线前，可通过离线 Quick Start 包完成部署。
 
 ### 13.5 Dora flow 未运行
 
@@ -830,8 +830,5 @@ PhyAgentOS/cli/commands.py
 ~/.PhyAgentOS/forge_runtime/environments/move-arm-by-ee/mujoco/<lock-digest>/
 ```
 
-Forge Runtime 示例：
-
-```text
-forge_runtime/examples/move_arm_by_ee_skill/
-```
+正式发布后，各节点仓负责生成预构建 Node Bundle，资源服务负责索引和分发；PAOS
+根据 `skill.yaml` lock 下载并安装，不在 PhyAgentOS 仓内收集或构建节点二进制。
