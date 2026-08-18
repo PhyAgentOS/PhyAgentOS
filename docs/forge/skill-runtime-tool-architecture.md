@@ -62,6 +62,9 @@ Skill 不是物理执行宏，Tool 也不等于 Dora Node。PAOS 不直接发送
 - Action `invocation_id` 的 PAOS 本地持久化与停止门禁。
 - Tool schema、readiness、Endpoint 状态和机器人 Frame Profile 的实时上下文。
 - Query/Action Tool 与 Dora 高频数据面的隔离。
+- 确定性 Skill Bundle/Node Bundle 打包、严格归档校验和逐文件 SHA-256 校验。
+- 独立 Node 版本安装、Skill node lock 和 profile 专用 Skill Environment。
+- RegistryClient、下载缓存以及 `paos skill install`/`paos forge-node install` 安装入口。
 
 ### 2.2 部分实现
 
@@ -73,11 +76,13 @@ Skill 不是物理执行宏，Tool 也不等于 Dora Node。PAOS 不直接发送
 - MotionServer 和 Endpoint 有串行执行/BUSY 约束，但尚无跨 Tool 的通用资源租约系统。
 - Gateway 可以产生 Tool events；PAOS bridge 当前只暴露 context/query/start/status/result/
   cancel，没有 Agent-facing event stream 工具。
+- Registry 下载和安装代码已经存在，但远端索引、GitHub Release 和对象存储尚未发布，
+  因此 fresh clone 用户暂时不能仅凭 Skill 名称完成在线安装。
 
 ### 2.3 尚未实现
 
-- Skill Bundle 远程发现、下载、签名验证、安装、升级、回滚和卸载。
-- Forge Runtime 节点与资产的远程解析、下载、版本锁定和共享管理。
+- Bundle 发布者签名、在线 search/update/remove、引用计数、垃圾回收和自动回滚。
+- 按 GPU、Dora ABI、系统 ABI 和机器人型号进行通用制品选择。
 - 通用 TaskPlan 数据模型和持久化 Planner。
 - v0.7 中完整的 ExecutionPlan、Resource Manager、Control Manager、Session Manager、
   Completion Engine、Safety Supervisor 和动态 Topology Manager。
@@ -125,7 +130,10 @@ Skill Bundle 是 PAOS 本地可发现的安装单元。当前最小结构为：
 ```text
 ~/.PhyAgentOS/skills/<skill-name>/
 ├── SKILL.md
-└── skill.yaml
+├── skill.yaml
+├── profiles/<profile>/dataflow.yaml
+├── profiles/<profile>/*.yaml
+└── assets/
 ```
 
 `skill.yaml` 当前声明：
@@ -136,12 +144,12 @@ Skill Bundle 是 PAOS 本地可发现的安装单元。当前最小结构为：
 - Runtime 启动后必须存在的 Tool ID；
 - profile 对应的 Dora dataflow；
 - 所需二进制、资产和环境变量；
-- artifact resolver 配置。
+- `artifacts.nodes` 中每个独立 Node Bundle 的精确版本与 digest lock。
 
-当前 manifest 会保留 `artifacts.resolver: local`，但 RuntimeManager 尚未用该字段解析
-或安装 Runtime artifact。`LocalArtifactResolver` 也只具备本地 Bundle 路径解析能力。
-profile 中的 dataflow、binary 和 asset 由 RuntimeManager 直接相对
-`~/.PhyAgentOS/forge_runtime` 检查。当前不会下载任何 Bundle、Runtime 节点或资产。
+profile 中的 dataflow 和 asset 相对 Skill Bundle 根解析；`required_binaries` 是稳定
+entrypoint 名称。每个节点独立安装到
+`~/.PhyAgentOS/forge_runtime/nodes/<node>/versions/<artifact-id>`。RuntimeManager
+验证精确 lock 后，为 Skill/profile 创建不可变 environment `bin` 视图。
 
 Skill Bundle 与运行中的 Skill Runtime 必须区分：
 
@@ -160,7 +168,8 @@ Skill Bundle 与运行中的 Skill Runtime 必须区分：
 - 校验 Bundle manifest；
 - 校验 dataflow、二进制、资产和环境变量；
 - 启动或复用 Dora coordinator/daemon；
-- 设置 `FORGE_RUNTIME_BIN`；
+- 设置 `FORGE_RUNTIME_BIN=<Skill environment>/bin` 和
+  `PAOS_SKILL_ROOT=<Skill Bundle root>`；
 - 启动具名 Dora flow；
 - 等待 Gateway 和 required Tool contexts ready；
 - 原子写入本地 Runtime 状态；
@@ -189,6 +198,7 @@ Tool 是 Agent 可调用的稳定领域能力。例如：
 - `motion.resolve_relative_pose`
 - `motion.move_pose`
 - `motion.move_joints`
+- `gripper.set_opening`
 
 Tool 是语义与安全边界，不是进程、Dora Node 或 Python 函数的同义词。
 
@@ -477,7 +487,7 @@ Query Tool 与后续 Action Tool 不是原子事务。Skill 要求在二者之�
   -> 拒绝占用 Gateway 地址的非托管实例
   -> 原子写入 starting
   -> 启动/复用 dora coordinator + daemon
-  -> 设置 FORGE_RUNTIME_BIN
+  -> 设置 FORGE_RUNTIME_BIN=<environment>/bin 与 PAOS_SKILL_ROOT
   -> dora start --name paos-<skill>-<profile>
   -> 等待 flow running
   -> 等待 GET /tools
@@ -552,114 +562,73 @@ paos skill stop <skill>
 因此不应在文档或 API 中声称已经实现 v0.7 的 Resource/Control/Session/Completion/
 Safety/Topology 全部能力。
 
-## 10. TODO：两条独立下载与安装供应链
+## 10. 本地制品供应链已实现；远端发布待上线
 
-未来下载管理必须拆成两条供应链，不能把所有文件当成一个不透明压缩包直接覆盖。
-
-### 10.1 Skill Bundle 下载管理
-
-管理对象：
+机器可读包索引、JSON Schema 和归档安全契约见
+[PAOS Forge 包索引规范](paos-forge-packages_zh.md)。当前实现已经放弃单体
+Runtime Artifact Set，使用两种独立制品：
 
 ```text
 Skill Bundle
 ├── skill.yaml
 ├── SKILL.md
-├── artifact/runtime lock 或引用
-└── 可选的轻量 Skill 配置、示例和许可证
+├── profiles/<profile>/dataflow.yaml + 配置
+├── Skill 专属 URDF/MJCF/mesh/纹理
+└── artifacts.nodes：每个 Node 的不可变 lock
+
+Node Bundle
+├── node-manifest.json
+└── 一个独立版本的 entrypoint 与私有文件
 ```
 
-建议新增：
+机器人二进制、驱动、MuJoCo 和共享 Gateway 不复制到 Skill Bundle。体积可控且与任务
+紧密相关的 URDF/MJCF/mesh 等资产跟随 Skill 打包，保证安装后的 Skill 自包含。
 
-- Skill Registry/index：按名称、版本、channel 和兼容范围发现 Bundle；
-- `paos skill search/install/update/remove`；
-- 下载到 staging，禁止直接写最终目录；
-- Bundle digest 和发布者签名验证；
-- manifest schema、路径逃逸、大小和文件类型检查；
-- PAOS 版本、Skill manifest 版本和 Runtime API 兼容性检查；
-- 原子安装与 `current` 切换；
-- 安装失败回滚；
-- Bundle 版本并存、pin 和 downgrade；
-- provenance、许可证和审计记录；
-- 删除前检查 active Runtime 与引用关系。
+### 10.1 已实现的安装和校验
 
-Skill Bundle 应保持轻量。机器人二进制、驱动、MuJoCo、模型大资产和共享 Gateway 不应
-默认复制进每个 Bundle。
+- packager 生成确定性 `tar.gz`、manifest、inventory 和逐文件 SHA-256；
+- ArchiveValidator 拒绝绝对路径、路径逃逸、链接、特殊文件、Unicode/casefold 冲突、
+  文件数/大小超限和压缩炸弹；
+- SkillInstaller 原子安装 Skill Bundle，并保留被替换版本的备份；
+- NodeInstaller 将每个 Node 安装到独立 `artifact_id` 目录并支持完整校验；
+- `skill.yaml` 对每个 profile 锁定 Node 的 artifact/version/platform/arch/digest；
+- SkillEnvironmentBuilder 为 Skill/profile/lock digest 生成不可变运行视图；
+- RuntimeManager 从 environment 的稳定 `bin` entrypoint 启动 Dora dataflow；
+- RegistryClient 和 DownloadCache 能下载 Skill/Node 制品；
+- CLI 已提供 `paos skill install`、`paos forge-node install/verify`。
 
-### 10.2 Forge Runtime 节点与资产下载管理
-
-管理对象：
-
-```text
-Forge Runtime Artifact Set
-├── gateway
-├── policy endpoint binaries
-├── motion/controller/driver binaries
-├── simulator/viewer binaries
-├── Dora dataflows
-├── robot/simulator configs
-├── URDF/MJCF/model assets
-└── artifact manifest / SBOM / signatures
-```
-
-建议新增独立 Runtime Artifact Resolver/Manager：
-
-- 根据 Skill profile 的 lock 解析 artifact set；
-- 按 OS、CPU、GPU、Dora ABI、Python/系统 ABI 和硬件型号选择制品；
-- 每个二进制和资产独立 digest/signature 校验；
-- 安全解压，拒绝绝对路径、软链逃逸和可疑权限；
-- 内容寻址缓存和跨 Skill 去重；
-- 版本化安装目录与原子 active pointer；
-- artifact set 整体兼容性校验，禁止节点版本随意混用；
-- 下载续传、镜像、离线导入和代理支持；
-- 共享节点引用计数和垃圾回收；
-- 升级前停止/迁移相关 Runtime；
-- 健康检查失败自动回滚；
-- 驱动、CAN、GPU 等高权限节点单独审批；
-- SBOM、来源、构建版本、签名和漏洞状态审计。
-
-当前外部部署脚本能够生成 SHA-256 manifest 和备份，但 PAOS RuntimeManager 只检查
-文件是否存在、二进制是否可执行，尚未读取或验证这些 SHA-256 manifest，也不能用备份
-自动回滚。
-
-推荐未来布局：
+当前本地布局：
 
 ```text
 ~/.PhyAgentOS/
-├── skills/
-│   └── <name>/<version>/...
+├── skills/<skill>/
 ├── forge_runtime/
-│   ├── versions/<artifact-set-id>/...
-│   ├── cache/<digest>/...
-│   └── current -> versions/<artifact-set-id>
+│   ├── nodes/<node-id>/versions/<artifact-id>/
+│   ├── environments/<skill>/<profile>/<lock-digest>/
+│   └── cache/
 ├── run/skills/
 └── logs/skills/
 ```
 
-当前代码仍使用扁平 `~/.PhyAgentOS/forge_runtime`，上面的版本化布局尚未实现。
+### 10.2 尚未上线的发布能力
 
-### 10.3 两条供应链的关联
+静态索引中的 GitHub Release URL 和后台对象存储 URL 尚未填充，Registry 服务也未部署，
+所以当前在线安装入口没有可供 fresh clone 用户消费的正式制品。开发环境仍通过
+`forge_runtime/deploy_move_arm_by_ee_skill.sh` 构建、打包和本地安装。
 
-Skill Bundle 应通过不可变 lock 引用 Runtime Artifact Set，而不是用模糊的“最新版本”：
+后续发布阶段仍需：
 
-```text
-skill name/version
-  -> profile
-  -> runtime artifact set ID
-  -> dataflow entry
-  -> required tool IDs
-  -> expected ToolSpec/API compatibility
-```
+- 将每个不可变 Node Bundle 和 Skill Bundle 发布到 GitHub Release 与对象存储；
+- 提供按名称、版本、channel、平台和架构查询的 Registry API；
+- 增加发布者签名、SBOM、provenance 和漏洞状态；
+- 增加下载续传、镜像、离线导入、引用计数和垃圾回收；
+- 增加在线 update/remove、失败自动回滚和高权限节点审批；
+- 扩展 GPU、Dora ABI、Python/系统 ABI 和硬件型号兼容选择。
 
-安装推荐采用两阶段事务：
-
-1. 安装并验证 Skill Bundle；
-2. 解析、下载并验证 Runtime Artifact Set；
-3. 对 profile 做离线 preflight；
-4. 原子提交 Bundle 与 Runtime 引用；
-5. 启动时仍重新检查本地文件和实时 Tool context。
-
-Bundle 签名不能替代 Runtime 二进制签名；Runtime 制品验证也不能替代 Skill 发布者和
-任务知识的信任验证。
+Skill lock 必须始终引用精确 Node 制品，不能使用模糊的“最新版本”。启动时即使本地
+manifest 和 digest 校验已经通过，仍需重新检查可执行文件、Dora flow 和实时 Tool
+context。未来的 Bundle 签名不能替代 Node 二进制签名，Node 验证也不能替代 Skill
+发布者和任务知识的信任验证。
 
 ## 11. 其他优先 TODO
 
@@ -719,7 +688,7 @@ PhyAgentOS/cli/commands.py
 Gateway 与示例：
 
 ```text
-forge_runtime/packages/nodes/gateway/src/forge_gateway/
+forge_gateway/src/forge_gateway/
 forge_runtime/examples/move_arm_by_ee_skill/
 ```
 

@@ -1,0 +1,5 @@
+group_name: piper_arm
+joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]
+urdf_path: ../../assets/piper_with_gripper.urdf
+base_frame: arm_base
+tip_frame: tcp

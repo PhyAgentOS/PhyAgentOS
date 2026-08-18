@@ -308,6 +308,20 @@ class ForgeConfig(Base):
         return normalized
 
 
+class ResourceRegistryConfig(Base):
+    """Public artifact registry used for Skill and Forge Runtime downloads."""
+
+    url: str = ""
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        if normalized and not normalized.startswith(("http://", "https://")):
+            raise ValueError("resourceRegistry.url must be an HTTP(S) URL")
+        return normalized
+
+
 class ModeConfig(Base):
     """Configuration for agent mode."""
 
@@ -453,6 +467,7 @@ class Config(BaseSettings):
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     embodiments: EmbodimentsConfig = Field(default_factory=EmbodimentsConfig)
     forge: ForgeConfig = Field(default_factory=ForgeConfig)
+    resource_registry: ResourceRegistryConfig = Field(default_factory=ResourceRegistryConfig)
 
     @model_validator(mode="before")
     @classmethod

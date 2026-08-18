@@ -12,6 +12,15 @@ dataflow。它与本文的高层 Agent Session API 是并列执行面，不复�
 下载设计，参见
 [PAOS Skill Runtime 与 Forge Tool 架构（当前实现）](skill-runtime-tool-architecture.md)。
 
+[PAOS Skill Runtime 协作开发指南](skill-runtime-development-guide.md)说明源码与安装目录、
+九节点组成、权威仓库边界、本地开发和验收流程。
+
+首批机器可读 Skill/Runtime 包索引及其发布、归档、lock、安装和安全约束见
+[PAOS Forge 包索引规范](paos-forge-packages_zh.md)，验证输入见
+[YAML 索引](paos-forge-packages.yaml)和
+[JSON Schema](paos-forge-packages.schema.json)。该索引目前是发布契约，现有 PAOS
+installer 尚不消费它。
+
 ## 1. 设计边界
 
 ```text

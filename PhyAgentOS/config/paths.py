@@ -44,6 +44,11 @@ def get_forge_runtime_root() -> Path:
     return get_data_subdir("forge_runtime")
 
 
+def get_artifact_cache_root() -> Path:
+    """Return the content-addressed Resource Registry download cache."""
+    return get_data_subdir("cache")
+
+
 def get_skill_runtime_state_dir() -> Path:
     """Return the directory containing Skill runtime state."""
     return ensure_dir(get_data_subdir("run") / "skills")

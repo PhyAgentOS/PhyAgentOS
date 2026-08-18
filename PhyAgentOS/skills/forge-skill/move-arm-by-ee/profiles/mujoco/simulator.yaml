@@ -1,0 +1,48 @@
+# Requires a separately built ${FORGE_RUNTIME_BIN}/mujoco_sim binary.
+model_path: ../../assets/piper_mujoco/scene.xml
+control_hz: 50
+image_format: raw
+
+# Keep the demo away from the all-zero singularity and leave forward workspace.
+# This profile-specific ready pose is applied only when the simulator starts.
+initial_positions:
+  joint1: 0.0
+  joint2: 0.0383
+  joint3: -0.0708
+  joint4: 0.0
+  joint5: 0.008
+  joint6: 0.0
+  gripper: 0.0
+
+joints:
+  - {name: joint1, mode: position, unit: radians}
+  - {name: joint2, mode: position, unit: radians}
+  - {name: joint3, mode: position, unit: radians}
+  - {name: joint4, mode: position, unit: radians}
+  - {name: joint5, mode: position, unit: radians}
+  - {name: joint6, mode: position, unit: radians}
+  - name: gripper
+    mode: prismatic
+    unit: meters
+    state_from_joints: [joint7, joint8]
+    state_expr: diff
+    state_scale: 1.0
+
+robots:
+  - id: robot_0
+    prefix: item_1/
+    actuator_order: [joint1, joint2, joint3, joint4, joint5, joint6, gripper]
+    joint_to_actuator:
+      joint1: joint1
+      joint2: joint2
+      joint3: joint3
+      joint4: joint4
+      joint5: joint5
+      joint6: joint6
+      gripper: gripper
+
+image_forward:
+  item_1/wrist_cam: {output: "image/hand", fps: 30, width: 640, height: 480}
+  top: {output: "image/top", fps: 30, width: 640, height: 480}
+  angle: {output: "image/angle", fps: 30, width: 640, height: 480}
+  left_pillar: {output: "image/left_pillar", fps: 30, width: 640, height: 480}

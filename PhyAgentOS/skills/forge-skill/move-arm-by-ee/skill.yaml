@@ -1,0 +1,85 @@
+manifest_version: 2
+name: move-arm-by-ee
+version: "0.2.0"
+description: Resolve relative end-effector motion and control the gripper opening.
+skill_document: SKILL.md
+gateway_url: http://127.0.0.1:19002
+required_tools:
+  - motion.resolve_relative_pose
+  - motion.move_pose
+  - gripper.set_opening
+profiles:
+  mujoco:
+    dataflow: profiles/mujoco/dataflow.yaml
+    required_binaries:
+      - gateway
+      - relative_pose_policy
+      - motion_action_policy
+      - motion_server
+      - joint_trajectory_controller
+      - gripper_action_policy
+      - gripper_action_controller
+      - mujoco_sim
+      - image_viewer
+    required_assets:
+      - assets/piper_with_gripper.urdf
+      - assets/piper_mujoco/scene.xml
+    required_environment: []
+    environment: {}
+artifacts:
+  resolver: registry
+  nodes:
+    gateway:
+      artifact_id: gateway-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: 4ef399f96efe0aa6643ac5470e210367b05ed4dcb25820f3f6289363ff4ebe41
+    relative_pose_policy:
+      artifact_id: relative_pose_policy-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: c3fe9da740ef7ad895f6b8f4f5ffdd2eaeeab134e4cfbaf26f854d4f24e663f8
+    motion_action_policy:
+      artifact_id: motion_action_policy-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: fe34697752b8ec92be2e60ed611a6488a9b5f8766a9e2eaee796de447c4f4e15
+    gripper_action_policy:
+      artifact_id: gripper_action_policy-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: f3d4de296d697f89107eace5dba5957ba7e4467e53323ab2acfb4cd25afc052b
+    motion_server:
+      artifact_id: motion_server-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: 598932009fee53196b7d3422bfaa909dc39985103c286aae105b367996c158d9
+    joint_trajectory_controller:
+      artifact_id: joint_trajectory_controller-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: 133c07d93bb94dd595245a9bcc0489f4195bab7f2e3b5229ef65bea83fc7e900
+    gripper_action_controller:
+      artifact_id: gripper_action_controller-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: cbd718cca14cca210f5dbb1377565b49cc5802b1c38a047083292fdda2b3b7b0
+    mujoco_sim:
+      artifact_id: mujoco_sim-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: 0a0e2538351a0bbf3bc7282c67fd6daf33c394394dbf28322ff9b93b72a2f353
+    image_viewer:
+      artifact_id: image_viewer-0.2.0-linux-x86_64
+      version: "0.2.0"
+      platform: linux
+      arch: x86_64
+      digest: c619b5c61568038d5380f3eb0efb30daa68e658d461fc19ba001536c98f81e52

@@ -90,6 +90,8 @@ include = [
     "PhyAgentOS/templates/**/*.yaml",
     "PhyAgentOS/skills/**/*.md",
     "PhyAgentOS/skills/**/*.sh",
+    "PhyAgentOS/skills/**/*.yaml",
+    "PhyAgentOS/skills/**/*.yml",
 ]
 
 [tool.hatch.build.targets.sdist]

@@ -1,0 +1,121 @@
+nodes:
+  - id: gateway
+    path: ${FORGE_RUNTIME_BIN}/gateway
+    args: --config gateway.yaml
+    inputs:
+      tick: dora/timer/millis/50
+      relative_tool_in: relative_motion_policy/tool_out
+      action_tool_in: motion_action_policy/tool_out
+      gripper_tool_in: gripper_action_policy/tool_out
+    outputs:
+      - tool_response
+      - relative_tool_out
+      - action_tool_out
+      - gripper_tool_out
+
+  - id: relative_motion_policy
+    path: ${FORGE_RUNTIME_BIN}/relative_pose_policy
+    args: --config relative_pose_policy.yaml
+    inputs:
+      tick: dora/timer/millis/50
+      joint_state: mujoco/proprio_state
+      tool_in: gateway/relative_tool_out
+    outputs:
+      - tool_out
+
+  - id: motion_action_policy
+    path: ${FORGE_RUNTIME_BIN}/motion_action_policy
+    inputs:
+      tick: dora/timer/millis/50
+      tool_in: gateway/action_tool_out
+      move_joints_feedback: motion_server/move_joints_feedback
+      move_joints_result: motion_server/move_joints_result
+      move_pose_feedback: motion_server/move_pose_feedback
+      move_pose_result: motion_server/move_pose_result
+    outputs:
+      - tool_out
+      - move_joints_goal
+      - move_joints_cancel
+      - move_pose_goal
+      - move_pose_cancel
+
+  - id: gripper_action_policy
+    path: ${FORGE_RUNTIME_BIN}/gripper_action_policy
+    inputs:
+      tick: dora/timer/millis/50
+      tool_in: gateway/gripper_tool_out
+      gripper_feedback: gripper_action_controller/gripper_feedback
+      gripper_result: gripper_action_controller/gripper_result
+    outputs:
+      - tool_out
+      - gripper_goal
+      - gripper_cancel
+
+  - id: motion_server
+    path: ${FORGE_RUNTIME_BIN}/motion_server
+    args: --config motion_server.yaml
+    inputs:
+      tick: dora/timer/millis/20
+      joint_state: mujoco/proprio_state
+      move_joints_goal: motion_action_policy/move_joints_goal
+      move_joints_cancel: motion_action_policy/move_joints_cancel
+      move_pose_goal: motion_action_policy/move_pose_goal
+      move_pose_cancel: motion_action_policy/move_pose_cancel
+      trajectory_feedback: joint_trajectory_controller/trajectory_feedback
+      trajectory_result: joint_trajectory_controller/trajectory_result
+    outputs:
+      - move_joints_feedback
+      - move_joints_result
+      - move_pose_feedback
+      - move_pose_result
+      - trajectory_goal
+      - trajectory_cancel
+
+  - id: joint_trajectory_controller
+    path: ${FORGE_RUNTIME_BIN}/joint_trajectory_controller
+    args: --config controller.yaml
+    inputs:
+      tick: dora/timer/millis/20
+      joint_state: mujoco/proprio_state
+      trajectory_goal: motion_server/trajectory_goal
+      trajectory_cancel: motion_server/trajectory_cancel
+    outputs:
+      - joint_command
+      - trajectory_feedback
+      - trajectory_result
+
+  - id: gripper_action_controller
+    path: ${FORGE_RUNTIME_BIN}/gripper_action_controller
+    args: --config gripper_controller.yaml
+    inputs:
+      tick: dora/timer/millis/20
+      joint_state: mujoco/proprio_state
+      gripper_goal: gripper_action_policy/gripper_goal
+      gripper_cancel: gripper_action_policy/gripper_cancel
+    outputs:
+      - joint_command
+      - gripper_feedback
+      - gripper_result
+
+  - id: mujoco
+    path: ${FORGE_RUNTIME_BIN}/mujoco_sim
+    args: --config simulator.yaml
+    inputs:
+      tick: dora/timer/millis/20
+      action/arm: joint_trajectory_controller/joint_command
+      action/gripper: gripper_action_controller/joint_command
+    outputs:
+      - proprio_state
+      - image/hand
+      - image/top
+      - image/angle
+      - image/left_pillar
+
+  - id: image_viewer
+    path: ${FORGE_RUNTIME_BIN}/image_viewer
+    args: --config image_viewer.yaml
+    inputs:
+      image/hand: mujoco/image/hand
+      image/top: mujoco/image/top
+      image/angle: mujoco/image/angle
+      image/left_pillar: mujoco/image/left_pillar

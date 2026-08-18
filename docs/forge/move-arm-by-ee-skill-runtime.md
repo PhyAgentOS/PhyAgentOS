@@ -1,11 +1,12 @@
 # move-arm-by-ee Skill Demo
 
 > 状态：MuJoCo profile 已完成端到端验收  
-> 验证日期：2026-08-14  
-> Skill 版本：`0.1.0`
+> 验证日期：2026-08-17
+> Skill 版本：`0.2.0`
 
 本文说明如何通过 PAOS 显式启动 `move-arm-by-ee` Skill Runtime，并让 Agent 按
-`SKILL.md` 将“将夹爪向前移动 5cm”转换为 Query + Action Tool 调用。
+`SKILL.md` 将“将夹爪向前移动 5cm”转换为 Query + Action Tool 调用，或通过独立
+Gripper Action Tool 设置夹爪开度。
 
 总体架构和核心概念见
 [PAOS Skill Runtime 与 Forge Tool 架构（当前实现）](skill-runtime-tool-architecture.md)。
@@ -26,6 +27,15 @@
   -> MuJoCo
   -> terminal ToolResult
   -> Agent 回复
+
+自然语言“完全张开夹爪”
+  -> PAOS Agent
+  -> move-arm-by-ee SKILL.md
+  -> gripper.set_opening Action
+  -> GripperActionController
+  -> MuJoCo
+  -> terminal ToolResult
+  -> Agent 回复
 ```
 
 Demo 保持以下边界：
@@ -34,6 +44,8 @@ Demo 保持以下边界：
 - Relative Pose Query 负责当前位姿、坐标系和相对位移解析；
 - MotionServer 负责 IK、轨迹规划、执行编排、取消传播和最终残差验证；
 - JointTrajectoryController 负责轨迹跟踪和 `JointCommand`；
+- Gripper Action Policy 负责 Forge Tool lifecycle 到 Gripper Dora Action 的映射；
+- GripperActionController 负责单一夹爪坐标的位置控制、反馈、限位、stall 和 timeout；
 - MuJoCo 负责仿真状态与动作；
 - 高频 `JointState`、轨迹和 `JointCommand` 只在 Dora 数据面传输。
 
@@ -47,8 +59,9 @@ mujoco
 
 Forge Runtime 示例源码还包含以下 dataflow：
 
-- `dataflow.yaml`：仅 Gateway + 两个 Policy Endpoint 的逻辑图，不能完成运动；
-- `dataflow.fake.yaml`：使用确定性 `skill_caller` 和 fake plant 的集成 smoke；
+- `dataflow.yaml`：仅 Gateway + 三个 Policy Endpoint 的逻辑图，不能完成动作；
+- `dataflow.fake.yaml`：使用确定性 `skill_caller` 和 fake plant 的机械臂集成 smoke，
+  不提供夹爪 Tool；
 - `dataflow.mujoco.yaml`：当前 PAOS Bundle 实际使用并已验收；
 - `dataflow.robot.yaml`：Agilex Piper 真机静态配置，未作为 PAOS 自动验收 profile。
 
@@ -64,7 +77,19 @@ PAOS 使用两个相互独立的本地根目录。
 ```text
 ~/.PhyAgentOS/skills/move-arm-by-ee/
 ├── SKILL.md
-└── skill.yaml
+├── skill.yaml
+├── profiles/mujoco/
+│   ├── dataflow.yaml
+│   ├── gateway.yaml
+│   ├── relative_pose_policy.yaml
+│   ├── motion_server.yaml
+│   ├── controller.yaml
+│   ├── gripper_controller.yaml
+│   ├── simulator.yaml
+│   └── image_viewer.yaml
+└── assets/
+    ├── piper_with_gripper.urdf
+    └── piper_mujoco/
 ```
 
 `SKILL.md` 是 Agent 的任务知识。`skill.yaml` 声明：
@@ -72,48 +97,34 @@ PAOS 使用两个相互独立的本地根目录。
 - required Tools：
   - `motion.resolve_relative_pose`
   - `motion.move_pose`
+  - `gripper.set_opening`
 - Gateway：
   - `http://127.0.0.1:19002`
 - MuJoCo dataflow；
-- 七个 required binaries；
-- Piper URDF 和 MJCF 资产。
+- 九个 required binaries；
+- Piper URDF 和 MJCF 资产；
+- 九个独立 Node Bundle 的精确 artifact/digest lock。
 
-当前验收使用的 `skill.yaml` 是本地已安装 Bundle 内容；源码中的内置 Skill 目录主要
-提供 `SKILL.md`，尚未形成可由 `paos skill install` 发布和安装的完整 Bundle。Agent
-加载同名 Skill 时，优先级为 workspace、installed、built-in，因此本地 installed
-`SKILL.md` 可能覆盖内置版本。
-
-### 3.2 Forge Runtime
+### 3.2 Forge Nodes 与 Skill environment
 
 ```text
 ~/.PhyAgentOS/forge_runtime/
-├── gateway
-├── relative_pose_policy
-├── motion_action_policy
-├── motion_server
-├── joint_trajectory_controller
-├── mujoco_sim
-├── image_viewer
-└── examples/move_arm_by_ee_skill/
-    ├── dataflow.mujoco.yaml
-    ├── gateway.yaml
-    ├── relative_pose_policy.yaml
-    ├── motion_server.yaml
-    ├── controller.yaml
-    ├── simulator.yaml
-    ├── image_viewer.yaml
-    └── assets/
-        ├── piper_with_gripper.urdf
-        └── piper_mujoco/
+├── nodes/<node-id>/versions/<artifact-id>/
+│   ├── node-manifest.json
+│   └── <node payload>
+└── environments/move-arm-by-ee/mujoco/<lock-digest>/
+    ├── runtime-lock.json
+    └── bin/
+        ├── gateway -> nodes/.../gateway
+        ├── motion_server -> nodes/.../motion_server
+        └── ...
 ```
 
-当前 Runtime Manager 只消费已经存在的本地文件，不会自动下载缺失内容。未来的 Bundle
-下载和 Forge Runtime 制品下载是两项独立 TODO。
+每个 Node 独立下载、版本化和校验。Skill 安装会依据 `artifacts.nodes` 下载缺失节点；
+启动前重新验证 node manifest、host、文件 digest 和 Skill lock，再生成 profile 专用
+environment。dataflow/config/assets 始终从 Skill Bundle 读取。
 
-外部部署过程可以生成 SHA-256 manifest 和备份，但当前 PAOS 启动只检查文件存在性和
-可执行权限，不消费 SHA-256 manifest，也不会自动选择版本或回滚。
-
-## 4. MuJoCo 七节点架构
+## 4. MuJoCo 九节点架构
 
 ```text
                           HTTP Tool API
@@ -157,15 +168,32 @@ PAOS Agent ------------------------------------+
                                                          +-------------------+
 ```
 
-七个物理进程：
+夹爪动作是与机械臂独立的旁路：
+
+```text
+gateway
+  -> gripper_action_policy
+  -> gripper_action_controller
+  -> mujoco action/gripper
+
+mujoco proprio_state
+  -> gripper_action_controller
+  -> gripper feedback/result
+  -> gripper_action_policy
+  -> gateway
+```
+
+九个物理进程：
 
 1. `gateway`
 2. `relative_motion_policy`
 3. `motion_action_policy`
 4. `motion_server`
 5. `joint_trajectory_controller`
-6. `mujoco`
-7. `image_viewer`
+6. `gripper_action_policy`
+7. `gripper_action_controller`
+8. `mujoco`
+9. `image_viewer`
 
 ### 4.1 gateway
 
@@ -236,7 +264,29 @@ feedback/result。
 该 profile 使用一个非奇异、留有前向工作空间的仿真 ready pose。全零 Piper 关节状态
 接近运动学奇异点，保持 TCP 方向做前向平移时可能无法求解，因此不作为 Demo 启动状态。
 
-### 4.7 image_viewer
+### 4.7 gripper_action_policy
+
+提供：
+
+```text
+endpoint_id: gripper.controller
+operation: set_opening
+semantics: action
+```
+
+它只负责 Forge Action lifecycle、调用幂等、取消、feedback/result 映射，不直接发送
+`JointCommand`，也不把夹爪并入六轴 `piper_arm` 运动组。
+
+### 4.8 gripper_action_controller
+
+消费单一夹爪坐标的 `JointState` 和 `GripperCommandGoal`，校验开度限位与反馈新鲜度，
+输出只包含 `gripper` 的 sparse `JointCommand`。MuJoCo 和 Piper Driver 会保留命令中
+未出现的六个机械臂执行器，因此夹爪控制不会覆盖当前机械臂目标。
+
+当前控制器仅支持绝对位置，不支持 `max_velocity` 或 `max_effort`。配置
+`allow_stalling=false`，所以 stall 是失败而不是成功抓取。
+
+### 4.9 image_viewer
 
 订阅四路 MuJoCo 图像：
 
@@ -354,7 +404,35 @@ Action start 返回 `202 Accepted + invocation_id`。最终结果包含：
 - final position/orientation residual；
 - final joint positions。
 
-### 5.3 Frame 方向语义
+### 5.3 `gripper.set_opening`
+
+ToolSpec：
+
+```text
+tool_id: gripper.set_opening
+endpoint_id: gripper.controller
+operation: set_opening
+semantics: action
+```
+
+输入只包含总开度，单位为米：
+
+```json
+{
+  "opening_m": 0.05
+}
+```
+
+Piper Demo 的 Gateway schema 和控制器配置都限制在 `[0.0, 0.105]`。Agent 必须以实时
+Tool context 中的最小/最大值为准：完全闭合用最小值，完全张开用最大值；“张开一点”
+等不确定目标应先澄清。当前不接受 `max_velocity`、`max_effort`、每指位置、毫米或 SDK
+单位。
+
+最终结果包含 elapsed time、position、velocity、effort、`stalled` 和
+`reached_goal`。只有 Action terminal status 为 `succeeded` 且 `reached_goal=true`
+才能报告开度到位。该 Tool 不验证物体是否被抓住，`STALLED` 是失败。
+
+### 5.4 Frame 方向语义
 
 当前 Piper Tool context 声明：
 
@@ -394,6 +472,21 @@ Agent 必须读取实时 `robot_frame_profile`，不能凭训练知识猜测方�
 PAOS bridge 工具是通用 Tool API adapter。`motion.move_pose` 是领域 Tool ID，不是一个
 独立 Python Agent Tool 类。
 
+夹爪调用顺序：
+
+```text
+1. forge_tool_context(gripper.set_opening)
+2. 读取 opening_m 的实时最小/最大值
+3. forge_tool_start_action(gripper.set_opening, {"opening_m": ...})
+4. 保存 invocation_id
+5. forge_tool_action_status(invocation_id)
+6. forge_tool_action_result(invocation_id)
+7. 直到明确 terminal；仅 succeeded + reached_goal 才是开度到位
+```
+
+复合指令按“机械臂 Action terminal -> 获取新鲜夹爪 context -> 夹爪 Action terminal”
+串行执行。本版本不并发执行机械臂和夹爪 Action。
+
 ## 7. 前置条件
 
 需要：
@@ -401,7 +494,7 @@ PAOS bridge 工具是通用 Tool API adapter。`motion.move_pose` 是领域 Tool
 - 当前 PAOS 代码或包含 `skill` 子命令的已安装 PAOS；
 - `dora` 在 `PATH` 中；
 - Skill Bundle 已放入 `~/.PhyAgentOS/skills/move-arm-by-ee`；
-- Forge Runtime 七个二进制和所需资产已放入
+- Forge Runtime 九个二进制和所需资产已放入
   `~/.PhyAgentOS/forge_runtime`；
 - `127.0.0.1:19002` 未被其他服务占用；
 - 图形环境能够支持 image viewer；无图形环境时需要使用兼容的 viewer 配置。
@@ -466,7 +559,7 @@ uv run --extra dev paos skill stop move-arm-by-ee
 2. 严格验证 manifest 和安全相对路径；
 3. 验证 `dora`；
 4. 验证 dataflow；
-5. 验证七个 required binaries 可执行；
+5. 验证九个 required binaries 可执行；
 6. 验证 URDF 和 MJCF 资产；
 7. 检查 required environment；
 8. 拒绝复用占据相同 Gateway 地址的非托管服务；
@@ -475,7 +568,7 @@ uv run --extra dev paos skill stop move-arm-by-ee
 11. 从 dataflow 所在目录启动具名 Dora flow；
 12. 等待 flow running；
 13. 等待 Gateway `GET /tools`；
-14. 等待两个 required Tool contexts ready；
+14. 等待三个 required Tool contexts ready；
 15. 将 Runtime 状态原子更新为 `running`。
 
 启动成功输出类似：
@@ -502,6 +595,7 @@ Dora flow: paos-move-arm-by-ee-mujoco (running)
 Gateway GET /tools: ready
 Tool context motion.resolve_relative_pose: ready
 Tool context motion.move_pose: ready
+Tool context gripper.set_opening: ready
 ```
 
 查看日志：
@@ -587,6 +681,22 @@ paos skill stop move-arm-by-ee
 
 image viewer 随 flow 正常启动并订阅四路图像，但当前没有独立的逐帧接收计数验收接口。
 
+2026-08-17 又完成了夹爪 Tool 的 MuJoCo 端到端验收：
+
+```text
+paos skill start move-arm-by-ee --profile mujoco
+forge_tool_context(gripper.set_opening)
+forge_tool_start_action(gripper.set_opening, {"opening_m": 0.105})
+forge_tool_action_result(...) -> succeeded + reached_goal=true
+forge_tool_start_action(gripper.set_opening, {"opening_m": 0.0})
+forge_tool_action_result(...) -> succeeded + reached_goal=true
+paos skill stop move-arm-by-ee
+```
+
+Gateway 同时报告三个 required Tool context ready。张开终态约 `0.1041m`，闭合终态约
+`0.00088m`，均在 `0.001m` goal tolerance 内；两个 Action 都完成了 accepted、pending、
+available/terminal 生命周期对账，Skill 正常停止且没有残留非终态 invocation。
+
 ## 13. 常见故障
 
 ### 13.1 `No such command 'skill'`
@@ -612,12 +722,25 @@ uv run --extra dev paos skill inspect move-arm-by-ee
 Runtime Manager 不会接管未知服务。检查并停止占用 `127.0.0.1:19002` 的旧 Gateway 或
 旧 Dora flow，然后重新启动。
 
-### 13.3 缺少二进制或资产
+### 13.3 Runtime 更新后新增节点提示 `No such file or directory`
+
+先确认 `skill.yaml` 中的 required binary 已存在且可执行。如果二进制存在，但长期运行的
+Dora daemon 仍持有旧 `FORGE_RUNTIME_BIN` 环境，停止所有受影响 flow 后重启 Dora：
+
+```bash
+dora destroy
+paos skill start move-arm-by-ee --profile mujoco
+```
+
+该操作会停止共享 Dora coordinator/daemon 上的其他 flow，不能在仍有其他任务运行时
+直接执行。
+
+### 13.4 缺少二进制或资产
 
 `start` 的 preflight 会给出相对于 `~/.PhyAgentOS/forge_runtime` 的缺失路径。当前不会
 自动下载，必须先完整安装 Runtime Artifact Set。
 
-### 13.4 Dora flow 未运行
+### 13.5 Dora flow 未运行
 
 执行：
 
@@ -628,7 +751,7 @@ dora list
 
 优先检查最先退出的节点；其余节点可能只是级联失败。
 
-### 13.5 Tool context 不 ready
+### 13.6 Tool context 不 ready
 
 可能原因：
 
@@ -640,7 +763,7 @@ dora list
 
 查看 Gateway 和对应 Policy Node 日志。
 
-### 13.6 IK 失败
+### 13.7 IK 失败
 
 不要对相同不可达目标盲目重试。重新 Query 当前状态，并根据错误：
 
@@ -651,7 +774,7 @@ dora list
 
 Demo 已配置非奇异启动姿态，但这不代表任意相对目标都可达。
 
-### 13.7 Action 已 accepted 但没有完成
+### 13.8 Action 已 accepted 但没有完成
 
 继续使用 invocation ID 查询 status/result。不要把 `202 Accepted` 当作成功，也不要在
 `unknown` 后无条件重试。
@@ -667,6 +790,7 @@ Demo 已配置非奇异启动姿态，但这不代表任意相对目标都可达
 - 没有 OMPL；
 - 没有 Cartesian path；
 - 没有 streaming servo；
+- `gripper.set_opening` 只有绝对位置控制，没有力/接触控制或物体持有验证；
 - 没有证明 image viewer 每帧健康的 Tool；
 - 没有任务级外部 Completion/Verification Engine；
 - 没有通用跨 Tool Resource/Control Manager。
@@ -702,7 +826,8 @@ PhyAgentOS/cli/commands.py
 
 ```text
 ~/.PhyAgentOS/skills/move-arm-by-ee/
-~/.PhyAgentOS/forge_runtime/examples/move_arm_by_ee_skill/
+~/.PhyAgentOS/forge_runtime/nodes/<node>/versions/<artifact-id>/
+~/.PhyAgentOS/forge_runtime/environments/move-arm-by-ee/mujoco/<lock-digest>/
 ```
 
 Forge Runtime 示例：

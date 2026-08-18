@@ -880,6 +880,116 @@ def _skill_runtime_error(error: Exception) -> None:
     raise typer.Exit(1)
 
 
+@skill_app.command("search")
+def skill_search(query: str = typer.Argument("", help="Skill name or search text")):
+    """Search public Skills in the configured Resource Registry."""
+    from PhyAgentOS.skill_runtime.registry import RegistryClient
+
+    try:
+        with RegistryClient() as registry:
+            items = registry.search_skills(query)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    table = Table(title="Registry Skills")
+    table.add_column("Skill", style="cyan")
+    table.add_column("Version")
+    table.add_column("Description")
+    for item in items:
+        table.add_row(
+            str(item.get("name", "")),
+            str(item.get("version", "")),
+            str(item.get("description", "")),
+        )
+    console.print(table)
+
+
+def _install_skill_from_registry(name: str, version: str | None) -> None:
+    import tempfile
+
+    from PhyAgentOS.skill_runtime.installer import NodeInstaller, SkillInstaller
+    from PhyAgentOS.skill_runtime.registry import DownloadCache, RegistryClient
+    from PhyAgentOS.skill_runtime.state import RuntimeStateStore
+
+    cache = DownloadCache()
+    try:
+        with RegistryClient() as registry:
+            artifact = registry.skill(name, version)
+        archive = cache.download(artifact)
+        with tempfile.TemporaryDirectory(prefix="paos-skill-preview-") as directory:
+            preview_root = Path(directory)
+            preview = SkillInstaller(
+                preview_root / "skills",
+                state_store=RuntimeStateStore(preview_root / "run"),
+            ).install(archive, expected_sha256=artifact.sha256)
+            node_installer = NodeInstaller()
+            with RegistryClient() as registry:
+                for node_id, lock in sorted(preview.artifacts.nodes.items()):
+                    try:
+                        installed = node_installer.load(node_id, lock.artifact_id)
+                        if installed.digest == lock.digest:
+                            continue
+                    except Exception:
+                        pass
+                    node_artifact = registry.node(lock.artifact_id)
+                    if node_artifact.node_digest is None:
+                        raise RuntimeError(
+                            f"Registry node {lock.artifact_id!r} is missing node_digest"
+                        )
+                    node_archive = cache.download(node_artifact)
+                    node_installer.install(
+                        node_archive,
+                        expected_sha256=node_artifact.sha256,
+                        expected_digest=node_artifact.node_digest,
+                    )
+        manifest = SkillInstaller().install(archive, expected_sha256=artifact.sha256)
+    finally:
+        cache.close()
+    console.print(
+        f"[green]✓[/green] Installed Skill [cyan]{manifest.name}[/cyan] {manifest.version}"
+    )
+
+
+@skill_app.command("install")
+def skill_install(
+    name: str = typer.Argument(..., help="Registry Skill name"),
+    version: str | None = typer.Option(None, "--version", "-v", help="Exact version"),
+):
+    """Download, validate, and atomically install a Skill."""
+    try:
+        _install_skill_from_registry(name, version)
+    except Exception as error:
+        _skill_runtime_error(error)
+
+
+@skill_app.command("update")
+def skill_update(
+    name: str = typer.Argument(..., help="Installed Skill name"),
+    version: str | None = typer.Option(None, "--version", "-v", help="Target version"),
+):
+    """Update an installed, stopped Skill while retaining a backup."""
+    try:
+        from PhyAgentOS.skill_runtime.catalog import SkillCatalog
+
+        SkillCatalog().get(name)
+        _install_skill_from_registry(name, version)
+    except Exception as error:
+        _skill_runtime_error(error)
+
+
+@skill_app.command("remove")
+def skill_remove(name: str = typer.Argument(..., help="Installed Skill name")):
+    """Remove a Skill unless it is running or has active invocations."""
+    from PhyAgentOS.skill_runtime.installer import SkillInstaller
+
+    try:
+        SkillInstaller().remove(name)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    console.print(f"[green]✓[/green] Removed Skill [cyan]{name}[/cyan]")
+
+
 @skill_app.command("list")
 def skill_list():
     """List locally installed Skill bundles."""
@@ -1022,6 +1132,65 @@ def skill_stop(
         return
     console.print(
         f"[green]✓[/green] Skill [cyan]{state.skill_name}[/cyan] is {state.status}"
+    )
+
+
+# ============================================================================
+# Forge Node Installation Commands
+# ============================================================================
+
+
+forge_node_app = typer.Typer(help="Install and verify independently versioned Forge nodes")
+app.add_typer(forge_node_app, name="forge-node")
+
+
+@forge_node_app.command("install")
+def forge_node_install(
+    artifact_id: str = typer.Argument(..., help="Registry node artifact ID"),
+):
+    """Download and atomically install one immutable Forge node version."""
+    from PhyAgentOS.skill_runtime.installer import NodeInstaller
+    from PhyAgentOS.skill_runtime.registry import DownloadCache, RegistryClient
+
+    cache = DownloadCache()
+    try:
+        with RegistryClient() as registry:
+            artifact = registry.node(artifact_id)
+        if artifact.node_digest is None:
+            raise RuntimeError("Registry response is missing node_digest")
+        archive = cache.download(artifact)
+        manifest = NodeInstaller().install(
+            archive,
+            expected_sha256=artifact.sha256,
+            expected_digest=artifact.node_digest,
+        )
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    finally:
+        cache.close()
+    console.print(
+        f"[green]✓[/green] Installed Forge node "
+        f"[cyan]{manifest.node_id}[/cyan] {manifest.version} ({manifest.artifact_id})"
+    )
+
+
+@forge_node_app.command("verify")
+def forge_node_verify(
+    node_id: str = typer.Argument(...),
+    artifact_id: str = typer.Argument(...),
+):
+    """Verify one installed node manifest, host lock, and all file digests."""
+    from PhyAgentOS.skill_runtime.installer import NodeInstaller
+
+    try:
+        manifest = NodeInstaller().load(node_id, artifact_id)
+    except Exception as error:
+        _skill_runtime_error(error)
+        return
+    console.print(
+        f"[green]✓[/green] Forge node [cyan]{manifest.node_id}[/cyan] "
+        f"{manifest.artifact_id} verified"
     )
 
 

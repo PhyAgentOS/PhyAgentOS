@@ -13,6 +13,18 @@ For the as-built Skill/Tool/Endpoint/ToolCall/ToolSpec relationships, runtime
 boundaries, and the planned two-supply-chain download model, see
 [PAOS Skill Runtime and Forge Tool Architecture](skill-runtime-tool-architecture.md).
 
+The Chinese
+[PAOS Skill Runtime collaborative development guide](skill-runtime-development-guide.md)
+documents the source/install layouts, nine-node topology, canonical repository
+boundaries, and local development and acceptance workflow.
+
+The initial machine-readable Skill/Runtime package index and its publication,
+archive, lock, installation, and security contract are documented in
+[PAOS Forge Package Index (Chinese)](paos-forge-packages_zh.md). See the
+[YAML index](paos-forge-packages.yaml) and
+[JSON Schema](paos-forge-packages.schema.json) for validation inputs. The index
+is a publication contract; the current PAOS installer does not consume it.
+
 ## 1. Design boundary
 
 ```text

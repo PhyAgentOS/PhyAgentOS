@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 _MANIFEST_FIELDS = {
     "manifest_version",
     "name",
@@ -27,6 +27,14 @@ _PROFILE_FIELDS = {
     "required_assets",
     "required_environment",
     "environment",
+}
+_ARTIFACT_FIELDS = {"resolver", "nodes"}
+_NODE_LOCK_FIELDS = {
+    "artifact_id",
+    "version",
+    "platform",
+    "arch",
+    "digest",
 }
 
 
@@ -118,6 +126,65 @@ class RuntimeProfile:
 
 
 @dataclass(frozen=True)
+class NodeLock:
+    """Immutable reference to one independently installed Forge node."""
+
+    node_id: str
+    artifact_id: str
+    version: str
+    platform: str
+    arch: str
+    digest: str
+
+    @classmethod
+    def from_dict(cls, node_id: str, value: Any) -> NodeLock:
+        safe_node_id = _string(node_id, "artifacts.nodes key")
+        if safe_node_id in {".", ".."} or "/" in safe_node_id or "\\" in safe_node_id:
+            raise ManifestError("artifacts.nodes key must be directory-safe")
+        label = f"artifacts.nodes.{safe_node_id}"
+        data = _mapping(value, label)
+        _unknown(data, _NODE_LOCK_FIELDS, label)
+        artifact_id = _string(data.get("artifact_id"), f"{label}.artifact_id")
+        if artifact_id in {".", ".."} or "/" in artifact_id or "\\" in artifact_id:
+            raise ManifestError(f"{label}.artifact_id must be directory-safe")
+        digest = _string(data.get("digest"), f"{label}.digest").lower()
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            raise ManifestError(f"{label}.digest must be a sha256 digest")
+        return cls(
+            node_id=safe_node_id,
+            artifact_id=artifact_id,
+            version=_string(data.get("version"), f"{label}.version"),
+            platform=_string(data.get("platform"), f"{label}.platform").lower(),
+            arch=_string(data.get("arch"), f"{label}.arch").lower(),
+            digest=digest,
+        )
+
+
+@dataclass(frozen=True)
+class ArtifactConfig:
+    """Strict node artifact resolver configuration."""
+
+    resolver: str = "local"
+    nodes: dict[str, NodeLock] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, value: Any) -> ArtifactConfig:
+        data = _mapping(value, "artifacts")
+        _unknown(data, _ARTIFACT_FIELDS, "artifacts")
+        resolver = _string(data.get("resolver", "local"), "artifacts.resolver")
+        if resolver not in {"local", "registry"}:
+            raise ManifestError("artifacts.resolver must be 'local' or 'registry'")
+        raw_nodes = _mapping(data.get("nodes", {}), "artifacts.nodes")
+        nodes = {
+            node_id: NodeLock.from_dict(node_id, item)
+            for node_id, item in raw_nodes.items()
+        }
+        if resolver == "registry" and not nodes:
+            raise ManifestError("artifacts.nodes is required for registry resolver")
+        return cls(resolver=resolver, nodes=nodes)
+
+
+@dataclass(frozen=True)
 class SkillManifest:
     """Validated contents of ``skill.yaml``."""
 
@@ -128,7 +195,7 @@ class SkillManifest:
     gateway_url: str
     required_tools: tuple[str, ...]
     profiles: dict[str, RuntimeProfile]
-    artifacts: dict[str, Any] = field(default_factory=dict)
+    artifacts: ArtifactConfig = field(default_factory=ArtifactConfig)
     manifest_version: int = MANIFEST_VERSION
     bundle_root: Path = field(default=Path("."), compare=False, repr=False)
 
@@ -159,11 +226,14 @@ class SkillManifest:
         required_tools = _string_tuple(data.get("required_tools"), "required_tools")
         if not required_tools:
             raise ManifestError("required_tools must not be empty")
-        artifacts = _mapping(data.get("artifacts", {}), "artifacts")
+        artifacts = ArtifactConfig.from_dict(data.get("artifacts", {}))
 
+        version = _string(data.get("version"), "version")
+        if "/" in version or "\\" in version or version in {".", ".."}:
+            raise ManifestError("version must be directory-safe")
         manifest = cls(
             name=name,
-            version=_string(data.get("version"), "version"),
+            version=version,
             description=_string(data.get("description"), "description"),
             skill_document=_relative_path(data.get("skill_document"), "skill_document"),
             gateway_url=gateway_url,

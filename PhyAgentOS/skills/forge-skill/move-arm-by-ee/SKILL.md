@@ -1,15 +1,23 @@
 ---
 name: move-arm-by-ee
-description: Resolve a relative end-effector motion and execute the resulting absolute pose.
+description: Resolve relative end-effector motion and control the gripper opening.
 metadata: {"PhyAgentOS":{"always":false,"requires":{"runtime":["move-arm-by-ee"]}}}
 ---
 
 # Move Arm by End-Effector
 
 Use this skill to translate a user's relative end-effector request into a safe
-Query-to-Action sequence. Use only the stable Tool IDs `motion.resolve_relative_pose`
-and `motion.move_pose`. Discover their live schemas and robot frame profile before
-calling them; never invent unavailable groups, frames, limits, or defaults.
+Query-to-Action sequence and to control the gripper's absolute opening. Use only these
+stable Tool IDs:
+
+- `motion.resolve_relative_pose`: Query; resolve a relative displacement to an absolute
+  TCP pose without moving the robot.
+- `motion.move_pose`: Action; execute an absolute TCP pose.
+- `gripper.set_opening`: Action; set the absolute total finger opening in metres. This is
+  position control, not grasp verification.
+
+Discover each Tool's live schema, readiness, limits, binding, and robot frame profile
+before calling it; never invent unavailable groups, frames, limits, or defaults.
 
 Use the PAOS bridge tools `forge_tool_context`, `forge_tool_query`,
 `forge_tool_start_action`, `forge_tool_action_status`, `forge_tool_action_result`, and
@@ -21,7 +29,8 @@ This Skill owns task-level Tool selection, sequencing, retry, and replanning onl
 must not perform FK, IK, joint-trajectory generation, controller execution, settling,
 or final motion residual validation. Relative-pose math belongs to the Query provider;
 IK, motion planning, physical execution orchestration, and residual validation belong
-to the Motion Action provider.
+to the Motion Action provider. Gripper goal lifecycle belongs to the Gripper Action
+provider and position control belongs to the gripper controller.
 
 ## 1. Interpret the request
 
@@ -89,7 +98,43 @@ by the live capability context.
 Do not calculate a replacement absolute pose from memory, and do not send joint state or
 other local runtime data through the Tool request.
 
-## 3. Track execution
+## 3. Control the gripper
+
+Use `gripper.set_opening` for open, close, and explicit intermediate-opening requests:
+
+1. Call `forge_tool_context` for `gripper.set_opening`; require it to be ready and read
+   the live `opening_m` minimum and maximum.
+2. Interpret `opening_m` as the total opening between both fingers, in SI metres:
+   - fully open: live schema maximum;
+   - fully closed: live schema minimum;
+   - explicit opening such as 5 cm: `0.05`;
+   - ambiguous opening such as "open a little": ask for clarification.
+3. Start the Action through `forge_tool_start_action`:
+
+```json
+{
+  "tool_id": "gripper.set_opening",
+  "arguments": {"opening_m": 0.05}
+}
+```
+
+4. Retain its invocation ID and reconcile status/result to a terminal outcome. Report
+   success only for a succeeded terminal result whose `reached_goal` is true.
+
+Do not pass `max_velocity` or `max_effort`; the current position-only controller does not
+support them. Do not pass per-finger positions, millimetres, or vendor SDK units. Never
+clip an out-of-range opening silently; reread context and correct the request.
+
+`gripper.set_opening` does not verify that an object is held. `STALLED` is a failure, not
+proof of grasp. Contact-aware grasping requires a future Tool with force/contact limits
+and independent object-held verification.
+
+For a compound request, finish and reconcile `motion.move_pose` before fetching fresh
+gripper context and starting `gripper.set_opening`. Do not run arm and gripper Actions
+concurrently in this version. After arm motion, never reuse the earlier relative-pose
+snapshot.
+
+## 4. Track execution
 
 - Treat Action acceptance as admission, not completion.
 - Retain the returned invocation identity and use the Tool lifecycle status and result
@@ -103,7 +148,7 @@ other local runtime data through the Tool request.
 - Treat `failed`, `cancelled`, `stopped`, and `unknown` as distinct outcomes. An `unknown`
   result means the effect may have occurred and must not be retried blindly.
 
-## 4. Errors and replanning
+## 5. Errors and replanning
 
 - Invalid group, frame, schema, units, or limits: do not invoke the Action; correct the
   request or ask the user to clarify.
@@ -116,6 +161,8 @@ other local runtime data through the Tool request.
   intermediate waypoint.
 - Timeout, transport loss, or `unknown`: reconcile the existing invocation through
   status/result and fresh observation before deciding whether any new motion is safe.
+- Gripper stale feedback, timeout, hardware fault, or stall: stop the compound sequence
+  and request recovery or human guidance. Do not claim grasp success.
 - Execution success but goal-verification failure: capture fresh state, express the
   remaining correction as a new relative request, and start again from the Query. Never
   reuse the prior absolute target.

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phyagentos.dev/schemas/paos-forge-packages.schema.json",
+  "title": "PAOS Forge independently versioned package index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "packages"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "packages": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/package"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "safe_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^\\u0000]+$"
+    },
+    "nullable_url": {
+      "oneOf": [
+        {"type": "string", "format": "uri", "pattern": "^https://"},
+        {"type": "null"}
+      ]
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "sha256", "size"],
+      "properties": {
+        "format": {"const": "tar.gz"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 1}
+      }
+    },
+    "inventory_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "category"],
+      "properties": {
+        "path": {"$ref": "#/$defs/safe_path"},
+        "category": {
+          "enum": ["manifest", "skill_document", "dataflow", "configuration", "asset", "executable"]
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_key", "version", "kind", "platform", "arch", "archive",
+        "github_release_url", "backend_url", "todos", "install_root", "inventory"
+      ],
+      "properties": {
+        "package_key": {"$ref": "#/$defs/identifier"},
+        "version": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["skill_bundle", "node_bundle"]},
+        "platform": {"type": "string", "minLength": 1},
+        "arch": {"type": "string", "minLength": 1},
+        "archive": {"$ref": "#/$defs/archive"},
+        "github_release_url": {"$ref": "#/$defs/nullable_url"},
+        "backend_url": {"$ref": "#/$defs/nullable_url"},
+        "todos": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^TODO:"}
+        },
+        "install_root": {"type": "string", "minLength": 1},
+        "inventory": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/inventory_item"}
+        },
+        "dependencies": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "node_id": {"$ref": "#/$defs/identifier"},
+        "artifact_id": {"$ref": "#/$defs/identifier"},
+        "node_digest": {"$ref": "#/$defs/digest"},
+        "entrypoints": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/safe_path"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "skill_bundle"}}, "required": ["kind"]},
+          "then": {"required": ["dependencies"]}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "node_bundle"}}, "required": ["kind"]},
+          "then": {"required": ["node_id", "artifact_id", "node_digest", "entrypoints"]}
+        }
+      ]
+    }
+  }
+}
