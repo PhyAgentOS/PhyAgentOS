@@ -1,271 +1,396 @@
-# PAOS Forge Gateway MVP+
+# Forge Integration Contract
 
-本文档面向当前 MVP+ 验证：PAOS 保留 Agent 语义层，Forge Gateway / Dora dataflow 承担底层动作执行。当前目标是跑通 Phase 3 闭环，不替换全部 PAOS Runtime v2 代码。
+> PhyAgentOS 0.1.4.post4 · Forge Gateway 1.0.0 · API `paos-forge-gateway-mvp-plus.v1` · [中文](README_zh.md)
 
-## Quick Start
+This document is the technical contract for the only robot-execution path supported by PhyAgentOS. Gateway, Forge Runtime, Dora dataflows, policies, and hardware integrations remain external and are not modified by PAOS.
 
-### 1. 启动 Forge Gateway Dataflow
+`move-arm-by-ee` uses the parallel Gateway Tool API execution plane and an
+explicitly managed local Dora dataflow; it does not reuse the high-level
+`ForgeSessionOrchestrator`. See
+[move-arm-by-ee Skill Runtime](move-arm-by-ee-skill-runtime.md).
 
-以 `sam3_grasp_runner` 仿真为例：
+For the as-built Skill/Tool/Endpoint/ToolCall/ToolSpec relationships, runtime
+boundaries, and the planned two-supply-chain download model, see
+[PAOS Skill Runtime and Forge Tool Architecture](skill-runtime-tool-architecture.md).
 
-```bash
-cd /path/to/sam3_grasp_runner
-bash scripts/run_sim_rgbd.sh
-```
+The Chinese
+[PAOS Skill Runtime collaborative development guide](skill-runtime-development-guide.md)
+documents the source/install layouts, nine-node topology, canonical repository
+boundaries, and local development and acceptance workflow.
 
-确认 Gateway 可访问：
+The initial machine-readable Skill/Runtime package index and its publication,
+archive, lock, installation, and security contract are documented in
+[PAOS Forge Package Index (Chinese)](paos-forge-packages_zh.md). See the
+[YAML index](paos-forge-packages.yaml) and
+[JSON Schema](paos-forge-packages.schema.json) for validation inputs. PAOS can
+consume the schema-v3 index with `paos skill install --index <path-or-url>`.
 
-```bash
-curl -sS http://127.0.0.1:9001/agent/runtime/capabilities | jq
-```
-
-预期能看到：
-
-- `supports.sessions: true`
-- `supports.serial_actions_only: true`
-- `actions.grasp`
-- `actions.place`
-- `actions.check_target`
-- `actions.go_home`
-
-### 2. 初始化 PAOS Runtime Workspace
-
-```bash
-cd /path/to/PhyAgentOS
-python scripts/init_runtime_workspace.py --workspace ~/.PhyAgentOS/workspace
-```
-
-该命令会创建：
-
-- `TARGETS.md`
-- `SKILLRUNTIME.md`
-- `SESSIONS.md`
-- `RUNTIME.md`
-- `ENVIRONMENT.md`
-- `configs/runtime/*`
-
-如果文件已存在，默认不会覆盖；只有需要重置模板时才使用 `--force`。
-
-### 3. 启用 Forge Gateway Target
-
-在 `~/.PhyAgentOS/workspace/TARGETS.md` 中启用 `forge_gateway`：
-
-```yaml
-- id: forge_gateway
-  target_class: remote
-  target_kind: simulation
-  enabled: true
-  workspace: workspaces/forge_gateway
-  supported_skillruntimes:
-    - forge_gateway_sam3
-  runtime:
-    target_runtime: ForgeGatewayRuntime
-    target_endpoint: http://127.0.0.1:9001
-    target_adapter: target_adapter://forge_gateway_passthrough
-    runtime_contract_ref: configs/runtime/contracts/forge_gateway.runtime.yaml
-```
-
-`target_endpoint` 指向 Forge Gateway HTTP 地址。旧 workspace 可能仍使用 `forge_gateway_piper_sim`，建议迁移到 `forge_gateway`。
-
-### 4. 启动 PAOS Agent
-
-开发分支验证时推荐使用源码入口，避免加载环境中旧版 `paos`：
-
-```bash
-cd /path/to/PhyAgentOS
-python -m PhyAgentOS agent --workspace ~/.PhyAgentOS/workspace --logs
-```
-
-如果希望 `paos` 命令也指向当前源码：
-
-```bash
-cd /path/to/PhyAgentOS
-python -m pip install -e .
-```
-
-## 命令示例
-
-### 自然语言动作
-
-PAOS Agent 会读取 runtime workspace 中的 `RUNTIME.md`、`TARGETS.md`、`SKILLRUNTIME.md` 和 `SESSIONS.md`。动作类请求会被翻译成 `SESSIONS.md` 中的 `runtime_hints.gateway_action`。
-
-示例：
+## 1. Design boundary
 
 ```text
-帮我通过 Forge Gateway 抓取苹果
-检查一下桌面上是否有 apple
-让机械臂回到初始位
+Agent goal + criteria
+        │
+        ▼
+ForgeTaskRequest
+        │
+        ▼
+ForgeSessionOrchestrator ───── persistence / restart / recovery
+        │
+        ▼
+ForgeAdapter ── HTTP/WS ── Forge Gateway ── Forge Runtime / Dora
+        │
+        ├── immutable ExecutionRecord
+        └── EvidenceBundle
+                   │
+                   ▼
+             ForgeTaskVerifier
+                   │
+                   ▼
+          VerificationVerdict
+                   │
+             optional RecoveryRequest
 ```
 
-常用映射：
+The adapter never decides task success. The verifier never issues a robot command. Planner is the only component that converts a recovery request into a newly planned action.
 
+## 2. Supported topology
 
-| 用户意图       | `gateway_action.action_type` | 关键参数                 |
-| ---------- | ---------------------------- | -------------------- |
-| 抓取/拿起/夹取苹果 | `grasp`                      | `target_name: apple` |
-| 放下/放置物体    | `place`                      | `target_name` 或放置描述  |
-| 检查是否有苹果    | `check_target`               | `target_name: apple` |
-| 回到初始位/回家   | `go_home`                    | 无必需目标                |
+- One PAOS process configures one Gateway endpoint.
+- Gateway advertises serialized actions, and one root lineage occupies the PAOS execution slot until verification/recovery is terminal.
+- One PAOS/Forge session represents one high-level Gateway action.
+- Longer tasks are decomposed by Planner across multiple actions or recovery children.
+- Gateway 1.0.0 evidence association is `best_effort` only.
+- Legacy Runtime/Target/SkillRuntime/Watchdog/SessionRunner/file-queue compatibility is absent by design.
 
+## 3. Startup contract
 
-### 手动追加 Action Session
+`ForgeSessionOrchestrator.start()` calls `GET /agent/runtime/capabilities`. Startup fails unless the decoded `data` contains:
 
-如果不通过自然语言，也可以手动向 `SESSIONS.md` 追加 pending session：
-
-```yaml
-- session_id: sess_gateway_grasp_apple
-  goal_id: goal_gateway_sam3
-  target_ref: target://forge_gateway
-  skillruntime_ref: skillruntime://forge_gateway_sam3
-  task_description: grasp apple through Forge Gateway
-  status: pending
-  priority: normal
-  routing:
-    target_endpoint: http://127.0.0.1:9001
-    policy_endpoint: null
-  runtime_hints:
-    gateway_action:
-      action_type: grasp
-      target_name: apple
-      source: paos-agent
-      inputs:
-        auto_home: false
-  result: {}
+```json
+{
+  "api_version": "paos-forge-gateway-mvp-plus.v1",
+  "supports": {
+    "sessions": true,
+    "command_id": true,
+    "runtime_context": true,
+    "serial_actions_only": true
+  },
+  "actions": {}
+}
 ```
 
-然后手动执行一次 watchdog：
+`actions` maps action type to a capability object. PAOS uses generic fields such as:
 
-```bash
-cd /path/to/PhyAgentOS
-python scripts/run_runtime_watchdog.py --workspace ~/.PhyAgentOS/workspace --once
+```json
+{
+  "description": "Human-readable capability",
+  "required_parameters": [],
+  "input_mapping": {},
+  "policy_id": "stable-policy-identity",
+  "command": "stable-command-identity",
+  "result_semantics": "command_completed",
+  "completion": {}
+}
 ```
 
-### 场景复位
+The capability summary is injected into Agent context. Every submitted `action_type` must exist in the cached map. `result_semantics` and `completion` are copied into the Execution Record; they do not select a verifier implementation.
 
-场景复位不是普通 action session。不要向 `SESSIONS.md` 追加 `action_type: reset`，应直接调用 Agent command adapter：
+## 4. Public contracts
 
-```bash
-cd /path/to/PhyAgentOS
-python -m PhyAgentOS.runtime.gateway.command_adapter --workspace ~/.PhyAgentOS/workspace reset
-```
-
-该命令会读取 `TARGETS.md` 中的 Gateway endpoint，并调用：
-
-```http
-POST /agent/runtime/reset
-```
-
-Gateway 内部复用 `reset_scene` runtime 命令，由 dataflow 完成仿真环境复位。
-
-### 验证状态
-
-查看 Gateway runtime context：
-
-```bash
-curl -sS http://127.0.0.1:9001/agent/runtime/context | jq
-```
-
-查看 PAOS session 状态：
-
-```bash
-rg "sess_gateway|status:|result:" ~/.PhyAgentOS/workspace/SESSIONS.md
-```
-
-查看 PAOS runtime log：
-
-```bash
-sed -n '1,200p' ~/.PhyAgentOS/workspace/LOG.md
-```
-
-## 当前调用链路
-
-当前实现同时存在两条链路。
-
-### Action Session 链路
-
-动作类任务走现有 PAOS Runtime v2 bridge：
+### 4.1 `ForgeTaskRequest`
 
 ```text
-用户自然语言
-  -> PAOS Agent
-  -> 写入 SESSIONS.md
-  -> WatchdogSupervisor
-  -> GatewaySessionRunner
-  -> POST /agent/sessions
-  -> Forge Gateway
-  -> Dora PolicyCommand
-  -> policy_command_status
-  -> PAOS SessionResult / LOG.md
+version = forge_task_request_v1
+task_description
+action_type
+inputs
+verification: TaskVerificationContract
+execution_timeout_s
+source = paos-agent
 ```
 
-触发条件是 session 绑定到 Forge Gateway target 或 skillruntime：
+Task and action text are non-empty. Inputs are finite JSON. Session and command IDs are deliberately absent.
 
-```yaml
-target_ref: target://forge_gateway
-skillruntime_ref: skillruntime://forge_gateway_sam3
-runtime_hints:
-  gateway_action:
-    action_type: grasp
-```
-
-代码入口：
-
-- `PhyAgentOS/runtime/gateway/session_runner.py`
-- `PhyAgentOS/runtime/watchdog/supervisor.py`
-- `PhyAgentOS/runtime/gateway/client.py`
-
-这条链路适合需要 session 状态和结果写回的动作，例如 `grasp`、`place`、`check_target`、`go_home`。
-
-### Runtime Command 链路
-
-非 action session 的运行时控制命令走 command adapter：
+### 4.2 `TaskVerificationContract`
 
 ```text
-PAOS Agent / manual command
-  -> ForgeGatewayCommandAdapter
-  -> ForgeGatewayClient
-  -> POST /agent/runtime/reset
-  -> Forge Gateway
-  -> reset_scene
-  -> Dora dataflow
+version = task_verification_contract_v1
+mode = off | audit | enforce | recovery
+goal
+success_criteria[]
+constraints[]
+evidence_policy {
+  profile
+  required_kinds[]
+  required_sources[]
+  minimum_association = best_effort | authoritative
+}
 ```
 
-代码入口：
+Non-`off` requires a goal and at least one criterion. Gateway 1.0.0 cannot satisfy `authoritative`; such a request fails before dispatch.
 
-- `PhyAgentOS/runtime/gateway/command_adapter.py`
-- `PhyAgentOS/runtime/gateway/client.py`
+### 4.3 `ExecutionRecord`
 
-当前已支持：
+`paos_execution_record_v1` is frozen and records normalized Gateway facts: session/command/API/instance/action/policy identity, status, generic result semantics/completion, timeline, outputs, and execution error. No verifier may replace it.
 
-```bash
-python -m PhyAgentOS.runtime.gateway.command_adapter --workspace ~/.PhyAgentOS/workspace reset
-```
+### 4.4 `EvidenceBundle`
 
-## 后续规划
+`forge_evidence_bundle_v1` records session/command identity, capture window, artifacts, and quality. Every artifact has a unique ID, phase, kind, source, sequence, timestamps, media type, size, SHA-256, safe URI, and retention tombstone fields.
 
-当前 `SESSIONS.md + WatchdogSupervisor + GatewaySessionRunner` 是 Phase 3 兼容路径，用于最小代价接入 PAOS Runtime v2 的会话队列。
+### 4.5 `VerificationVerdict`
 
-后续建议逐步收敛为统一的 Agent command adapter：
+`verification_verdict_v1` uses:
 
 ```text
-用户自然语言
-  -> PAOS Agent planner
-  -> ForgeGatewayCommandAdapter
-  -> Forge Gateway /agent/*
-  -> Forge dataflow
-  -> runtime context / result
-  -> PAOS Agent
+verdict = success | failure | replan_required | inconclusive
+criteria[] = criterion + satisfied|unsatisfied|unknown + evidence_refs
+evidence_refs[]
+reason
+lesson
+recovery_context? = unmet_criteria + preserved_constraints + guidance
 ```
 
-目标 adapter 形态：
+The output covers every input criterion exactly once and cites only artifact IDs from the resolved Evidence Bundle.
 
-```python
-adapter.get_capabilities()
-adapter.create_action_session(action_type="grasp", inputs={"target_name": "apple"})
-adapter.get_session(session_id)
-adapter.cancel_session(session_id)
-adapter.reset_runtime()
-adapter.get_context()
+### 4.6 `RecoveryRequest`
+
+`recovery_request_v1` is non-executable. It carries parent ID, unmet criteria, preserved constraints, action-independent guidance, evidence references, and deadline.
+
+## 5. Identity and mutation order
+
+PAOS creates path-safe randomized identities before persistence:
+
+```text
+session_id = forge_<16 hex>
+command_id = command_<16 hex>
+root_session_id = session_id for the root
 ```
 
-长期目标是让 PAOS Agent 只理解 Gateway capabilities、action manifest、runtime context 和 result，不再依赖 PAOS Runtime v2 的 target / skillruntime 执行模型。
+Fresh-action order:
+
+1. Store `ForgeSessionRecord(status=accepted)` in a transaction.
+2. Start the observation collector for non-`off` tasks.
+3. Persist before entities and snapshot manifest.
+4. Persist `dispatch_attempted_at` and the `dispatching` event.
+5. POST `/agent/sessions` exactly once.
+6. Validate response identity.
+7. Poll only the requested session.
+
+The dispatch-intent boundary deliberately prefers “do not repeat an unknown physical action” over automatic at-least-once delivery.
+
+## 6. Gateway Agent API
+
+| Method | Path | Contract |
+|:-------|:-----|:---------|
+| GET | `/agent/runtime/capabilities` | Version, supports, actions, instance identity |
+| GET | `/agent/runtime/status` | Live status for `forge_get_context` |
+| GET | `/agent/runtime/context` | Readiness/context and optional source discovery |
+| POST | `/agent/runtime/reset` | Explicit reset when PAOS has no active lineage |
+| POST | `/agent/sessions` | Create a session with PAOS IDs, action, instruction, source, inputs |
+| GET | `/agent/sessions/{session_id}` | Only Gateway execution-terminal source |
+| POST | `/agent/sessions/{session_id}/cancel` | Best-effort cancellation with reason |
+
+The client accepts a top-level object or an object under `data`. HTTP errors, non-object JSON, and `ok=false` fail the operation.
+
+## 7. Response correlation
+
+Every create/get response must satisfy:
+
+```text
+session.session_id == requested session_id
+command.command_id == requested command_id
+command.session_id == requested session_id
+command.request_id == requested command_id
+session.action_type == requested action_type
+command.action_type == requested action type
+command.policy_id == capability.policy_id (when declared)
+command.command == capability.command (when declared)
+```
+
+Terminal acceptance additionally requires:
+
+```text
+session.status == command.status
+status in succeeded | failed | cancelled
+```
+
+PAOS does not infer terminal state from command output, policy semantics, image stability, robot stability, elapsed fixed delay, or WebSocket messages.
+
+## 8. Observation contract
+
+### 8.1 Images
+
+Gateway `/ws/images` emits:
+
+```json
+{
+  "type": "image",
+  "id": "front",
+  "seq": 42,
+  "timestamp": 1785744000.123,
+  "content_type": "image/jpeg",
+  "data": "<base64>"
+}
+```
+
+PAOS validates source, non-negative sequence, finite optional timestamp, permitted image media type, Base64, decoded size, and magic bytes. It stores the Gateway timestamp as `captured_at` and local arrival as `received_at`.
+
+### 8.2 State
+
+Gateway `/ws/state` emits JSON objects. PAOS enforces the entity-size limit. Because the v1 contract has no uniform source timestamp, state artifacts use `captured_at=null` and retain only local `received_at`.
+
+### 8.3 Freshness
+
+For every required image source:
+
+```text
+before received before session POST
+after.sequence > before.sequence
+after.received_at >= terminal_observed_at
+```
+
+State required by the task must also be received after terminal observation for the after snapshot.
+
+The collector retains the newest valid frame per source, ignores lower/duplicate sequences, reconnects after failure, and keeps recent errors bounded.
+
+## 9. Evidence writing and resolution
+
+Artifact files are atomically written below:
+
+```text
+<workspace>/artifacts/forge/<session_id>/
+├── execution_record.json
+├── before_snapshot.json
+├── after_snapshot.json
+├── evidence_bundle.json
+├── verification_result.json
+└── evidence/
+```
+
+Writers reject path escape and source-name collisions. Snapshot reads and Verification Request building revalidate path, entity presence, byte size, SHA-256, image media type, Bundle identity, capture-window ordering, completeness, required kinds/sources, and minimum association.
+
+The Bundle quality block distinguishes:
+
+- `complete`;
+- `association_quality`;
+- `capture_authority=paos_forge_adapter`;
+- missing requirements;
+- stale artifacts;
+- collection/validation errors.
+
+Evidence problems are data, not execution-terminal inference.
+
+## 10. Lifecycle
+
+```text
+accepted → capturing_before → dispatching → running → finalizing
+         ├─ off ───────────────────────────→ succeeded|failed|timed_out|cancelled
+         └─ non-off → awaiting_verification → verifying
+                                                ├→ succeeded|failed
+                                                └→ awaiting_replan → replanned|failed
+```
+
+`replanned`, `succeeded`, `failed`, `timed_out`, and `cancelled` are PAOS terminal states. Parent `replanned` and child `accepted` commit atomically.
+
+## 11. Verification semantics
+
+| Mode | Execution/evidence behavior | Finalization |
+|:-----|:----------------------------|:-------------|
+| `off` | No verification bundle or verifier call | Map execution status |
+| `audit` | Capture and verify when possible; errors recorded | Preserve execution-derived state; never recover |
+| `enforce` | Complete evidence and valid verifier required | `success` succeeds; everything else fails closed |
+| `recovery` | Same strict verification | Only valid `replan_required` enters recovery |
+
+The verifier prompt contains only goal, criteria, constraints, immutable execution, evidence, lineage history, lessons, and valid evidence references. It must never branch on action type or emit an executable action.
+
+## 12. Verification Service
+
+PAOS starts a child service with a serializable provider specification and bounded readiness check:
+
+```text
+GET  /healthz
+POST /v1/verify-task
+X-PAOS-Admin-Token: <per-process token>
+```
+
+Model calls are bounded by timeout and per-process budget. Output is normalized and then validated again for model shape, verdict consistency, exact criteria, and known evidence references.
+
+## 13. Recovery semantics
+
+For a valid recovery verdict, Orchestrator:
+
+1. Collects unmet/unknown criteria.
+2. Preserves original plus verifier-provided constraints.
+3. Deduplicates evidence references.
+4. Creates a deadline-bounded Recovery Request.
+5. Sends a system message to the original Agent session.
+6. Waits for normal Planner to call `create_replanned_forge_session`.
+
+Child creation requires an awaiting parent, live deadline, and remaining budget. Child inherits verification contract and routing but receives a new action description, action type, inputs, session ID, and command ID. Repeated creation for the same parent returns the existing child.
+
+## 14. Restart rules
+
+| Persisted state | Resume rule |
+|:----------------|:------------|
+| No dispatch attempt | Continue normal action path |
+| Dispatch attempt exists | GET original session only; never POST |
+| Matching Gateway session | Continue poll/finalize/verify |
+| Gateway 404 | Fail `FORGE_EXECUTION_STATE_LOST` |
+| Persisted Execution Record exists | Reuse only if identity matches |
+| `verifying` | Append abandoned attempt and return to awaiting verification |
+| `awaiting_replan` | Redeliver recovery context; atomic child creation deduplicates |
+
+Graceful PAOS shutdown requests cancellation for every active Gateway session and stores the result.
+
+## 15. Evidence retention and review
+
+| Policy | Deletion rule |
+|:-------|:--------------|
+| `all` | Retain all entities |
+| `failed` | Delete entities when final PAOS state is `succeeded` |
+| `none` | Delete entities after verification |
+
+Deletion leaves a tombstone in the Bundle: URI, source, time, sequence, size, digest, `retained=false`, and `deleted_at`. Execution Record remains intact.
+
+`verify_forge_session` is an explicit review of a terminal session. It requires retained evidence, appends an attempt, and may update the latest verification view. It never changes task terminal state or the Execution Record.
+
+## 16. Failure behavior
+
+| Failure | Required behavior |
+|:--------|:------------------|
+| Unsupported API/supports | Refuse startup |
+| Unsupported action | Refuse before persistence/dispatch |
+| Authoritative evidence requested | Refuse before dispatch |
+| Missing before evidence in audit | Dispatch may continue; record incomplete bundle/error |
+| Missing before evidence in enforce/recovery | Fail before POST |
+| Execution timeout | Request cancel; retain last response/evidence/cancel response |
+| Missing/invalid evidence at verification | Audit records; enforce/recovery fail closed |
+| Invalid verdict/service failure | Audit records; enforce/recovery fail closed |
+| Replan budget/deadline exhausted | Fail parent and write lesson |
+| Gateway session lost after dispatch | Fail without repeating action |
+
+## 17. Conformance tests
+
+A compatible integration covers:
+
+- capability version/support/action validation;
+- create/get/cancel/reset response envelopes;
+- session/command/request/action/policy/command identity;
+- all supported Gateway terminal states and timeout;
+- multiple sources, reconnect, ordering, duplicates, stale frames, invalid Base64/media/size;
+- before-before-POST and after-after-terminal boundaries;
+- all verification modes, invalid output, service timeout, retention, review;
+- Store concurrency, legal transitions, one active lineage, atomic replan;
+- restart before/after dispatch, lost session, late evidence, interrupted verification;
+- Agent tool exposure only when Forge is enabled and correct system-event routing.
+
+Optional black-box tests connect through `FORGE_GATEWAY_URL`; they do not modify Gateway source or configuration.
+
+## Related documentation
+
+- [Framework Introduction](../en/01-framework-introduction.md)
+- [User Manual](../en/02-user-manual.md)
+- [Developer Manual](../en/03-developer-manual.md)
+- [Configuration Reference](../en/04-forge-configuration-reference.md)
+- [Integration Development Guide](../user_development_guide/README_en.md)
+- [Communication Architecture](../user_development_guide/COMMUNICATION_en.md)

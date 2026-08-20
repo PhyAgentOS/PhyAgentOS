@@ -24,4 +24,11 @@ SECURITY.md
 .kilo
 test
 tests/
+!tests/
+tests/*
+!tests/test_skills.py
+!tests/test_forge_package_index.py
+!tests/test_skill_runtime_cli.py
+!tests/test_skill_runtime_manager.py
+!tests/test_skill_runtime_manifest.py
 plan/

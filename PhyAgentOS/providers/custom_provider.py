@@ -14,12 +14,22 @@ from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 class CustomProvider(LLMProvider):
 
-    def __init__(self, api_key: str = "no-key", api_base: str = "http://localhost:8000/v1", default_model: str = "default"):
+    def __init__(
+        self,
+        api_key: str = "no-key",
+        api_base: str = "http://localhost:8000/v1",
+        default_model: str = "default",
+        timeout_s: float = 180.0,
+    ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         # Use httpx client with trust_env=False to avoid picking up system SOCKS proxy
         # that uses the unsupported 'socks://' scheme (httpx only supports socks5://).
-        http_client = httpx.AsyncClient(trust_env=False)
+        http_client = httpx.AsyncClient(
+            trust_env=False,
+            timeout=httpx.Timeout(float(timeout_s), connect=15.0),
+            limits=httpx.Limits(max_connections=4, max_keepalive_connections=2),
+        )
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=api_base,
@@ -63,4 +73,3 @@ class CustomProvider(LLMProvider):
 
     def get_default_model(self) -> str:
         return self.default_model
-

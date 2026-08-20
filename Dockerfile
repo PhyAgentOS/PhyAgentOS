@@ -36,5 +36,5 @@ RUN mkdir -p /root/.PhyAgentOS
 # Gateway default port
 EXPOSE 18790
 
-ENTRYPOINT ["PhyAgentOS"]
+ENTRYPOINT ["paos"]
 CMD ["status"]

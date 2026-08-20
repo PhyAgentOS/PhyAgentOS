@@ -1,7 +1,6 @@
 # Agent Skills
 
 Skills are Markdown instructions that extend the agent's behavior.
-They are separate from runtime skill runtimes in `SKILLRUNTIME.md`.
 
 ## Locations
 
@@ -29,31 +28,15 @@ The metadata key may be `PhyAgentOS` or `openclaw`; both are accepted.
 - Other available skills appear in the skills summary and can be read on demand.
 - Skills with unmet requirements are listed as unavailable.
 - Dependency requirements can declare CLI binaries or environment variables under `requires`.
-- Agent skills may declare runtime availability requirements under `requires.runtime`;
-  this only controls agent skill visibility and does not create or register a
-  runtime skillruntime.
-
-Example runtime-aware metadata:
-
-```yaml
----
-name: benchmarking
-description: Run runtime benchmark evaluations on enabled simulation targets.
-metadata: {"PhyAgentOS":{"always":false,"available":true,"requires":{"runtime":{"enabled":true,"target_kind":"simulation","skillruntime_kind":"policy"}}}}
----
-```
 
 ## Built-in Skills
 
-- `benchmarking`: available when runtime mode is enabled and `TARGETS.md` has
-  an enabled `simulation` target whose `supported_skillruntimes` contains a
-  `SKILLRUNTIME.md` entry with `runtime_kind: policy`. It inspects simulation
-  task lists, appends benchmark sessions to `SESSIONS.md`, waits for watchdog
-  writeback, aggregates `LOG.md` and `artifacts/runtime/*/episode.json`, and
-  writes an experiment report.
+- Forge execution is exposed through built-in Agent tools rather than a skill registry.
+- A robot-specific skill may teach planning conventions, but it must discover live actions
+  through `forge_get_context` and execute through `forge_execute_task`.
 
 ## Authoring Rules
 
 - Keep a skill focused on one capability or workflow.
 - Put reusable scripts and references inside the skill directory.
-- Do not duplicate runtime registry entries here; use `SKILLRUNTIME.md` for runtime execution contracts.
+- Do not duplicate or invent Forge Action Manifest entries in a skill.

@@ -1,521 +1,389 @@
 # PhyAgentOS 用户手册
 
-> 面向使用者、集成者与演示操作者的运行手册。覆盖单机模式、Fleet 多机器人模式、各场景配置与排障指南。
+> 文档版本：0.1.4.post4。本文描述当前 Forge-only 执行链。PhyAgentOS 不再提供旧 Runtime、Watchdog 或 Markdown Session queue。
 
----
+## 1. 环境与安装
 
-## 目录
+基础要求：
 
-- [2.1 手册定位](#21-手册定位)
-- [2.2 系统工作原理](#22-系统工作原理)
-- [2.3 安装与环境准备](#23-安装与环境准备)
-- [2.4 5 分钟快速开始](#24-5-分钟快速开始)
-- [2.5 配置详解](#25-配置详解)
-- [2.6 场景使用指南](#26-场景使用指南)
-  - [2.6.1 仿真场景](#261-仿真场景)
-  - [2.6.2 真机机械臂（Franka Research 3）](#262-真机机械臂franka-research-3)
-  - [2.6.3 移动机器人（Go2）](#263-移动机器人go2)
-  - [2.6.4 远程底盘（XLeRobot）](#264-远程底盘xlerobot)
-  - [2.6.5 ReKep 真机插件](#265-rekep-真机插件)
-  - [2.6.6 Fleet 多机器人协同](#266-fleet-多机器人协同)
-- [2.7 运行时文件说明](#27-运行时文件说明)
-- [2.8 常见交互示例](#28-常见交互示例)
-- [2.9 常见问题排查](#29-常见问题排查)
-
----
-
-## 2.1 手册定位
-
-### 适合谁
-
-- 希望快速跑通 PhyAgentOS 的首次使用者
-- 需要用命令行操作 Agent 的集成使用者
-- 需要启动仿真、Go2、远程底盘或真实机器人插件的演示操作者
-- 需要理解运行时工作区文件如何变化的调试人员
-
-### 不适合谁
-
-如果你要进行二次开发、编写驱动、开发插件或研究系统内部架构，请阅读 [Part 3: API 开发者手册](../03-developer-manual.md)。
-
----
-
-## 2.2 系统工作原理
-
-### 2.2.1 双轨结构
-
-PhyAgentOS 是一个显式解耦的双轨运行架构：
-
-- **Track A（Agent / 大脑）**：负责理解用户输入、规划动作、调用工具、Critic 校验。通过 `paos agent` 或 `paos gateway` 启动。
-- **Track B（Runtime / 执行层）**：负责 session 级执行监督、target/policy 调用、artifact 与环境状态写回。Runtime watchdog 会随 `paos agent` 或 `paos gateway` 自动启动；远端 target/policy server 按需单独部署。
-
-两者之间的共享状态通过工作区中的 Markdown 文件表达，而不是跨层直接 Python 调用。
-
-### 2.2.2 单机模式与 Fleet 模式
-
-| 模式 | 工作区 | 适用场景 |
-|------|--------|---------|
-| **单机模式（single）** | `~/.PhyAgentOS/workspace` | 单个机器人或仿真快速验证 |
-| **Fleet 模式（fleet）** | 共享 + per-robot 工作区 | 异构多机器人协同 |
-
-### 2.2.3 一次典型运行的完整闭环
-
-1. 运行 `paos onboard` 初始化配置与工作区
-2. 启动 `paos agent` 或 `paos gateway`
-3. 当 config 启用 runtime 时，Agent 自动创建/刷新 runtime workspace，并启动 session watchdog
-4. 用户输入自然语言任务
-5. Agent 读取 `TARGETS.md`、`SKILLRUNTIME.md`、`ENVIRONMENT.md` 等工作区文件进行规划
-6. Agent 将可执行任务追加到 `SESSIONS.md`
-7. Watchdog claim pending session，执行 preflight、运行 target/skill，并写回 result、artifact 与环境状态
-
----
-
-## 2.3 安装与环境准备
-
-### 基础要求
-
-- Python 3.11 或更高版本
-- Git
-- 可访问的 LLM 提供方 API 或兼容服务
-- 仿真场景可选：`pybullet`、Isaac Sim
-- 桥接/前端可选：Node.js 18+
-
-### 克隆与安装
+- Python 3.11 或 3.12；
+- Git；
+- 一个受支持的 LLM Provider；
+- 一个可访问的 Forge Gateway 1.0.0；
+- 非 `off` 验证需要支持图像输入和结构化 JSON 输出的模型。
 
 ```bash
 git clone https://github.com/PhyAgentOS/PhyAgentOS.git
 cd PhyAgentOS
-pip install -e .             # Python ≥ 3.11
-pip install -e ".[dev]"      # 开发依赖
+python -m pip install -e .
+
+# 运行测试或参与开发
+python -m pip install -e ".[dev]"
 ```
 
-### 安装后你会得到
+安装后主要命令如下：
 
-CLI 入口 `paos` 来自项目的 Python 包入口：
-
-- `paos onboard` — 初始化工作区
-- `paos agent` — 启动交互式 Agent
-- `paos agent -m "..."` — 单轮消息调用
-- `paos gateway` — 启动长期在线网关
-
----
-
-## 2.4 5 分钟快速开始
-
-### 第 1 步：安装
-
-```bash
-git clone https://github.com/PhyAgentOS/PhyAgentOS.git && cd PhyAgentOS
-pip install -e .
+```text
+paos onboard
+paos agent
+paos gateway
+paos status
+paos channels status
+paos channels login
+paos provider login <provider>
 ```
 
-### 第 2 步：初始化工作区
+## 2. 初始化
 
 ```bash
 paos onboard
 ```
 
-该命令会：创建/刷新 `~/.PhyAgentOS/config.json`、准备默认工作区、同步模板文件。
-
-### 第 3 步：启动 Agent
-
-```bash
-paos agent
-```
-
-进入交互模式后，直接输入自然语言任务，例如：
+默认情况下，该命令创建或刷新：
 
 ```text
-看看桌面上有什么物体。
+~/.PhyAgentOS/config.json
+~/.PhyAgentOS/workspace/
 ```
 
-如果只想单次调用，也可以使用：
+如果配置已存在，选择“不覆盖”会在保留已有值的同时补全新字段。配置验证失败不会静默回退到旧执行链；根级 `runtime` 字段会触发明确错误，必须删除并改用 `forge`。
+
+使用自定义配置或工作区：
 
 ```bash
-paos agent -m "看看桌面上有什么物体"
+paos agent --config /path/to/config.json --workspace /path/to/workspace
+paos gateway --config /path/to/config.json --workspace /path/to/workspace
 ```
 
-### 第 4 步：连接远程 runtime 服务
+## 3. 配置模型 Provider
 
-如果任务需要远程仿真或真实策略服务，先在对应机器启动 target/policy server。例如 LIBERO + pi0.5：
-
-```bash
-MUJOCO_GL=egl PYTHONWARNINGS=ignore \
-conda run -n liberopi python PhyAgentOS/runtime/targets/remote/libero/server.py \
-  --host 0.0.0.0 --port 9002
-
-conda run -n lerobot-pi python -m PhyAgentOS.runtime.policy.openpi.lerobot_pi0_server \
-  --model-dir /path/to/pi05/checkpoint --host 0.0.0.0 --port 8000
-```
-
----
-
-## 2.5 配置详解
-
-### 最小配置
-
-最小可用配置至少需要：
+最小 Provider 示例：
 
 ```json
 {
   "agents": {
     "defaults": {
-      "model": "openrouter/openai/gpt-4o-mini"
+      "model": "openrouter/openai/gpt-4o-mini",
+      "provider": "openrouter",
+      "workspace": "~/.PhyAgentOS/workspace"
     }
   },
   "providers": {
     "openrouter": {
-      "api_key": "YOUR_API_KEY"
+      "apiKey": "YOUR_API_KEY"
     }
   }
 }
 ```
 
-配置位置：`~/.PhyAgentOS/config.json`
+Agent 与 Verifier 默认使用同一模型。若要分离，设置 `agents.verification.model` 和 `agents.verification.provider`。配置中的 API key 不应提交到版本控制；长期部署还应限制配置文件的访问权限。
 
-### 关键配置域
+OAuth Provider 可以使用：
 
-| 配置域 | 用途 |
-|--------|------|
-| `agents.defaults` | 默认模型、工作区路径 |
-| `providers` | LLM 提供方 API Key 与地址 |
-| `gateway` | 网关服务配置 |
-| `tools` | 工具启用/禁用 |
-| `embodiments` | 具身配置（single / fleet 模式） |
+```bash
+paos provider login openai-codex
+paos provider login github-copilot
+```
 
-### Fleet 模式最小配置
+## 4. 配置 Forge
+
+```json
+{
+  "agents": {
+    "verification": {
+      "serviceEnabled": true,
+      "timeoutS": 180,
+      "evidenceRetention": "failed",
+      "maxReplansPerEpisode": 2,
+      "maxVerifierCallsPerRun": 50,
+      "replanTimeoutS": 120,
+      "serviceHost": "127.0.0.1",
+      "servicePort": 8100
+    }
+  },
+  "forge": {
+    "enabled": true,
+    "baseUrl": "http://127.0.0.1:9001",
+    "apiVersion": "paos-forge-gateway-mvp-plus.v1",
+    "requestTimeoutS": 10,
+    "pollIntervalS": 0.5,
+    "executionTimeoutS": 300,
+    "evidence": {
+      "requiredImageSources": ["front"],
+      "captureTimeoutS": 5,
+      "postCaptureTimeoutS": 5,
+      "connectionTimeoutS": 2,
+      "maxArtifactBytes": 8388608,
+      "associationQuality": "best_effort"
+    }
+  }
+}
+```
+
+启动 PAOS 时会读取 `/agent/runtime/capabilities`。以下任一条件不满足都会拒绝启动：
+
+- `api_version` 精确等于 `paos-forge-gateway-mvp-plus.v1`；
+- `supports.sessions`、`supports.command_id`、`supports.runtime_context` 为 true；
+- `supports.serial_actions_only` 为 true；
+- `actions` 是对象；随后提交的 action 必须存在于该对象。
+
+`requiredImageSources` 中的 source ID 必须与 Gateway `/ws/images` 的 `id` 一致。若列表为空，PAOS 会从 runtime context 的 image readiness 中发现 source；若仍为空，非 `off` 任务会以 `FORGE_EVIDENCE_CONFIGURATION_REQUIRED` 失败。
+
+完整字段与默认值见 [Forge 配置参考](04-forge-configuration-reference.md)。
+
+## 5. 启动顺序
+
+推荐顺序：
+
+1. 启动 Forge Runtime/Dora/机器人或仿真环境；
+2. 启动 Forge Gateway 1.0.0；
+3. 确认 Gateway capabilities、status、context 和图像流可用；
+4. 启动 PAOS Agent 或 Gateway。
+
+交互模式：
+
+```bash
+paos agent
+```
+
+单消息模式：
+
+```bash
+paos agent -m "先读取 Forge capabilities，再执行一个受支持动作；使用 audit 验证并报告执行事实与任务判定。"
+```
+
+如果这条消息提交了 Forge task，单消息进程不会在首次模型回复后立即退出，而会保持 Agent 和 Orchestrator 运行，直到 root lineage 终结并处理 completion/recovery system event。
+
+长期在线模式：
+
+```bash
+paos gateway
+paos gateway --port 18790 --verbose
+```
+
+该入口同时运行 Agent、已启用消息渠道、Cron、Heartbeat 和 Forge Orchestrator。
+
+## 6. 提交第一个任务
+
+### 6.1 先读取能力
+
+action type 和 inputs 由 Gateway 定义，不应从文档示例猜测。可以先告诉 Agent：
+
+```text
+调用 forge_get_context，列出当前 readiness、可用 action、required inputs 和 input mapping；不要执行动作。
+```
+
+### 6.2 描述目标与验收标准
+
+推荐在请求中明确：
+
+- 用户目标；
+- 可接受的高层动作范围；
+- 每条可观察、可独立判定的 success criterion；
+- 必须保留的安全或任务 constraints；
+- verification mode；
+- 必需的 evidence source/kind。
+
+示例：
+
+```text
+读取 Forge 能力，选择合适的高层动作把红色物体放入托盘。
+使用 recovery 验证。Goal 是“红色物体最终位于托盘内”。
+Criteria：1）最终图像中红色物体完整位于托盘边界内；
+2）蓝色物体仍在原区域。Constraint：不要移动蓝色物体。
+使用 front 图像作为 before/after 证据。
+```
+
+Agent 最终调用 `forge_execute_task` 时，会构造：
+
+```json
+{
+  "task_description": "...",
+  "action_type": "<advertised action>",
+  "inputs": {},
+  "verification": {
+    "mode": "recovery",
+    "goal": "红色物体最终位于托盘内。",
+    "success_criteria": [
+      "最终图像中红色物体完整位于托盘边界内。",
+      "蓝色物体仍在原区域。"
+    ],
+    "constraints": ["不要移动蓝色物体。"],
+    "evidence_policy": {
+      "required_kinds": ["rgb_image"],
+      "required_sources": ["front"],
+      "minimum_association": "best_effort"
+    }
+  }
+}
+```
+
+session ID 与 command ID 由 PAOS 生成，调用方不能指定、复用或从旧任务复制。
+
+## 7. 验证模式
+
+| 模式 | 何时使用 | 行为 |
+|:-----|:---------|:-----|
+| `off` | 只需知道 Gateway 命令是否结束 | 不采集验证 Evidence Bundle，不调用 Verifier，按 execution status 终结。 |
+| `audit` | 先评估 verifier 质量，不希望阻塞执行结果 | 缺 before 证据时仍可派发；记录 verdict/error；最终状态保持执行派生结果；永不 replan。 |
+| `enforce` | 任务完成必须有语义证据 | Verifier `success` 才成功；缺证、非法输出、错误、`failure`、`replan_required`、`inconclusive` 都失败。 |
+| `recovery` | 失败后允许 Planner 再尝试 | 与 enforce 一样 fail closed；合法 `replan_required` 生成 Recovery Request。 |
+
+非 `off` 模式必须提供非空 goal 和至少一项非空 success criterion，并要求 Verification Service 可用。
+
+## 8. 查询、取消、复核和 Reset
+
+Agent 可使用：
+
+- `forge_get_session(session_id)`：返回完整持久化 record；
+- `forge_cancel_session(session_id, reason)`：取消非终态任务；已派发时同时请求 Gateway cancel；
+- `verify_forge_session(session_id)`：复核终态 session；要求证据仍 retained；
+- `forge_reset(inputs)`：没有活动 lineage 时才允许 reset；
+- `forge_get_context()`：读取启动时缓存的 capabilities，以及实时 status/context。
+
+`verify_forge_session` 是 review，不会改变 `status`、Execution Record 或原自动验证尝试；它会追加 attempt 并更新 `verification_result.json` 中的验证视图。
+
+## 9. 状态解释
+
+| PAOS 状态 | 含义 | 是否终态 |
+|:----------|:-----|:---------|
+| `accepted` | 请求与 ID 已保存 | 否 |
+| `capturing_before` | 等待并持久化执行前证据 | 否 |
+| `dispatching` | dispatch attempt 已保存，正在 POST | 否 |
+| `running` | Gateway session 未到终态 | 否 |
+| `finalizing` | 写 Execution Record 并等待 after evidence | 否 |
+| `awaiting_verification` | Evidence Bundle 已就绪，等待验证 | 否 |
+| `verifying` | 独立 Verification Service 正在判定 | 否 |
+| `awaiting_replan` | Recovery Request 已生成，等待 Planner child | 否 |
+| `replanned` | parent 已由新 child 接替 | 是 |
+| `succeeded` / `failed` | PAOS 按当前 mode 终结 | 是 |
+| `timed_out` / `cancelled` | 执行超时或取消 | 是 |
+
+在 `enforce`/`recovery` 中，应同时查看：
+
+```text
+record.status
+record.execution.status
+record.verification.verdict.verdict
+record.error_code / record.error_message
+```
+
+它们分别表示 PAOS 任务结果、Gateway 执行事实、语义判定和故障原因。
+
+## 10. Artifact 与 retention
+
+```text
+<workspace>/.paos/forge/orchestrator.sqlite3
+<workspace>/artifacts/forge/<session_id>/
+  execution_record.json
+  before_snapshot.json
+  after_snapshot.json
+  evidence_bundle.json
+  verification_result.json
+  evidence/
+```
+
+Evidence retention：
+
+| 值 | 实体证据处理 |
+|:---|:-------------|
+| `all` | 全部保留 |
+| `failed` | 最终成功时删除实体，失败时保留 |
+| `none` | 完成验证后删除实体 |
+
+删除实体后，Evidence Bundle 仍保留 URI、source、phase、时间、sequence、byte size、SHA-256、`retained=false` 和 `deleted_at`，以便审计。Retention 不能删除或覆盖 Execution Record。
+
+## 11. 重启与恢复
+
+- 未记录 dispatch attempt：Orchestrator 可以继续执行。
+- 已记录 dispatch attempt：只向 Gateway GET 原 session；绝不自动重发 action。
+- 原 session 存在且身份匹配：继续等待终态、采集 after 或验证。
+- 原 session 404：标记 `FORGE_EXECUTION_STATE_LOST`。
+- 验证中断：旧 attempt 标记 abandoned 后重试。
+- 等待 replan：可以再次发送 recovery system event；child 创建通过事务去重。
+
+正常退出时，PAOS 会尝试取消活动 Gateway session，并保存 cancel response。物理系统仍需独立的安全停机与 operator override；PAOS cancel 不替代硬件急停。
+
+## 12. Embodiment 与知识工作区
+
+`EMBODIED.md`、`ENVIRONMENT.md`、SceneGraph 和 `embodiments` 配置属于知识层。单机模式使用 `agents.defaults.workspace`；fleet 模式可以组织 shared + per-robot 知识工作区，但当前仍只有一个 Forge endpoint 和一个串行执行槽。
 
 ```json
 {
   "embodiments": {
     "mode": "fleet",
-    "shared_workspace": "~/.PhyAgentOS/workspaces/shared",
+    "sharedWorkspace": "~/.PhyAgentOS/workspaces/shared",
     "instances": [
       {
-        "robot_id": "go2_edu_001",
-        "driver": "go2_edu",
-        "workspace": "~/.PhyAgentOS/workspaces/go2_edu_001"
+        "robotId": "robot_001",
+        "workspace": "~/.PhyAgentOS/workspaces/robot_001",
+        "profileName": "lab-arm",
+        "enabled": true
       }
     ]
   }
 }
 ```
 
-### 工作区路径
+该配置不包含 driver、Target 或 Gateway routing 语义。
 
-| 模式 | 路径 |
-|------|------|
-| 单机模式 | `~/.PhyAgentOS/workspace` |
-| Fleet 共享工作区 | `~/.PhyAgentOS/workspaces/shared` |
-| Fleet 机器人工作区 | `~/.PhyAgentOS/workspaces/<robot_id>` |
+## 13. 旧工作区清理
 
-> 每次修改配置后建议重新执行 `paos onboard`，它会刷新模板并补充新字段。
-
----
-
-## 2.6 场景使用指南
-
-### 2.6.1 仿真场景
-
-本地 `paos agent` 是最快验证 Agent 与 runtime workspace 是否打通的起点。
-
-```bash
-paos agent
-```
-
-**Isaac Sim 高保真仿真（PIPER + Go2 复合操作）**：
-
-```bash
-# GUI 模式（需要本地 X 显示）
-python hal/hal_watchdog.py --gui --interval 0.05 \
-  --driver pipergo2_manipulation \
-  --driver-config examples/pipergo2_manipulation_driver.json
-
-# VNC 模式（远程服务器/容器，通过浏览器访问）
-python hal/hal_watchdog.py --vnc --interval 0.05 \
-  --driver pipergo2_manipulation \
-  --driver-config examples/pipergo2_manipulation_driver.json
-# 浏览器打开 http://<host>:31315/vnc.html
-```
-
-然后通过 Agent 发送命令：
-
-```bash
-paos agent -m "open simulation"
-paos agent -m "go to desk"
-paos agent -m "pick up the red cube and return to the starting position"
-```
-
-> `--gui` 和 `--vnc` 互斥。不加任一参数则运行 headless 模式。
-
----
-
-### 2.6.2 真机机械臂（Franka Research 3）
-
-#### 网络架构
-
-```
-WorkStation PC → Control Box (Shop Floor: 172.16.0.x) → Robot Arm
-```
-
-#### 首次设置
-
-1. 网线连接 PC ↔ Control Box（Shop Floor 接口）
-2. PC 有线网络 IP 设为 `172.16.0.x`（如 `172.16.0.1`）
-3. 在 Control Box Desk 界面激活 FCI
-4. 安装后端驱动
-
-#### 后端安装
-
-```bash
-# pylibfranka（官方 Python 绑定）
-pip install pylibfranka
-
-# franky-control（备选高层库，更宽松兼容性）
-pip install git+https://github.com/TimSchneider42/franky.git
-```
-
-#### 驱动选择
-
-| 驱动名 | 说明 | 适用场景 |
-|:-------|:-----|:---------|
-| `franka_research3` | 原始 pylibfranka 驱动 | 精确控制或实时 1kHz |
-| `franka_multi` | 多后端协商驱动 | 自动选择可用后端 |
-
-#### 启动方式
-
-```bash
-# 多后端自动协商（推荐）
-python hal/hal_watchdog.py --driver franka_multi
-
-# 原始 pylibfranka 驱动
-python hal/hal_watchdog.py --driver franka_research3
-
-# 自定义配置
-python hal/hal_watchdog.py \
-  --driver franka_multi \
-  --driver-config examples/franka_research3.driver.json
-```
-
-#### 支持的动作
-
-`move_to`（笛卡尔位置）、`move_joints`（关节位置）、`grasp`、`move_gripper`、`stop` 等。
-
-#### 实时控制模式
-
-设置 `realtime_mode: true` 启用 1 kHz 实时控制（需安装实时内核）。
-
-> 安装前请确认库版本与机器人系统版本兼容。
-
----
-
-### 2.6.3 移动机器人（Go2）
-
-```bash
-python hal/hal_watchdog.py \
-  --driver go2_edu \
-  --driver-config examples/go2_driver_config.json
-```
-
-驱动配置 JSON 透传给 Go2 驱动，用于远程 ROS2、视频、状态流和运动后端初始化。
-
----
-
-### 2.6.4 远程底盘（XLeRobot）
-
-```bash
-python hal/hal_watchdog.py \
-  --driver xlerobot_2wheels_remote \
-  --driver-config examples/xlerobot_2wheels_remote.driver.json
-```
-
-配置示例中包含 ZMQ 通信参数、远程主机地址等。
-
----
-
-### 2.6.5 ReKep 真机插件
-
-`rekep_real` 通过外部插件仓库接入：
-
-```bash
-# 部署插件
-python scripts/deploy_rekep_real_plugin.py \
-  --repo-url https://github.com/baiyu858/PhyAgentOS-rekep-real-plugin.git
-
-# 启动
-python hal/hal_watchdog.py --driver rekep_real
-```
-
----
-
-### 2.6.6 Fleet 多机器人协同
-
-#### 何时使用
-
-- 让一个 Agent 面向多个机器人实例协同规划
-- 将共享环境、target registry 与 session 队列分开维护
-- 通过 `TARGETS.md`、`SKILLRUNTIME.md` 与 `SESSIONS.md` 管理多个 target 的执行入口
-
-#### 启动顺序
-
-1. 配置 `embodiments.mode = "fleet"`
-2. 运行 `paos onboard`
-3. 启动 `paos agent` 或 `paos gateway`
-4. 当 runtime 启用时，runtime workspace 与 session watchdog 会自动启动
-
-```bash
-paos agent
-```
-
-#### Fleet 模式文件布局
-
-| 文件 | 位置 | 用途 |
-|------|------|------|
-| `ENVIRONMENT.md` | shared/ | 全局环境状态 |
-| `TARGETS.md` | runtime/shared | Target registry |
-| `SKILLRUNTIME.md` | runtime/shared | Skill runtime registry |
-| `SESSIONS.md` | runtime/shared | Session 队列与结果 |
-| `TASK.md` | shared/ | 多步任务状态 |
-| `ORCHESTRATOR.md` | shared/ | 全局编排状态 |
-
----
-
-## 2.7 运行时文件说明
-
-| 进入上下文逻辑 | 文件 | 所属工作区 | 功能 |
-|------|------|------|------|
-| 始终进入 agent system prompt | `AGENTS.md` | Agent workspace | 项目级运行规则 |
-| 始终进入 agent system prompt | `SOUL.md` | Agent workspace | 身份与助手行为 |
-| 始终进入 agent system prompt | `USER.md` | Agent workspace | 用户偏好与长期画像 |
-| 始终进入 agent system prompt | `TOOLS.md` | Agent workspace | 工具使用规则 |
-| 始终进入 agent system prompt | `SKILLS.md` | Agent workspace | Agent skill 发现与加载规则 |
-| 存在时进入上下文；涉及 target 时按启用 target 过滤 | `EMBODIED.md` | Agent workspace | Target 能力的人类可读描述 |
-| 存在时作为状态进入上下文 | `ENVIRONMENT.md` | Agent/runtime workspace | 当前 target、场景、对象与环境状态 |
-| 存在时作为记忆/状态进入上下文 | `LESSONS.md` | Agent workspace | 运行经验与失败记录 |
-| 存在时作为任务状态进入上下文 | `TASK.md` | Agent workspace | 多步任务拆解状态 |
-| Runtime 协议；创建 session 前读取 | `RUNTIME.md` | Runtime workspace | 写入合法 runtime session 的说明 |
-| Runtime 协议；创建 session 前读取 | `TARGETS.md` | Runtime workspace | Target registry、endpoint、adapter、config 与支持的 skill runtime |
-| Runtime 协议；创建 session 前读取 | `SKILLRUNTIME.md` | Runtime workspace | Policy/builtin skill runtime 注册表与执行契约 |
-| Runtime 队列/状态 | `SESSIONS.md` | Runtime workspace | 执行会话队列与结果 |
-
----
-
-## 2.8 常见交互示例
-
-### 环境查询
+PAOS 不自动删除用户已有文件。升级前先备份，再按需人工移除旧执行协议：
 
 ```text
-看看当前环境里有什么物体。
+RUNTIME.md
+TARGETS.md
+SKILLRUNTIME.md
+SESSIONS.md
+configs/runtime/
+artifacts/runtime/
 ```
 
-验证点：Agent 是否能读取 `ENVIRONMENT.md`，环境状态是否已被 Watchdog 正确写回。
+保留 `EMBODIED.md`、`ENVIRONMENT.md`、`LESSONS.md`、`TASK.md` 以及其他用户知识。当前代码不会读取或生成上述旧执行协议。
 
-### 机械臂抓取任务
+## 14. 故障排查
 
-```text
-把桌上的红色苹果拿起来，放到托盘里。
-```
+### 启动时 API 或 capability 失败
 
-验证点：目标物体是否存在于环境状态、机器人 profile 是否声明了对应动作、Watchdog 是否成功执行并清空动作队列。
+确认 URL 指向 Forge Gateway 1.0.0，并检查 `/agent/runtime/capabilities`。版本或 required supports 不能通过配置降级。
 
-### 移动机器人导航
+### `FORGE_ACTION_UNSUPPORTED`
 
-```text
-移动到冰箱附近并停下。
-```
+请求的 `action_type` 不在启动时缓存的 capabilities 中。先调用 `forge_get_context`，按 advertised action 和 required inputs 重新规划。Gateway capability 发生变化后应重启 PAOS，使启动校验与 Agent 摘要一起刷新。
 
-验证点：场景图中是否存在目标语义位置、当前移动机器人是否支持导航动作。
+### `FORGE_EVIDENCE_CONFIGURATION_REQUIRED`
 
-### Fleet 多机器人协同
+既没有配置 `requiredImageSources`，runtime context 也没有可发现图像源。填写实际 source ID，并确认 `/ws/images` 正在发布。
 
-```text
-让 Go2 先去门口巡检，再让机械臂把桌上的包裹抓起来准备交接。
-```
+### `FORGE_EVIDENCE_UNAVAILABLE`
 
-验证点：Agent 是否识别目标 target，session 是否使用正确的 `target_ref`，`SESSIONS.md` 与 `ENVIRONMENT.md` 是否正确更新。
+before 或 after 窗口缺少必须 source。检查 WebSocket、媒体格式、大小限制、source ID、sequence 是否递增，以及 capture timeout。
 
-### Isaac Sim 环境操控
+### `FORGE_EXECUTION_STATE_LOST`
 
-```bash
-paos agent -m "open simulation"
-paos agent -m "go to desk"
-paos agent -m "pick up the red cube and return to the starting position"
-```
+PAOS 已记录 dispatch intent，但 Gateway 返回 404。系统故意不重发未知动作；应人工核实物理世界与 Gateway 日志后，再创建新的高层任务。
 
-### VLA 模型抓取
+### `VERIFICATION_EVIDENCE_UNAVAILABLE`
 
-```bash
-paos agent -m "deploy a VLA to pick up the red cube"
-```
+Evidence Bundle 不完整、artifact 丢失/已删除、摘要不匹配，或 capture window 无效。若要显式复核，请将 retention 设为 `all` 或在失败时使用 `failed`。
 
-可通过修改 `examples/pipergo2_manipulation_driver.json` 中的 `vla` 块配置自己的 VLA checkpoint。
+### `VERIFICATION_INVALID_VERDICT`
 
----
+模型没有为每条 criterion 返回且仅返回一条合法结论，或引用了未知 evidence ID。选择更稳定的模型，不要放宽公共契约。
 
-## 2.9 常见问题排查
+### `VERIFICATION_SERVICE_UNAVAILABLE`
 
-### 提示没有 API Key
+检查 Provider、模型、`servicePort` 冲突和 verifier timeout。`audit` 会记录错误并保留 execution 结果；`enforce`/`recovery` 会 fail closed。
 
-**现象**：启动 Agent 后报没有 API key。
+### Busy / active lineage
 
-**排查**：
-1. 检查 `~/.PhyAgentOS/config.json` 是否配置了 `providers.<name>.api_key`
-2. 确认 `agents.defaults.model` 与对应 provider 配套
-3. 确保 API Key 格式正确，无多余空格
-
-### Runtime 协议文件缺失
-
-**现象**：找不到 `TARGETS.md`、`SKILLRUNTIME.md` 或 `SESSIONS.md`。
-
-**排查**：
-1. 确认 config 中 `runtime.enabled` 为 `true`
-2. 检查 `runtime.workspace` 是否指向独立目录
-3. 启动 `paos agent` / `paos gateway`，或用 `python scripts/init_runtime_workspace.py --workspace <path>` 手动初始化
-4. Fleet 模式下确认查看的是 shared/runtime workspace
-
-### SESSIONS.md 有 pending 但没有执行
-
-**排查**：
-1. 确认 session watchdog 仍在运行
-2. 检查 session 的 `target_ref` 与 `skillruntime_ref` 是否存在
-3. 检查 `TARGETS.md` 中 target 是否 `enabled: true`
-4. 查看 Watchdog 日志是否出现 preflight 或 runtime 错误
-
-### Session 被 preflight 拒绝
-
-**排查**：
-1. 查看 `SESSIONS.md` 中该 session 的 result/error
-2. 检查 target 是否支持该 `skillruntime_ref`
-3. 检查 `SKILLRUNTIME.md` 中 observation/action contract 是否与 target runtime contract 兼容
-4. 检查 `ENVIRONMENT.md` 中是否存在必要目标物体、地图信息或连接状态
-
-### Fleet 模式下任务没有派发到正确机器人
-
-**排查**：
-1. 检查配置中的 `robot_id`、`driver`、`workspace` 是否匹配
-2. 检查 `TARGETS.md` 中 target id、workspace 与 enabled 状态
-3. 检查 `SESSIONS.md` 中 session 的 `target_ref`
-4. 确认任务语义里明确了目标机器人
-
-### 找不到 rekep_real 驱动
-
-**排查**：
-1. 确认已经执行插件部署脚本 `python scripts/deploy_rekep_real_plugin.py`
-2. 确认插件仓库已注册到本地插件目录 `~/.PhyAgentOS/plugins/`
-3. 重启 Watchdog 使插件加载生效
-
-### Isaac Sim 启动失败
-
-**排查**：
-1. 确认 Isaac Sim 已正确安装
-2. 检查 `pipergo2_manipulation_driver.json` 中 `isaac_env` 块的路径配置
-3. `--vnc` 模式下查看首次启动的 re-exec 日志
-4. 确认 `LD_LIBRARY_PATH` 已正确设置（VNC 模式会自动处理）
-
----
+另一个 root lineage 尚未终结。先使用 `forge_get_session` 查询，必要时取消。不要直接编辑 SQLite 绕过串行约束。
 
 ## 后续阅读
 
-- [Part 1: 框架介绍](../01-framework-introduction.md) — 设计理念、架构、路线图
-- [Part 3: API 开发者手册](../03-developer-manual.md) — 接口文档、二次开发、代码风格
-
-> **下一步**：如果需要开发新驱动或接入新硬件，进入 [API 开发者手册](../03-developer-manual.md)。
+- [框架介绍](01-framework-introduction.md)
+- [Forge 配置参考](04-forge-configuration-reference.md)
+- [运行手册](../user_manual/README.md)
+- [Forge 接入契约](../forge/README_zh.md)
+- [文档索引](../README.md)

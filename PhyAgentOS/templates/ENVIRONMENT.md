@@ -1,6 +1,8 @@
 # Environment State
 
-This file stores compact target and scene state written by the runtime.
+This optional file stores compact, long-lived scene knowledge supplied by the user or an
+external perception system. Forge execution does not write this file automatically; use
+`forge_get_context` for live robot state.
 
 ```json
 {

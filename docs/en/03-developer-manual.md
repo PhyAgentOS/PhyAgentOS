@@ -1,728 +1,298 @@
-# PhyAgentOS API Developer Manual
+# PhyAgentOS Developer Manual
 
-> For secondary developers, hardware integrators, plugin authors, and maintainers. Covers API interfaces, secondary development workflows, coding style standards, implementation boundaries, and contribution rules.
+> Documentation version: 0.1.4.post4. This manual is for PAOS, Forge Gateway, evidence, verifier, and Agent-tool developers.
 
----
+## 1. Development principles
 
-## Table of Contents
+Changes touching embodied execution must preserve these invariants:
 
-- [3.1 About This Manual](#31-about-this-manual)
-- [3.2 Architecture Deep Dive](#32-architecture-deep-dive)
-- [3.3 API Reference](#33-api-reference)
-  - [3.3.1 BaseDriver Interface](#331-basedriver-interface)
-  - [3.3.2 BaseRolloutTarget Interface](#332-baserollouttarget-interface)
-  - [3.3.3 BaseSkillRuntime Interface](#333-baseskillruntime-interface)
-  - [3.3.4 TargetAdapter Interface](#334-targetadapter-interface)
-  - [3.3.5 WatchdogSupervisor Internal Architecture](#335-watchdogsupervisor-internal-architecture)
-  - [3.3.6 Agent-Side APIs](#336-agent-side-apis)
-  - [3.3.7 Configuration Schema](#337-configuration-schema)
-  - [3.3.8 File Protocol Conventions](#338-file-protocol-conventions)
-- [3.4 Secondary Development Guide](#34-secondary-development-guide)
-  - [3.4.1 Adding a New Driver](#341-adding-a-new-driver)
-  - [3.4.2 Adding a New Target](#342-adding-a-new-target)
-  - [3.4.3 Developing External Plugins](#343-developing-external-plugins)
-  - [3.4.4 Adding a New Skill](#344-adding-a-new-skill)
-  - [3.4.5 Integrating a New Robot](#345-integrating-a-new-robot)
-  - [3.4.6 Extending the Perception Pipeline](#346-extending-the-perception-pipeline)
-  - [3.4.7 Extending the Navigation Module](#347-extending-the-navigation-module)
-  - [3.4.8 ROS2 Adapter Development](#348-ros2-adapter-development)
-- [3.5 Coding Style Standards](#35-coding-style-standards)
-- [3.6 Implementation Boundaries](#36-implementation-boundaries)
-- [3.7 Testing Standards](#37-testing-standards)
-- [3.8 Contribution & Submission Rules](#38-contribution--submission-rules)
-- [3.9 Appendix](#39-appendix)
+1. Forge Gateway is the only robot execution entry point.
+2. Gateway terminal state is execution fact; task success follows verification policy.
+3. Only PAOS generates session and command IDs; callers cannot provide or reuse them.
+4. A session with recorded dispatch intent is never automatically POSTed again.
+5. Gateway session, command, request, action, command identity, and policy identity all match.
+6. A written Execution Record cannot be overwritten by verification, review, or retention.
+7. Evidence preserves real source, sequence, source time when present, and PAOS receive time; it never fabricates authoritative association.
+8. Verifier prompts, public verdicts, and Recovery Requests are independent of `action_type`.
+9. Parent `replanned` and child creation occur in one SQLite transaction.
+10. Execution, evidence, verification, recovery, and persistence changes include failure and restart tests.
 
----
+## 2. Module map
 
-## 3.1 About This Manual
+| Area | Path | Responsibility |
+|:-----|:-----|:---------------|
+| Agent integration | `PhyAgentOS/agent/loop.py` | Register tools, inject capability summary, handle system events |
+| Agent tools | `PhyAgentOS/agent/tools/forge.py` | JSON schemas, call context, Orchestrator facade |
+| Public contracts | `PhyAgentOS/verification/contracts.py` | Task, Session, Execution, Evidence, Verdict, Recovery, state machine |
+| Verification request | `PhyAgentOS/verification/request_builder.py` | Resolve bundle, validate digest/window/requirements, build multimodal request |
+| Verification engine | `PhyAgentOS/verification/engine.py` | Stateless model call and timeout |
+| Verification service | `PhyAgentOS/verification/service.py` | Child process, readiness, authentication, strict JSON output |
+| Verifier facade | `PhyAgentOS/agent/session_verifier.py` | Budgets, attempts, retention, lessons, review |
+| Gateway client | `PhyAgentOS/forge/client.py` | `httpx.AsyncClient` wrapper for Agent API |
+| Observation | `PhyAgentOS/forge/observation.py` | Async WebSockets, bounded per-source latest frames, validation |
+| Evidence writer | `PhyAgentOS/forge/evidence.py` | Safe paths, atomic writes, SHA-256, snapshots, bundles |
+| Adapter | `PhyAgentOS/forge/adapter.py` | One-action execution, identity, polling, timeout, cancellation, mapping |
+| Store | `PhyAgentOS/forge/store.py` | SQLite WAL, transactions, state, events, atomic replan |
+| Orchestrator | `PhyAgentOS/forge/orchestrator.py` | Async tasks, modes, restart, recovery, notification |
+| Configuration | `PhyAgentOS/config/schema.py` | Forge, evidence, verification, and embodiment schemas |
 
-### Who This Is For
+## 3. Public models
 
-If your goal is no longer just "get the system running" but:
-- Understanding module responsibilities within the repository
-- Adding or modifying built-in drivers
-- Integrating new robots via HAL
-- Developing independent plugin repositories
-- Integrating perception, navigation, or ROS2 capabilities
-- Contributing tests, documentation, or deployment instructions
-
-Then this document is your primary reference.
-
-### Recommended Reading Path
-
-| Goal | Start With |
-|------|-----------|
-| Understand runtime communication | [§3.2](#32-architecture-deep-dive) → [§3.3.8](#338-file-protocol-conventions) |
-| Integrate a new robot | [§3.4.1](#341-adding-a-new-driver) → [§3.4.5](#345-integrating-a-new-robot) |
-| Develop external plugins | [§3.4.3](#343-developing-external-plugins) |
-| Understand full architecture | [Part 1 §1.3](../01-framework-introduction.md#13-technical-architecture) → [§3.2](#32-architecture-deep-dive) |
-
----
-
-## 3.2 Architecture Deep Dive
-
-### 3.2.1 Core Design: Cognitive-Execution Decoupling
-
-PhyAgentOS's core value lies in decoupling the cognitive and execution layers via explicit protocols. **Many "interfaces" are fundamentally file protocols and runtime conventions, not Python function signatures.**
-
-- **Track A (Cognitive)**: Planner / Critic / Tool / Memory
-- **Track B (Execution)**: Watchdog / SessionRunner / SkillRuntime / Target
-- **Protocol Boundary**: Markdown files carry shared state, not cross-layer Python calls
-
-### 3.2.2 Runtime Files Are the "Ground Truth"
-
-The following files are often more important than class diagrams:
-
-| File | Logical Meaning |
-|------|----------------|
-| `TARGETS.md` | Runtime target registry and endpoint / adapter / contract references |
-| `SKILLRUNTIME.md` | Executable policy/builtin skill runtime declarations |
-| `SESSIONS.md` | Execution intent and result ground truth |
-| `ENVIRONMENT.md` | Environment state ground truth |
-| `EMBODIED.md` | Agent-facing target capability prose |
-| `SKILLS.md` | Agent-facing skill discovery and loading rules |
-| `LESSONS.md` | Failure experience ground truth |
-
-**Reading only the code without understanding the files will lead to misinterpreting system behavior.**
-
-### 3.2.3 Single vs Fleet Development Implications
-
-When developing any functionality involving embodied actions, navigation, or connectivity, you must explicitly consider both runtime semantics:
-
-- **single mode**: One workspace, all state files in one place
-- **fleet mode**: Shared workspace for global state, per-robot workspaces for private state
-
-### 3.2.4 Distinguishing Templates, Profiles, and Runtime Files
-
-| Concept | Location | Meaning |
-|---------|----------|---------|
-| **Templates** | `PhyAgentOS/templates/` | Define file structure and suggested fields |
-| **Profile** | `hal/profiles/` | Static capability declaration for a robot type |
-| **Runtime Files** | workspace/ | Actual state surface read/written by Agent, Watchdog, and runtime writers |
-
-In short: **Templates define structure, Profiles provide instance type descriptions, Runtime files carry live state.**
-
----
-
-## 3.3 API Reference
-
-### 3.3.1 BaseDriver Interface
-
-**Location**: `hal/base_driver.py`
-
-All hardware and simulation drivers must inherit from `BaseDriver`.
-
-#### Required Abstract Methods
+### 3.1 `ForgeTaskRequest`
 
 ```python
-class BaseDriver(ABC):
-    def get_profile_path(self) -> str:
-        """Return the path to the driver's EMBODIED.md Profile"""
-
-    def load_scene(self, scene: dict) -> None:
-        """Initialize world state from scene dictionary"""
-
-    def execute_action(self, action_type: str, params: dict) -> str:
-        """Execute atomic action, return result string"""
-
-    def get_scene(self) -> dict:
-        """Return current world state dictionary"""
+ForgeTaskRequest(
+    task_description="Place the red object in the tray",
+    action_type="<gateway-advertised-action>",
+    inputs={...},
+    verification=TaskVerificationContract(...),
+    execution_timeout_s=300.0,
+)
 ```
 
-#### Optional Overrides
+`inputs` must contain finite JSON values. NaN, Infinity, non-serializable objects, and blank `task_description` or `action_type` values are rejected.
 
-```python
-def connect(self) -> None:           # Establish hardware connection
-def disconnect(self) -> None:        # Close connection
-def is_connected(self) -> bool:      # Check connection status
-def health_check(self) -> bool:      # Lightweight health check
-def get_runtime_state(self) -> dict: # Return optional runtime state (nav, connection, etc.)
-def close(self) -> None:             # Release hardware resources
+### 3.2 `TaskVerificationContract`
+
+When `mode != off`, goal and at least one criterion are required. Criteria and constraints cannot contain blank items. Evidence policy requires `rgb_image` by default and may override sources per task. Empty task sources fall back to Forge target configuration or readiness discovery.
+
+### 3.3 `ExecutionRecord`
+
+This model is `frozen=True` and contains:
+
+- PAOS/Gateway session and command IDs;
+- Gateway API and instance identity;
+- action type and policy ID;
+- normalized execution status;
+- generic capability `result_semantics` and `completion` declarations;
+- Gateway timeline, outputs, and error.
+
+Never put a task verdict into this model or change Gateway `succeeded` to `failed` because a verifier rejected the semantic result.
+
+### 3.4 `EvidenceBundle`
+
+Each artifact has phase, kind, source ID, sequence, capture/receive time, media type, byte size, SHA-256, a safe workspace-relative URI, and retention state. `EvidenceQuality` separately records completeness, association, missing requirements, stale artifacts, and errors.
+
+### 3.5 `VerificationVerdict`
+
+The verifier returns exactly one `CriterionVerdict` for each input success criterion and copies the criterion verbatim. `success` requires every criterion to be `satisfied`. `failure` and `replan_required` require at least one unmet or unknown item. `replan_required` also requires action-independent `recovery_context`.
+
+## 4. State machine and transactions
+
+`ALLOWED_FORGE_TRANSITIONS` defines every legal transition. Every Store update loads the model, applies a mutation, validates the transition, updates time, writes JSON, appends an event, and commits.
+
+SQLite tables:
+
+```text
+forge_sessions
+  session_id PRIMARY KEY
+  command_id UNIQUE
+  root_session_id
+  parent_session_id UNIQUE
+  status
+  record_json
+  created_at / updated_at
+
+forge_events
+  event_id PRIMARY KEY
+  session_id FOREIGN KEY
+  event_type
+  created_at
+  payload_json
 ```
 
-#### Driver Loading
+Task creation and replan use `BEGIN IMMEDIATE`, keeping one non-terminal lineage even when multiple Store instances submit concurrently.
 
-Drivers are registered in `hal/drivers/__init__.py` `DRIVER_REGISTRY` and loaded via `load_driver(name, **kwargs)`.
+## 5. Gateway startup contract
 
----
+`ForgeAdapter.validate_capabilities()` requires:
 
-### 3.3.2 BaseRolloutTarget Interface
-
-**Location**: `PhyAgentOS/runtime/targets/base.py` (new version)
-
-The single entry point for all three scenarios. WatchdogSupervisor does not need to know whether the Target is a game, simulation, or real robot.
-
-```python
-class BaseRolloutTarget(ABC):
-    def build(self) -> None:
-        """Initialize environment (connect SMAPI, launch sim instance, establish hardware session, etc.)"""
-
-    def reset(self, session_ctx: dict) -> dict:
-        """Reset to initial state, return initial observation dict"""
-
-    def observe(self) -> dict:
-        """Get current observation (RGBD, joints, voice, game state, etc.)"""
-
-    def step(self, executable_action: dict) -> dict:
-        """Execute one action step, return obs / reward / done / info"""
-
-    def close(self) -> None:
-        """Release resources (disconnect, close sim window, etc.)"""
-
-    def get_state(self) -> dict:
-        """Return runtime state dict for ENVIRONMENT.md writeback"""
+```json
+{
+  "api_version": "paos-forge-gateway-mvp-plus.v1",
+  "supports": {
+    "sessions": true,
+    "command_id": true,
+    "runtime_context": true,
+    "serial_actions_only": true
+  },
+  "actions": {
+    "<action_type>": {
+      "policy_id": "...",
+      "command": "...",
+      "result_semantics": "command_completed",
+      "completion": {},
+      "required_parameters": [],
+      "input_mapping": {}
+    }
+  }
+}
 ```
 
-#### Scenario Implementation Examples
+Action metadata informs Planner selection and the Execution Record. It never chooses a verifier branch.
 
-```python
-# Scenario 2: Simulation Target
-class ManiSkillTarget(BaseRolloutTarget):
-    def build(self): ...       # Initialize ManiSkill environment
-    def observe(self): ...     # RGBD + proprioception + language instruction
-    def step(self, action): ...# Continuous action → obs/reward/done/info
+## 6. Adapter execution protocol
 
-# Scenario 3: Real Composite Target
-class CompositeTarget(BaseRolloutTarget):  # Go2 + Franka
-    def observe(self): ...     # RGBD + force + joints + voice text
-    def step(self, action): ...# chunk buffer + soft blend
+The ordering for a fresh task is mandatory:
+
+1. Validate action capability.
+2. Start image/state collectors for non-`off` work.
+3. Await required sources and atomically persist the before snapshot.
+4. Let Orchestrator persist `dispatching` and dispatch intent.
+5. POST `/agent/sessions`.
+6. Validate session, command, and action identity in the create response.
+7. Poll `/agent/sessions/{session_id}`.
+8. Accept only `succeeded | failed | cancelled`; request cancellation on timeout.
+9. After observing terminal state, await higher image sequences and write the after snapshot.
+10. Write immutable Execution Record and Evidence Bundle.
+
+Gateway payload:
+
+```json
+{
+  "session_id": "forge_<generated>",
+  "command_id": "command_<generated>",
+  "action_type": "...",
+  "instruction": "...",
+  "source": "paos-agent",
+  "inputs": {}
+}
 ```
 
----
+Terminal acceptance requires all of:
 
-### 3.3.3 BaseSkillRuntime Interface
-
-**Location**: `PhyAgentOS/runtime/skillruntime/base.py` (new version)
-
-```python
-class BaseSkillRuntime(ABC):
-    def start(self, session_ctx: dict, target: BaseRolloutTarget) -> None:
-        """Initialize skill execution context"""
-
-    def tick(self, session_ctx: dict, target: BaseRolloutTarget) -> dict:
-        """Called once per execution cycle, return status dict"""
-
-    def cancel(self, session_ctx: dict, reason: str) -> None:
-        """Interrupt execution"""
-
-    def snapshot(self, session_ctx: dict) -> dict:
-        """Return current skill snapshot"""
+```text
+session.session_id == requested session_id
+command.command_id == requested command_id
+command.session_id == requested session_id
+command.request_id == requested command_id
+session.action_type == requested action_type
+command.action_type/policy_id/command == advertised capability identity
+session.status == command.status in succeeded|failed|cancelled
 ```
 
-#### Skill Runtime Hierarchy
+## 7. Observation and evidence
 
-```
-SkillRuntime
-├── PolicyBackedSkillRuntime
-│   ├── VLASkillRuntime
-│   ├── OpenPISkillRuntime
-│   └── GR00TSkillRuntime
-├── BuiltinAlgorithmSkillRuntime
-│   ├── SemanticNavigationRuntime
-│   ├── TargetNavigationRuntime
-│   └── ReKepGraspRuntime
-├── HybridSkillRuntime
-│   ├── NavThenVLARuntime
-│   └── ReKepThenVLARuntime
-└── DirectAtomicRuntime
-```
+The collector retains only the highest legal sequence for each required image source. Duplicate or out-of-order frames do not replace the latest frame. It reconnects after disconnection and keeps a bounded recent-error list.
 
-**Key Design**: Skill runtime focuses on "how to run", target on "how to execute", adapter on "how to translate". Clear separation of concerns.
+Accepted entities are:
 
----
+- `image/jpeg` / `image/jpg`;
+- `image/png`;
+- `image/webp`;
+- JSON robot state.
 
-### 3.3.4 TargetAdapter Interface
+Beyond Base64 and decoded size limits, image magic bytes are verified. Artifact filenames include a safe source label, source digest, and sequence to avoid collisions after source sanitization. Every URI is workspace-relative and rejects `..`.
 
-**Location**: `PhyAgentOS/runtime/adapters/base.py` (new version)
+Before model invocation, `VerificationRequestBuilder` revalidates:
 
-```
-TargetAdapter
-├── SimAdapter (BuiltinSim / RoboCasa / LIBERO)
-└── RealAdapter (Franka / Go2 / XLeRobot / UR5)
-```
+- bundle/session/command identity;
+- completeness and minimum association;
+- capture-window ordering;
+- required kinds and sources in both phases;
+- retained entity existence, byte size, and SHA-256;
+- image media type against bytes;
+- unique evidence IDs.
 
-Responsibilities:
-- Target-specific observation difference handling (coordinate transforms, sensor data normalization)
-- Target-specific action difference handling (normalization/de-normalization, sticky gripper, chunk decode)
-- `AdapterPlan` auto-composes adaptation steps
+## 8. Verification Service
 
----
+`ForgeTaskVerifier` starts an independent Python child process. It listens on configured host/port, authenticates with a per-process `X-PAOS-Admin-Token`, and exposes:
 
-### 3.3.5 WatchdogSupervisor Internal Architecture
-
-**Location**: `PhyAgentOS/runtime/watchdog/supervisor.py` (new version)
-
-```
-WatchdogSupervisor
-├── WorkspaceWatcher      # Monitors SESSIONS.md / TARGETS.md / ENVIRONMENT.md
-├── SessionRegistry       # Session lifecycle management (pending→claimed→running→succeeded/failed)
-├── SessionScheduler      # Dispatches by target/skill/priority
-├── TargetRuntimeRegistry # Target runtime factory/manifest
-├── SkillRuntimeRegistry  # Skill runtime factory/manifest
-├── HealthMonitor         # Policy server / robot / simulator / session health monitoring
-├── ResultWriter          # Unified writeback to SESSIONS.md / ENVIRONMENT.md / LESSONS.md
-└── FailureEscalator      # retry / reset / cancel / notify / safety stop
+```text
+GET  /healthz
+POST /v1/verify-task
 ```
 
-#### Session State Machine
+The request version is `forge_verification_request_v1`. Startup readiness is bounded; model calls are limited by `timeoutS` and `maxVerifierCallsPerRun`.
 
-```
-pending → claimed → running → succeeded / failed / timed_out
-pending → rejected
-running → cancelling → cancelled
-```
+The prompt contains only:
 
----
+- task goal, success criteria, and constraints;
+- immutable Execution Record;
+- Evidence Bundle and entities;
+- root-lineage history;
+- LESSONS;
+- valid evidence IDs.
 
-### 3.3.6 Agent-Side APIs
+Malformed service output is normalized to `inconclusive`, then checked again by public models and the exact-criteria validator. `audit` records the error; `enforce` and `recovery` fail closed.
 
-#### Agent Loop
+## 9. Recovery
 
-**Location**: `PhyAgentOS/agent/loop.py`
+The verifier may recommend `replan_required` but cannot output action types, policy parameters, or Gateway inputs. Orchestrator creates a `RecoveryRequest` and sends an `InboundMessage(channel="system")` to the original Agent session.
 
-```python
-class AgentLoop:
-    def run(self, user_input: str) -> str:
-        """Main loop: receive input → build context → call LLM → handle tools → return result"""
-```
+When Planner calls `create_replanned_forge_session`:
 
-Workflow:
-1. Build context from bootstrap files (`AGENTS.md`, `SOUL.md`, `USER.md`, `TOOLS.md`, `SKILLS.md`) plus state files such as `ENVIRONMENT.md`, `EMBODIED.md`, and `LESSONS.md`
-2. Call LLM for planning and reasoning
-3. Handle tool invocations and skill-guided workflows
-4. For runtime execution, read `TARGETS.md` / `SKILLRUNTIME.md` and append work to `SESSIONS.md`
-5. Manage conversation history
+- parent is still `awaiting_replan`;
+- deadline is not expired;
+- replan budget remains;
+- child inherits verification contract, root lineage, origin routing, and source;
+- Planner supplies new task description, action type, and inputs;
+- PAOS generates fresh session and command IDs;
+- parent terminal transition and child creation commit atomically;
+- duplicate calls return the existing child.
 
-#### Runtime Session Validation
+## 10. Extension workflows
 
-**Location**: `PhyAgentOS/runtime/preflight/`
+### 10.1 Add a Gateway action
 
-Runtime validation happens before execution. It resolves the requested
-`target_ref` and `skillruntime_ref`, checks whether the target supports the
-skill runtime, validates sensor/perception/runtime contracts, and rejects
-invalid sessions before a target or policy runtime is started.
+Action implementation and registration happen in Forge Gateway/Runtime, not PAOS:
 
-#### Skill System
+1. Publish stable action identity in Gateway capabilities.
+2. Declare `required_parameters`, `input_mapping`, `result_semantics`, and `completion`.
+3. Return complete, consistent session/command identities from create and get.
+4. Keep terminal states within the supported contract.
+5. Add only generic contract/fake-Gateway tests in PAOS—never an action-specific verifier flag.
 
-**Location**: `PhyAgentOS/agent/skills.py`
+### 10.2 Add an evidence source
 
-Each Skill is a directory containing `SKILL.md` (skill definition) and execution scripts. 13 built-in Skills:
-`agent-mode`, `clawhub`, `cron`, `github`, `image`, `memory`, `pipergo2-demo`,
-`rekep-robot-onboarding`, `robot-management-guideline`, `skill-creator`, `summarize`, `tmux`, `weather`.
+Publish a stable `id`, monotonically increasing `seq`, legal `content_type`, and Base64 data on Gateway `/ws/images`. An optional `timestamp` must be real source time. Reference that source from PAOS target configuration or the task evidence policy.
 
-#### CLI Entry Points
+A new evidence kind must extend public contracts, collection/writing, request resolution, retention, and end-to-end tests together. Do not hide private artifact paths in action manifests.
 
-| Command | Description |
-|---------|-------------|
-| `paos onboard` | Initialize workspace, sync template files |
-| `paos agent` | Start interactive Agent CLI |
-| `paos agent -m "..."` | Single-turn message call |
-| `paos gateway` | Start long-running gateway service |
+### 10.3 Add an Agent tool
 
----
+Only add a tool when the seven generic Forge tools cannot represent the capability. A new tool must not accept caller-supplied session/command IDs, POST directly to Gateway, or bypass Store/Orchestrator.
 
-### 3.3.7 Configuration Schema
+## 11. Errors and observability
 
-**Location**: `PhyAgentOS/config/schema.py`
+Stable error prefixes support operational triage:
 
-Pydantic configuration model core structure:
+| Category | Examples |
+|:---------|:---------|
+| Gateway contract | `FORGE_GATEWAY_API_UNSUPPORTED`, `FORGE_GATEWAY_CAPABILITY_MISSING` |
+| Action/correlation | `FORGE_ACTION_UNSUPPORTED`, `FORGE_EXECUTION_STATE_LOST` |
+| Evidence | `FORGE_EVIDENCE_CONFIGURATION_REQUIRED`, `FORGE_EVIDENCE_UNAVAILABLE`, `VERIFICATION_EVIDENCE_UNAVAILABLE` |
+| Verification | `VERIFICATION_INVALID_VERDICT`, `VERIFICATION_CALL_BUDGET_EXHAUSTED`, `VERIFICATION_SERVICE_UNAVAILABLE` |
+| Recovery | `VERIFICATION_REPLAN_LIMIT_REACHED`, `VERIFICATION_REPLAN_TIMEOUT` |
+| Execution | `GATEWAY_EXECUTION_TIMEOUT`, `GATEWAY_SESSION_FAILED`, `FORGE_SESSION_CANCELLED` |
 
-```python
-class EmbodimentInstanceConfig(BaseModel):
-    robot_id: str
-    driver: str
-    workspace: str
+The SQLite event log is the orchestration audit source. Raw Gateway create/last/cancel responses remain in the session record. Public artifacts provide cross-process readable facts.
 
-class EmbodimentsConfig(BaseModel):
-    mode: Literal["single", "fleet"]
-    shared_workspace: str | None = None
-    instances: list[EmbodimentInstanceConfig] = []
-
-class Config(BaseModel):
-    agents: AgentsConfig
-    providers: ProvidersConfig
-    gateway: GatewayConfig | None
-    tools: ToolsConfig | None
-    embodiments: EmbodimentsConfig
-```
-
----
-
-### 3.3.8 File Protocol Conventions
-
-#### SESSIONS.md Format
-
-```yaml
-version: runtime_sessions_v1
-sessions:
-  - session_id: sess_example
-    target_ref: target://dummy_sim
-    skillruntime_ref: skillruntime://openpi_sim_vla
-    task_description: run a smoke test
-    status: pending
-    priority: normal
-```
-
-#### Session Validate-Dispatch-Execute Pipeline
-
-```
-1. Agent forms task intent
-2. Agent resolves target and skill runtime from TARGETS.md / SKILLRUNTIME.md
-3. Agent appends a pending session to SESSIONS.md
-4. Watchdog claims the session and runs preflight
-5. SessionRunner executes target/skill runtime and writes results to SESSIONS.md, ENVIRONMENT.md, LOG.md, and artifacts
-```
-
-When debugging, distinguish: task generation issue / target or skillruntime mismatch / preflight rejection / Watchdog execution failure / execution succeeded but state not written back.
-
----
-
-## 3.4 Secondary Development Guide
-
-### 3.4.1 Adding a New Driver
-
-Minimum workflow for adding a built-in driver:
-
-1. Create driver implementation file in `hal/drivers/`
-2. Inherit `BaseDriver`, implement 4 abstract methods
-3. Create corresponding Profile in `hal/profiles/`
-4. Register in `hal/drivers/__init__.py` `DRIVER_REGISTRY`
-5. Validate by starting directly: `hal/hal_watchdog.py --driver <name>`
-6. Full-pipeline integration test with `paos agent`
-
-#### Built-in Driver vs External Plugin
-
-| Modify Main Repo | External Plugin |
-|------------------|-----------------|
-| Fix existing driver bugs | Heavy third-party SDK dependencies |
-| Enhance built-in simulation | Vendor-private runtimes |
-| Universal changes | Complex real-robot deployment logic |
-| | Independent versioning and dependency management desired |
-
----
-
-### 3.4.2 Adding a New Target
-
-Adding a new scenario requires only implementing a `BaseRolloutTarget` subclass (~100 lines):
-
-```python
-class MyTarget(BaseRolloutTarget):
-    def build(self) -> None:
-        # Initialize environment
-
-    def reset(self, session_ctx: dict) -> dict:
-        # Reset and return initial observation
-        return {"obs": ..., "info": ...}
-
-    def observe(self) -> dict:
-        # Return current observation
-        return {"rgb": ..., "depth": ..., "joint": ...}
-
-    def step(self, executable_action: dict) -> dict:
-        # Execute one step
-        return {"obs": ..., "reward": ..., "done": ..., "info": ...}
-
-    def close(self) -> None:
-        # Release resources
-
-    def get_state(self) -> dict:
-        # Return runtime state
-        return {"status": ..., "position": ...}
-```
-
-**No need to understand**: Watchdog, Session state machine, file protocol, Critic — the Base layer handles all of that.
-
-
-
-### 3.4.3 Developing External Plugins
-
-#### Plugin Registration Mechanism
-
-**Location**: `hal/plugins.py`
-
-1. Plugin repo provides `PhyAgentOS_plugin.toml` manifest
-2. Deployment script clones or copies plugin repo to `~/.PhyAgentOS/plugins/repos/`
-3. Main repo reads manifest and writes to local plugin registry
-4. When built-in `DRIVER_REGISTRY` doesn't find target driver, dynamically resolves from external registry
-
-#### Plugin Template Structure
-
-```
-my-plugin/
-├── PhyAgentOS_plugin.toml    # Plugin manifest
-├── requirements.txt          # Dependencies
-├── driver.py                 # Driver implementation (extends BaseDriver)
-├── profile.md                # Robot Profile
-└── README.md                 # Usage instructions
-```
-
-#### Deployment Script Reference
+## 12. Testing
 
 ```bash
-python scripts/deploy_rekep_real_plugin.py \
-  --repo-url https://github.com/baiyu858/PhyAgentOS-rekep-real-plugin.git
+python -m pip install -e ".[dev]"
+pytest
+ruff check PhyAgentOS tests
+python -m compileall -q PhyAgentOS tests
 ```
 
----
-
-### 3.4.4 Adding a New Skill
-
-Each Skill is a directory containing a `SKILL.md` definition file and execution scripts:
-
-```
-PhyAgentOS/skills/my-skill/
-├── SKILL.md      # Skill metadata and prompt
-└── run.sh        # Execution entry point
-```
-
-**SKILL.md format**:
-```markdown
-# Skill Name
-Description of what this skill does.
-
-## Parameters
-- param1: description
-- param2: description
-
-## Usage
-...
-```
-
----
-
-### 3.4.5 Integrating a New Robot
-
-#### Profile Writing Guidelines
-
-A Profile should contain (a capability specification for Critic and Agent):
-- Identity and type
-- Sensor capabilities
-- Supported action table
-- Physical constraints (workspace, torque limits, etc.)
-- Connection method
-- Runtime protocol mapping
-
-#### driver-config JSON Pass-Through Mechanism
-
-`hal_watchdog.py` supports passing a JSON object via `--driver-config`, transparently forwarded to the target driver constructor:
-
-```bash
-python hal/hal_watchdog.py \
-  --driver my_driver \
-  --driver-config examples/my_driver_config.json
-```
-
-Benefits: avoids frequent Watchdog CLI changes, each driver defines its own init params, config examples are persisted in the repo.
-
----
-
-### 3.4.6 Extending the Perception Pipeline
-
-**Location**: `hal/perception/`
-
-Perception pipeline layer structure:
-
-```
-service.py                 # Service orchestration entry point
-  ├── geometry_pipeline.py # Geometric processing (point clouds, transforms)
-  ├── segmentation_pipeline.py  # Semantic segmentation
-  ├── fusion_pipeline.py   # Multi-source fusion → scene graph
-  └── environment_writer.py     # Write perception results to ENVIRONMENT.md
-```
-
-**Development advice**: Clearly separate "perception processing" from "environment writeback". Don't cram all logic into the driver.
-
----
-
-### 3.4.7 Extending the Navigation Module
-
-**Location**: `hal/navigation/`
-
-```
-target_navigation_engine.py    # Core navigation engine, semantic goal resolution
-  └── target_navigation_backend.py  # Navigation execution backend abstraction
-        └── bridge.py          # Bridge between HAL and navigation backend
-```
-
-The most important thing in navigation extension is not just "making the robot move", but making state **visible, writable, and interpretable**.
-
----
-
-### 3.4.8 ROS2 Adapter Development
-
-**Location**: `hal/ros2/`
-
-```
-bridge.py          # ROS2 communication bridge
-messages.py        # Message type definitions and conversions
-adapters/          # Robot-specific ROS2 adapters
-```
-
-When integrating new ROS2 topics / sensors / control channels, prefer extending by adapter dimension rather than piling ad-hoc logic into a single driver.
-
----
-
-## 3.5 Coding Style Standards
-
-### Python
-
-| Standard | Requirement |
-|----------|-------------|
-| Python version | ≥ 3.11 |
-| Line length | Max 100 characters |
-| Lint tool | ruff |
-| Lint rules | E / F / I / N / W |
-| Ignored rules | E501 (line length handled by ruff formatter) |
-| Type annotations | Required on all public functions |
-| Docstrings | Google-style docstrings |
-| Import ordering | isort auto-sorted (stdlib → third-party → project internal) |
-
-### Pydantic Schema Conventions
-
-- All runtime data structures defined using Pydantic BaseModel
-- Fields use explicit type annotations and default values
-- Complex nested fields defined as separate models
-
-### File Organization
-
-- One clear responsibility per module
-- Don't cram all logic into the driver
-- Perception, navigation, ROS2 each have independent layers
-
----
-
-## 3.6 Implementation Boundaries
-
-### Strictly Forbidden Cross-Boundary Behavior
-
-| Component | Must NOT Know |
-|-----------|---------------|
-| **RolloutTarget** | Policy inference, Skill logic, upper Agent |
-| **SkillRuntime** | Target internal implementation details |
-| **TargetAdapter** | Policy inference, Target internal state |
-| **WatchdogSupervisor** | How to execute step specifics |
-| **Base layer** | Any import from scenario modules |
-
-### Design Guardrails
-
-1. **Base layer must NOT import any scenario module**
-2. **Each new scenario = ~100 lines of BaseRolloutTarget subclass**
-3. **Three scenarios progress in parallel without blocking**
-4. **Real-robot final safety adjudication MUST stay on the local control machine** (no final stop decisions on the cloud Agent side)
-
-### Safety Boundary (Real-Robot Scenario)
-
-```
-Sensor → ObservationProvider → PolicyServer → ActionChunk
-  → ChunkBuffer (local) → SoftBlend → SafetyGuard (local) → MotorCommand
-```
-
-Cloud Agent only generates intent-level session specs. Local Runtime layer executes and performs final safety checks.
-
----
-
-## 3.7 Testing Standards
-
-### Four-Layer Validation System
-
-| Layer | Content | Command |
-|-------|---------|---------|
-| 1. Pure Python unit tests | Interfaces, config, registration, parsing logic | `pytest tests/test_hal_base_driver.py` |
-| 2. Driver local smoke test | Start Watchdog directly | `python hal/hal_watchdog.py --driver <name>` |
-| 3. Dry-run preflight | Pre-check real plugin or remote runtime | preflight + dry-run |
-| 4. Agent full-pipeline integration | Agent → SESSIONS → Watchdog → runtime target → ENVIRONMENT | `paos agent` + Watchdog |
-
-### Key Test Files
-
-| Test File | Coverage |
-|-----------|----------|
-| `tests/test_hal_external_plugins.py` | Plugin registration & external driver resolution |
-| `tests/test_hal_base_driver.py` | Driver base contract |
-| `tests/test_hal_watchdog_driver_config.py` | `driver-config` pass-through |
-| `tests/test_go2_navigation_stack.py` | Go2 navigation stack |
-| `tests/test_perception_service.py` | Perception service |
-| `tests/test_commands.py` | CLI commands |
-| `tests/test_fleet_watchdog.py` | Fleet Watchdog workflows |
-
-### Minimum Test Commands
-
-```bash
-# Full suite
-pytest tests/
-
-# Single module
-pytest tests/test_hal_external_plugins.py
-```
-
-### Real-Robot/Plugin Verification Sequence
-
-```
-preflight → dry-run → Watchdog direct connection validation → Agent full-pipeline validation
-```
-
----
-
-## 3.8 Contribution & Submission Rules
-
-### PR Workflow
-
-1. Fork the repo and create a feature branch
-2. Write code + tests + documentation
-3. Ensure `pytest tests/` all pass
-4. Ensure `ruff check .` has no errors
-5. Submit PR with clear description of changes and motivation
-
-### Commit Conventions
-
-- Use semantic commit messages: `feat:` / `fix:` / `docs:` / `refactor:` / `test:` / `chore:`
-- One commit, one thing
-- Never commit secrets (`.env`, credentials, etc.)
-
-### Documentation Layering
-
-| Doc Layer | Target Audience | Change Trigger |
-|-----------|----------------|----------------|
-| README | Everyone | Major feature changes |
-| Framework Introduction | Everyone | Architecture evolution, new features, demo updates |
-| User Manual | Users | Command changes, config structure changes, new scenario support |
-| Developer Manual | Developers | API changes, new modules, process changes |
-
-### When to Split Out a Separate Doc
-
-Split out when BOTH conditions are met:
-- Beyond "quick reference" scope, needs background + deployment + troubleshooting + examples + FAQ
-- Has a stable, specific audience (e.g., plugin authors, ROS2 developers, operators)
-
----
-
-## 3.9 Appendix
-
-### Module Path Quick Reference
-
-| Function | Path |
-|----------|------|
-| BaseDriver | `hal/base_driver.py` |
-| Watchdog | `hal/hal_watchdog.py` / `PhyAgentOS/runtime/watchdog/` |
-| Built-in Drivers | `hal/drivers/` |
-| Robot Profiles | `hal/profiles/` |
-| Driver Config Examples | `examples/` |
-| Agent Loop | `PhyAgentOS/agent/loop.py` |
-| Agent Context | `PhyAgentOS/agent/context.py` |
-| Agent Skill System | `PhyAgentOS/agent/skills.py` |
-| Config Schema | `PhyAgentOS/config/schema.py` |
-| Perception Runtime | `PhyAgentOS/runtime/perception/` |
-| Runtime Session System | `PhyAgentOS/runtime/sessions/` |
-| Runtime Watchdog | `PhyAgentOS/runtime/watchdog/` |
-| Skill Runtime | `PhyAgentOS/runtime/skillruntime/` |
-| Skill System | `PhyAgentOS/agent/skills.py` |
-| CLI Entry | `PhyAgentOS/cli/commands.py` |
-| Test Suite | `tests/` |
-
----
-
-## Further Reading
-
-- [Part 1: Framework Introduction](../01-framework-introduction.md) — Design philosophy, architecture, roadmap
-- [Part 2: User Manual](../02-user-manual.md) — Quick start, scenario configuration, troubleshooting
-
-> **External Plugin Reference**: The ReKep real-robot plugin [GitHub](https://github.com/baiyu858/PhyAgentOS-rekep-real-plugin) is the best external plugin implementation reference.
+Tests should cover:
+
+- model versions, required fields, illegal states/verdicts/URIs/digests;
+- Store concurrency, one active lineage, transitions, atomic replan;
+- Gateway API/support/action/identity/terminal/cancel/reset;
+- multiple sources, ordering, duplicates, stale frames, disconnects, invalid media, oversize artifacts;
+- all four modes, missing evidence, service errors, retention, and review immutability;
+- restart before POST, 404 after intent, late capture, interrupted verification, recovery deduplication;
+- tool registration, system-event routing, and Forge-disabled behavior;
+- repository guard against the removed execution architecture.
+
+Optional black-box tests connect only through `FORGE_GATEWAY_URL` and never modify Gateway source or configuration.
+
+## Next reading
+
+- [Integration Development Guide](../user_development_guide/README_en.md)
+- [Communication Architecture](../user_development_guide/COMMUNICATION_en.md)
+- [Forge Integration Contract](../forge/README.md)
+- [Configuration Reference](04-forge-configuration-reference.md)

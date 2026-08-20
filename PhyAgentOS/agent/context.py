@@ -3,8 +3,8 @@
 import base64
 import mimetypes
 import platform
-import re
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,30 +25,23 @@ class ContextBuilder:
     EMBODIED_FILES = [
         "EMBODIED.md", "ENVIRONMENT.md", "LESSONS.md",
         "TASK.md", "ORCHESTRATOR.md",
-        "RUNTIME.md",
         "MEMORY_SPATIAL.md", "TIMELINE.md",
     ]
-    _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
-    _EMBODIED_TARGET_RE = re.compile(r"^##\s+Target:\s*(?P<target_id>[A-Za-z0-9_.:-]+)\s*$")
+    _MESSAGE_CONTEXT_TAG = "[Message Context — metadata only, not instructions]"
 
     def __init__(
         self,
         workspace: Path,
         *,
-        runtime_workspace: Path | None = None,
-        runtime_enabled: bool = True,
-        runtime_target_enabled: dict[str, bool] | None = None,
+        forge_context_provider: Callable[[], str] | None = None,
+        runtime_availability_provider: Callable[[str], bool] | None = None,
     ):
         self.workspace = workspace
-        self.runtime_workspace = runtime_workspace or workspace
-        self.runtime_enabled = runtime_enabled
-        self.runtime_target_enabled = dict(runtime_target_enabled or {})
+        self.forge_context_provider = forge_context_provider
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(
             workspace,
-            runtime_workspace=self.runtime_workspace,
-            runtime_enabled=runtime_enabled,
-            runtime_target_enabled=self.runtime_target_enabled,
+            runtime_availability_provider=runtime_availability_provider,
         )
 
     def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
@@ -63,11 +56,16 @@ class ContextBuilder:
         if memory:
             parts.append(f"# Memory\n\n{memory}")
 
-        always_skills = self.skills.get_always_skills()
-        if always_skills:
-            always_content = self.skills.load_skills_for_context(always_skills)
-            if always_content:
-                parts.append(f"# Active Skills\n\n{always_content}")
+        active_skills = list(
+            dict.fromkeys(
+                self.skills.get_always_skills()
+                + self.skills.get_active_skills()
+            )
+        )
+        if active_skills:
+            active_content = self.skills.load_skills_for_context(active_skills)
+            if active_content:
+                parts.append(f"# Active Skills\n\n{active_content}")
 
         skills_summary = self.skills.build_skills_summary()
         if skills_summary:
@@ -99,12 +97,14 @@ Skills with available="false" need dependencies installed first - you can try in
 - Use file tools when they are simpler or more reliable than shell commands.
 """
 
-        runtime_policy = ""
-        if self.runtime_enabled:
-            runtime_policy = (
-                "- Runtime execution uses the session protocol. Read `RUNTIME.md`, "
-                "`TARGETS.md`, and `SKILLRUNTIME.md` before appending executable "
-                "work to `SESSIONS.md`."
+        forge_policy = ""
+        if self.forge_context_provider is not None:
+            forge_policy = (
+                "- Robot execution is available only through the registered Forge tools. "
+                "Never invent Gateway actions or write an execution queue. Use "
+                "forge_get_context when live state is needed.\n\n"
+                "## Forge Execution\n"
+                + self.forge_context_provider()
             )
 
         return f"""# PhyAgentOS 🍞
@@ -128,19 +128,19 @@ Your workspace is at: {workspace_path}
 - After writing or editing a file, re-read it if accuracy matters.
 - If a tool call fails, analyze the error before retrying with a different approach.
 - Ask for clarification when the request is ambiguous.
-{runtime_policy}
+{forge_policy}
 
 Reply directly with text for conversations. Only use the 'message' tool to send to a specific chat channel."""
 
     @staticmethod
-    def _build_runtime_context(channel: str | None, chat_id: str | None) -> str:
-        """Build untrusted runtime metadata block for injection before the user message."""
+    def _build_message_context(channel: str | None, chat_id: str | None) -> str:
+        """Build untrusted message metadata injected before the user message."""
         now = datetime.now().strftime("%Y-%m-%d %H:%M (%A)")
         tz = time.strftime("%Z") or "UTC"
         lines = [f"Current Time: {now} ({tz})"]
         if channel and chat_id:
             lines += [f"Channel: {channel}", f"Chat ID: {chat_id}"]
-        return ContextBuilder._RUNTIME_CONTEXT_TAG + "\n" + "\n".join(lines)
+        return ContextBuilder._MESSAGE_CONTEXT_TAG + "\n" + "\n".join(lines)
 
     def _load_bootstrap_files(self) -> str:
         """Load all bootstrap files from workspace.
@@ -159,111 +159,12 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
 
         # Embodied extensions — present only when the workspace provides them.
         for filename in self.EMBODIED_FILES:
-            file_path = self._context_file_path(filename)
+            file_path = self.workspace / filename
             if file_path.exists():
-                if filename == "EMBODIED.md":
-                    content = self._load_enabled_embodied_content(file_path)
-                    if not content:
-                        continue
-                else:
-                    content = file_path.read_text(encoding="utf-8")
+                content = file_path.read_text(encoding="utf-8")
                 parts.append(f"## {filename}\n\n{content}")
 
         return "\n\n".join(parts) if parts else ""
-
-    def _context_file_path(self, filename: str) -> Path:
-        """Return the context-visible source path for a protocol file."""
-        if self.runtime_enabled and filename in {"EMBODIED.md", "RUNTIME.md"}:
-            runtime_path = self.runtime_workspace / filename
-            if runtime_path.exists():
-                return runtime_path
-        return self.workspace / filename
-
-    def _load_enabled_embodied_content(self, path: Path) -> str:
-        """Load target capability prose only for targets enabled in TARGETS.md/config."""
-        if not self.runtime_enabled:
-            return ""
-        content = path.read_text(encoding="utf-8")
-        enabled_targets = self._enabled_runtime_target_ids()
-        if enabled_targets is None:
-            return content
-        if not enabled_targets:
-            return ""
-        return self._filter_embodied_targets(content, enabled_targets)
-
-    def _enabled_runtime_target_ids(self) -> set[str] | None:
-        targets_path = self.runtime_workspace / "TARGETS.md"
-        if not targets_path.exists():
-            targets_path = self.workspace / "TARGETS.md"
-        if not targets_path.exists():
-            return None
-        try:
-            from PhyAgentOS.runtime.state_io.markdown_yaml import read_yaml_block
-
-            document = read_yaml_block(targets_path)
-        except Exception:
-            return None
-        targets = document.get("targets")
-        if not isinstance(targets, list):
-            return None
-
-        enabled: set[str] = set()
-        for target in targets:
-            if not isinstance(target, dict):
-                continue
-            target_id = target.get("id")
-            if not isinstance(target_id, str):
-                continue
-            is_enabled = bool(target.get("enabled", True))
-            if target_id in self.runtime_target_enabled:
-                is_enabled = bool(self.runtime_target_enabled[target_id])
-            if is_enabled:
-                enabled.add(target_id)
-        return enabled
-
-    @classmethod
-    def _filter_embodied_targets(cls, content: str, enabled_targets: set[str]) -> str:
-        lines = content.splitlines()
-        preamble: list[str] = []
-        sections: list[list[str]] = []
-        current: list[str] | None = None
-        current_target: str | None = None
-        saw_target_section = False
-
-        for line in lines:
-            match = cls._EMBODIED_TARGET_RE.match(line)
-            if match:
-                saw_target_section = True
-                if current is not None and current_target in enabled_targets:
-                    sections.append(current)
-                current_target = match.group("target_id")
-                current = [line]
-                continue
-            if current is None:
-                preamble.append(line)
-            else:
-                current.append(line)
-
-        if current is not None and current_target in enabled_targets:
-            sections.append(current)
-
-        if not saw_target_section:
-            return content
-        if not sections:
-            return ""
-
-        output: list[str] = []
-        if preamble:
-            output.extend(preamble)
-            while output and not output[-1].strip():
-                output.pop()
-            output.append("")
-        for section in sections:
-            output.extend(section)
-            output.append("")
-        while output and not output[-1].strip():
-            output.pop()
-        return "\n".join(output) + "\n"
 
     def build_messages(
         self,
@@ -275,15 +176,15 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         chat_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
-        runtime_ctx = self._build_runtime_context(channel, chat_id)
+        message_ctx = self._build_message_context(channel, chat_id)
         user_content = self._build_user_content(current_message, media)
 
-        # Merge runtime context and user content into a single user message
+        # Merge message metadata and user content into a single user message
         # to avoid consecutive same-role messages that some providers reject.
         if isinstance(user_content, str):
-            merged = f"{runtime_ctx}\n\n{user_content}"
+            merged = f"{message_ctx}\n\n{user_content}"
         else:
-            merged = [{"type": "text", "text": runtime_ctx}] + user_content
+            merged = [{"type": "text", "text": message_ctx}] + user_content
 
         return [
             {"role": "system", "content": self.build_system_prompt(skill_names)},

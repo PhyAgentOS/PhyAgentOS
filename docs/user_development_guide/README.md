@@ -1,633 +1,227 @@
-# PhyAgentOS 用户开发指南
+# PhyAgentOS 集成开发指南
 
-> 面向二次开发者、硬件接入者、插件作者与维护者的分层手册。本文档重点解释仓库结构、运行入口、工作区协议、驱动扩展、插件机制、导航/感知相关模块，以及推荐的测试与文档维护方式。
+> 版本：0.1.4.post4 · [English](README_en.md)
 
-## 目录
+本指南面向 Forge Gateway、机器人能力、证据源、LLM Provider 和 PAOS Agent 工具的集成开发者。当前机器人执行只通过 Forge Gateway 1.0.0；PAOS 不再内置 Target/Policy/SkillRuntime/SessionRunner 扩展点。
 
-- [1. 指南定位与推荐阅读顺序](#1-指南定位与推荐阅读顺序)
-- [2. 从开发视角理解系统架构](#2-从开发视角理解系统架构)
-- [3. 仓库结构与模块职责](#3-仓库结构与模块职责)
-- [4. 配置系统与工作区模型](#4-配置系统与工作区模型)
-- [5. 运行入口与开发期调试方式](#5-运行入口与开发期调试方式)
-- [6. HAL 驱动开发与内置驱动扩展](#6-hal-驱动开发与内置驱动扩展)
-- [7. 动作校验、分发与运行时文件流转](#7-动作校验分发与运行时文件流转)
-- [8. 导航、感知与 ROS2 相关模块](#8-导航感知与-ros2-相关模块)
-- [9. 外部插件机制与 ReKep 参考路径](#9-外部插件机制与-rekep-参考路径)
-- [10. 测试、验证与质量门禁](#10-测试验证与质量门禁)
-- [11. 文档维护与贡献建议](#11-文档维护与贡献建议)
-- [12. 后续扩展主题（开发中）](#12-后续扩展主题开发中)
+## 1. 选择正确扩展点
 
-## 1. 指南定位与推荐阅读顺序
+| 需求 | 应修改的位置 | PAOS 侧工作 |
+|:-----|:-------------|:------------|
+| 新机器人/仿真环境 | Forge Runtime / Dora / hardware integration | 不新增 driver；确认 Gateway contract 可用 |
+| 新高层动作 | Forge Gateway capabilities 与 action dispatch | 通常无需产品代码，只补通用 contract/E2E 测试与文档 |
+| 新 policy | Forge action 背后的 policy/runtime | capability 暴露通用 policy identity/result semantics |
+| 新摄像头 | Gateway `/ws/images` producer | 配置 source ID，测试 before/after sequence |
+| 新结构化状态 | Gateway `/ws/state` 或公共 evidence-kind 扩展 | 若新增 kind，同时扩展 contracts/resolver/retention/test |
+| 新 verifier 模型 | PAOS Provider 配置/实现 | 保证多模态输入与严格 JSON 输出 |
+| 新 Agent 入口 | PAOS Channel | 经 MessageBus/AgentLoop，不能直接调用 Gateway |
+| 新执行工具 | 优先复用通用 Forge tools | 不能绕过 Orchestrator/Store，也不能暴露调用方 ID |
 
-### 1.1 这份文档解决什么问题
+## 2. 接入一个 Gateway action
 
-如果你的目标已经不是“把系统跑起来”，而是以下这些方向之一，那么你应该以本文档为主：
+### 2.1 Capability 声明
 
-- 理解仓库内各模块分工
-- 新增或修改内置驱动
-- 基于 HAL 接入新机器人
-- 开发一个独立插件仓库
-- 接入感知、导航、远程控制或 ROS2 相关能力
-- 为项目补测试、补文档、补部署说明
-
-如果你只是想先完成安装和基本运行，请先阅读 [USER_MANUAL.md](../user_manual/README.md)。
-
-### 1.2 推荐阅读路径
-
-| 目标 | 建议先读 | 然后继续 |
-| --- | --- | --- |
-| 想理解运行时通信 | [COMMUNICATION.md](COMMUNICATION.md) | 本文第 2、4、7 章 |
-| 想接一个真实机器人插件 | [phyagentos-rekep-plugin-blog-zh.md](REKEP_PLUGIN_DEPLOYMENT_zh.md) | 本文第 9 章 |
-| 想按模板开发外部插件 | [PLUGIN_DEVELOPMENT_GUIDE_zh.md](PLUGIN_DEVELOPMENT_GUIDE_zh.md) | 本文第 6、9、10 章 |
-| 想快速了解项目整体定位 | [../README_zh.md](../../README_zh.md) | 本文第 2、3 章 |
-| 想了解阶段性规划 | [plans/Report.md](../plans/Report.md) | 本文第 12 章 |
-
-## 2. 从开发视角理解系统架构
-
-### 2.1 核心设计：认知与执行解耦
-
-PhyAgentOS 的核心价值不只是“有一个 Agent”，而是将认知层与执行层通过显式协议解耦：
-
-- **Track A：Agent / Planner / Critic / Tooling**
-  - 负责自然语言理解、规划、工具调用、动作校验、记忆与编排
-- **Track B：Runtime / Watchdog / SessionRunner / Target**
-  - 负责 session 级执行监督、target/policy 调用、artifact 与环境状态写回
-- **中间层协议**
-  - 不是 RPC-first，也不是把所有状态藏在对象实例里
-  - 而是优先通过工作区中的 Markdown 文件暴露共享状态
-
-这一点是理解整个项目的前提：**很多“接口”本质上不是 Python 函数，而是文件协议与运行时约定。**
-
-### 2.2 为什么工作区文件很重要
-
-在 PhyAgentOS 中，下列文件通常比类图更重要：
-
-- `TARGETS.md`
-- `SKILLRUNTIME.md`
-- `SESSIONS.md`
-- `ENVIRONMENT.md`
-- `LESSONS.md`
-- `TASK.md`
-- `ORCHESTRATOR.md`
-
-`EMBODIED.md` 面向 Agent 提供 target 能力描述；当前 session-centered runtime 的正式执行入口是 `SESSIONS.md`。
-
-它们共同构成运行时“真实状态面”。如果你只看代码、不看这些文件，很容易误解系统是怎么工作的。文件职责详见 [COMMUNICATION.md](COMMUNICATION.md) 与本文第 4、7 章。
-
-### 2.3 单机模式与 Fleet 模式的开发含义
-
-开发者需要特别清楚两种拓扑的差异：
-
-- **single 模式**
-  - 一个工作区即可跑通全链路
-  - 适合开发期 smoke test
-- **fleet 模式**
-  - 一个共享工作区 + 多个机器人工作区
-  - Agent 在共享工作区上做规划
-  - Runtime workspace 中可以存在多个 targets 与多个 sessions
-  - WatchdogSupervisor 按 session claim / preflight / execute / writeback
-
-这意味着：任何涉及具身动作、导航、连接状态或多机器人任务的功能，都应该显式考虑 single / fleet 两种运行语义。
-
-## 3. 仓库结构与模块职责
-
-### 3.1 顶层目录速览
-
-| 路径 | 作用 |
-| --- | --- |
-| [../PhyAgentOS](../../PhyAgentOS) | Agent 与 runtime 主体：CLI、Provider、Channel、Template、Session、Watchdog、Target、Skill 等 |
-| [../hal](../../hal) | Legacy HAL driver：旧版驱动、导航、ROS2、仿真入口 |
-| [../bridge](../../bridge) | 网桥相关代码，偏服务化/渠道接入配套 |
-| [docs](..) | 项目文档与说明 |
-| [../examples](../../examples) | 驱动配置样例 |
-| [../scripts](../../scripts) | 部署脚本，如插件安装脚本 |
-| [../tests](../../tests) | 自动化测试 |
-
-### 3.2 Track A 的关键模块
-
-| 路径 | 说明 |
-| --- | --- |
-| [../PhyAgentOS/cli/commands.py](../../PhyAgentOS/cli/commands.py) | CLI 入口：`paos onboard`、`paos agent`、`paos gateway` |
-| [../PhyAgentOS/agent](../../PhyAgentOS/agent) | AgentLoop、上下文、记忆、子代理与工具注册 |
-| [../PhyAgentOS/providers](../../PhyAgentOS/providers) | LLM provider 适配层 |
-| [../PhyAgentOS/channels](../../PhyAgentOS/channels) | 外部渠道接入，如 Telegram、Feishu、Slack 等 |
-| [../PhyAgentOS/heartbeat](../../PhyAgentOS/heartbeat) | 心跳/周期任务调度入口 |
-| [../PhyAgentOS/cron](../../PhyAgentOS/cron) | 定时任务服务 |
-| [../PhyAgentOS/templates](../../PhyAgentOS/templates) | 工作区模板文件 |
-
-### 3.3 Track B 的关键模块
-
-| 路径 | 说明 |
-| --- | --- |
-| [../PhyAgentOS/runtime/watchdog](../../PhyAgentOS/runtime/watchdog) | WatchdogSupervisor 与 session 监督状态机 |
-| [../PhyAgentOS/runtime/sessions](../../PhyAgentOS/runtime/sessions) | SessionRunner / TargetSessionHandle |
-| [../PhyAgentOS/runtime/targets](../../PhyAgentOS/runtime/targets) | target runtime 与远端 proxy |
-| [../PhyAgentOS/runtime/targets/remote/libero](../../PhyAgentOS/runtime/targets/remote/libero) | LIBERO benchmark TargetWS server + proxy |
-| [../PhyAgentOS/runtime/skillruntime](../../PhyAgentOS/runtime/skillruntime) | PolicySkillRuntime / BuiltinSkillRuntime |
-| [../PhyAgentOS/runtime/adapters](../../PhyAgentOS/runtime/adapters) | TargetAdapter / PolicyAdapter / ActionBridge |
-| [../PhyAgentOS/runtime/policy/openpi](../../PhyAgentOS/runtime/policy/openpi) | OpenPI client 与 LeRobot pi0-family policy server |
-| [../hal](../../hal) | Legacy HAL driver 代码，保留给旧驱动与特定真机插件流程 |
-| [../hal/perception](../../hal/perception) | 感知、几何/语义融合与环境写回 |
-| [../hal/ros2](../../hal/ros2) | ROS2 bridge 与 adapter |
-| [../hal/simulation](../../hal/simulation) | 仿真场景与场景文档读写 |
-
-### 3.4 模板、Profile 与运行时文件的区别
-
-开发中最容易混淆的三个概念是：
-
-1. **模板（templates）**
-   - 用来定义文件结构与建议字段
-   - 例如 [../PhyAgentOS/templates/EMBODIED.md](../../PhyAgentOS/templates/EMBODIED.md)、[../PhyAgentOS/templates/ENVIRONMENT.md](../../PhyAgentOS/templates/ENVIRONMENT.md)
-2. **Profile（hal/profiles）**
-   - 某类机器人的静态能力声明
-   - 例如 [../hal/profiles/go2_edu.md](../../hal/profiles/go2_edu.md)、[../hal/profiles/simulation.md](../../hal/profiles/simulation.md)
-3. **运行时文件（workspace / workspaces）**
-   - 真正被 Agent、Watchdog 与 runtime writer 读写的状态面
-   - 例如实际运行中的 `EMBODIED.md`、`ENVIRONMENT.md`
-
-简而言之：**模板定义结构，Profile 提供实例类型说明，运行时文件承载真实状态。**
-
-## 4. 配置系统与工作区模型
-
-### 4.1 配置根对象的关注重点
-
-Phy's 配置根对象定义在 [../PhyAgentOS/config/schema.py](../../PhyAgentOS/config/schema.py)。开发时最值得关注的配置域包括：
-
-- `agents.defaults.*`
-- `providers.*`
-- `gateway.*`
-- `tools.*`
-- `embodiments.*`
-
-其中 `embodiments.mode` 决定 single / fleet 模式，而 `embodiments.instances` 描述 fleet 中的机器人实例清单。
-
-### 4.2 single 与 fleet 的最小配置差异
-
-#### single 模式示意
+Gateway 在 `/agent/runtime/capabilities` 的 `actions` 中发布 action：
 
 ```json
 {
-  "agents": {
-    "defaults": {
-      "workspace": "~/.PhyAgentOS/workspace"
-    }
-  },
-  "embodiments": {
-    "mode": "single"
-  }
-}
-```
-
-#### fleet 模式示意
-
-```json
-{
-  "embodiments": {
-    "mode": "fleet",
-    "shared_workspace": "~/.PhyAgentOS/workspaces/shared",
-    "instances": [
-      {
-        "robot_id": "go2_edu_001",
-        "driver": "go2_edu",
-        "workspace": "~/.PhyAgentOS/workspaces/go2_edu_001"
+  "actions": {
+    "place_object": {
+      "description": "Place an object in a target area.",
+      "policy_id": "manipulation_policy",
+      "command": "place_object",
+      "required_parameters": ["object", "target"],
+      "input_mapping": {
+        "object": "object",
+        "target": "target"
+      },
+      "result_semantics": "command_completed",
+      "completion": {
+        "source": "policy_command_status"
       }
-    ]
+    }
   }
 }
 ```
 
-### 4.3 `paos onboard` 对开发者意味着什么
+字段原则：
 
-`paos onboard` 不只是“首次安装命令”，它还是：
+- `description`、`required_parameters`、`input_mapping` 帮助 Planner 构造合法 inputs；
+- `policy_id` 与 `command` 组成执行 identity，create/get response 必须一致；
+- `result_semantics` 与 `completion` 说明 Gateway “完成”意味着什么；
+- 不要在 capability 中加入 `verify_grasp`、`grasp_verify_enabled` 或 verifier prompt；
+- action-specific 结果可放在 command `outputs`，但任务成功仍由 criteria 判定。
 
-- 模板同步入口
-- 配置升级入口
-- fleet 布局准备入口
-- 本地开发环境纠偏入口
+### 2.2 Create 与 Get
 
-当你修改了模板、升级了配置结构、切换了运行模式时，都应该重新执行一次：
+PAOS POST：
 
-```bash
-paos onboard
+```json
+{
+  "session_id": "forge_<paos-generated>",
+  "command_id": "command_<paos-generated>",
+  "action_type": "place_object",
+  "instruction": "Place the red object in the tray.",
+  "source": "paos-agent",
+  "inputs": {
+    "object": "red object",
+    "target": "tray"
+  }
+}
 ```
 
-### 4.4 工作区文件生命周期
+Gateway create/get 响应需要让 PAOS 解析出：
 
-一个开发者应当掌握如下生命周期：
-
-1. `paos onboard` 准备模板/目录
-2. 当 config 启用 runtime 时，`paos agent` / `paos gateway` 启动时自动创建 runtime workspace，并启动 session watchdog
-3. `RuntimeWorkspaceManager` 写入当前启用 target 的 `ENVIRONMENT.md` 快照
-4. Agent 根据 `TARGETS.md`、`SKILLRUNTIME.md`、`ENVIRONMENT.md` 等状态规划
-5. Agent 将可执行任务追加到 `SESSIONS.md`
-6. WatchdogSupervisor claim pending session，执行 compatibility preflight
-7. SessionRunner 通过 TargetSessionHandle 运行 target/skill，并写回 artifact、session result 与环境状态
-8. 如果 preflight 或执行失败，则将经验写入 `LESSONS.md`
-
-## 5. 运行入口与开发期调试方式
-
-### 5.1 CLI 的三个核心入口
-
-#### `paos onboard`
-
-用途：初始化配置与工作区。
-
-#### `paos agent`
-
-用途：本地交互、单轮消息调用、CLI 调试。
-
-常用方式：
-
-```bash
-paos agent
-paos agent -m "look around the room"
+```json
+{
+  "ok": true,
+  "data": {
+    "session": {
+      "session_id": "forge_<same>",
+      "action_type": "place_object",
+      "status": "running"
+    },
+    "command": {
+      "command_id": "command_<same>",
+      "session_id": "forge_<same>",
+      "request_id": "command_<same>",
+      "action_type": "place_object",
+      "policy_id": "manipulation_policy",
+      "command": "place_object",
+      "status": "running"
+    }
+  }
+}
 ```
 
-#### `paos gateway`
+终态时 session/command `status` 必须相同，并且只使用 `succeeded`、`failed`、`cancelled`。PAOS 不从 outputs、静稳或固定等待推断终态。
 
-用途：长期在线服务、渠道接入、心跳与定时任务联动。
+### 2.3 Cancel
 
-```bash
-paos gateway
+`POST /agent/sessions/{session_id}/cancel` 接收 reason。Gateway 应尽力终止尚未完成的 command，并返回可持久化的 JSON 响应。即使 cancel transport 失败，PAOS 仍会保存失败详情并终结自己的任务状态。
+
+## 3. 接入图像证据
+
+`/ws/images` 每条消息应为 JSON：
+
+```json
+{
+  "type": "image",
+  "id": "front",
+  "seq": 42,
+  "timestamp": 1785744000.123,
+  "content_type": "image/jpeg",
+  "data": "<base64>"
+}
 ```
 
-### 5.2 Runtime Watchdog 是如何工作的
+要求：
 
-当前 runtime 入口由 `paos agent` / `paos gateway` 在 config 启用 runtime 时自动创建。开发者通常不需要手动启动 watchdog；它围绕 runtime workspace 中的协议文件工作：
+- `id` 在重连和整个部署中保持稳定；
+- 每个 source 的 `seq` 单调递增；
+- `timestamp` 可省略；提供时必须有限且表示真实 source time；
+- `content_type` 为 JPEG、PNG 或 WebP，且实体 magic bytes 一致；
+- 单帧实体不超过 PAOS `maxArtifactBytes`；
+- Gateway 终态后仍要发布至少一个更新 sequence，以满足 after 边界。
 
-- `TARGETS.md`：target registry 与 endpoint/adapter/contract
-- `SKILLRUNTIME.md`：可执行 skill runtime
-- `SESSIONS.md`：pending session 队列与结果
-- `ENVIRONMENT.md`：runtime/perception 写回的环境状态
+多摄像头独立维护 sequence。不要把相机名编码进 action type，也不要依赖数组顺序区分 source。
 
-执行时，`WatchdogSupervisor` claim 一个 pending session，运行 `RuntimeCompatibilityPreflight`，然后创建 `SessionRunner`。`SessionRunner` 只通过 `TargetSessionHandle` 暴露 target 给 policy/builtin skill，并在完成后写回 artifact、history 和 session result。
+## 4. 接入 robot state
 
-### 5.3 开发期最常用的调试组合
+当 task `required_kinds` 包含 `robot_state` 时，PAOS 要求 before/after 都有 `/ws/state` 消息。消息必须是 JSON object，大小受 `maxArtifactBytes` 限制。
 
-#### 调试 Agent + 仿真
+Gateway 1.0.0 state message 没有统一 source timestamp 契约，因此 PAOS 只记录 `received_at`。如果未来增加 authoritative timestamp，应先升级公共 Gateway/Evidence contract，而不是让 Adapter 猜测字段。
 
-```bash
-paos agent
+## 5. 设计 Task Verification Contract
+
+集成方不为 action 创建 verifier 分支，而是帮助 Agent/用户写可观察标准。
+
+不推荐：
+
+```text
+goal: grasp succeeded
+criterion: policy returned succeeded
 ```
 
-#### 调试真实 LIBERO target + pi0.5 policy
+推荐：
 
-```bash
-MUJOCO_GL=egl PYTHONWARNINGS=ignore \
-conda run -n liberopi python PhyAgentOS/runtime/targets/remote/libero/server.py \
-  --host 0.0.0.0 --port 9002
-
-conda run -n lerobot-pi python -m PhyAgentOS.runtime.policy.openpi.lerobot_pi0_server \
-  --model-dir /path/to/pi05/checkpoint --host 0.0.0.0 --port 8000
-
-paos agent
+```text
+goal: object is held securely above the table
+criteria:
+  - final image shows the object clear of the table surface
+  - gripper and object maintain visible contact
+constraints:
+  - no other object leaves the workspace
 ```
 
-#### Legacy driver 调试
-
-```bash
-python hal/hal_watchdog.py \
-  --driver go2_edu \
-  --driver-config examples/go2_driver_config.json
-```
-
-#### 调试 Fleet 某台机器人
-
-```bash
-python hal/hal_watchdog.py \
-  --robot-id go2_edu_001 \
-  --driver-config examples/go2_driver_config.json
-```
-
-### 5.4 开发中该看哪些日志与文件
-
-排障时建议同时观察：
-
-- Watchdog 终端输出
-- Agent 终端输出
-- `SESSIONS.md`
-- `TARGETS.md`
-- `SKILLRUNTIME.md`
-- `ENVIRONMENT.md`
-- `LESSONS.md`
-
-## 6. HAL 驱动开发与内置驱动扩展
-
-### 6.1 所有驱动都必须满足的最小接口
-
-驱动基类定义在 [../hal/base_driver.py](../../hal/base_driver.py)。最小实现必须覆盖四个抽象方法：
-
-- `get_profile_path()`
-- `load_scene(scene)`
-- `execute_action(action_type, params)`
-- `get_scene()`
-
-此外，以下方法虽然不是抽象方法，但在真实机器人场景中通常非常重要：
-
-- `connect()`
-- `disconnect()`
-- `is_connected()`
-- `health_check()`
-- `get_runtime_state()`
-
-### 6.2 一个内置 driver 开发的最小流程
-
-1. 在 [../hal/drivers](../../hal/drivers) 中新增 driver 实现文件
-2. 继承 `BaseDriver`
-3. 在 [../hal/profiles](../../hal/profiles) 中新增 profile
-4. 在 [../hal/drivers/__init__.py](../../hal/drivers/__init__.py) 的 `DRIVER_REGISTRY` 中注册
-5. 用 `hal/hal_watchdog.py` 直接启动验证
-6. 用 `paos agent` 做全链路联调
-
-### 6.3 什么时候应该改内置 driver，什么时候应该做插件
-
-适合直接修改主仓库的场景：
-
-- 修复现有驱动的 bug
-- 增强内置仿真或已有支持设备
-- 改动对主仓库用户具有普适性
-
-更适合做外部插件的场景：
-
-- 依赖较重的第三方 SDK
-- 厂商私有运行时
-- 真实机器人部署逻辑复杂
-- 希望独立发版、独立维护依赖
-
-### 6.4 profile 应该写什么，不该写什么
-
-建议把 profile 当成“给 Critic 和 Agent 看的能力说明书”，而不只是给开发者看的备注。一般应包含：
-
-- 身份与类型
-- 传感器能力
-- 支持动作表
-- 物理约束
-- 连接方式
-- 运行时协议映射
-
-可参考：
-
-- [../hal/profiles/simulation.md](../../hal/profiles/simulation.md)
-- [../hal/profiles/go2_edu.md](../../hal/profiles/go2_edu.md)
-- [../hal/profiles/xlerobot_2wheels_remote.md](../../hal/profiles/xlerobot_2wheels_remote.md)
-- [../hal/profiles/desktop_pet.md](../../hal/profiles/desktop_pet.md)
-
-### 6.5 `driver-config` 的推荐用法
-
-`hal_watchdog.py` 支持通过 `--driver-config` 传入一个 JSON object，并原样透传给目标 driver 构造器。这是一种非常实用的扩展机制，因为它可以：
-
-- 避免频繁改 Watchdog CLI
-- 保持每个 driver 自己定义初始化参数
-- 让配置示例以文件形式沉淀在仓库中
-
-参考示例：
-
-- [../examples/go2_driver_config.json](../../examples/go2_driver_config.json)
-- [../examples/xlerobot_2wheels_remote.driver.json](../../examples/xlerobot_2wheels_remote.driver.json)
-
-## 7. Session 校验、分发与运行时文件流转
-
-### 7.1 Runtime 任务并不是“直接执行”
-
-在 PhyAgentOS 里，可执行任务通常要经过下面的路径：
-
-1. Agent 形成任务意图
-2. Agent 读取 `TARGETS.md` 与 `SKILLRUNTIME.md`，选择 enabled target 与兼容 skill runtime
-3. Agent 向 `SESSIONS.md` 追加 `pending` session
-4. Watchdog claim session，执行 preflight
-5. `SessionRunner` 启动 target/runtime，结果与 artifact 写回 `SESSIONS.md`
-6. Runtime/perception 写回 `ENVIRONMENT.md`
-
-因此，问题排查时要区分：
-
-- 是**任务生成或 target/skillruntime 选择有问题**
-- 还是**preflight 校验拒绝**
-- 还是**Watchdog 执行失败**
-- 还是**执行成功但环境未回写**
-
-### 7.2 Runtime preflight 的职责
-
-核心逻辑位于 [../PhyAgentOS/runtime/preflight](../../PhyAgentOS/runtime/preflight)。开发者应关注几个关键职责：
-
-- 解析 session 中的 `target_ref` 与 `skillruntime_ref`
-- 校验 target 是否启用、是否支持该 skill runtime
-- 校验 target kind、observation contract、action contract 是否兼容
-- 校验 sensor/perception/runtime contract 与 adapter/bridge 配置
-- 不合法时将 session 标记为 rejected，并写回可诊断原因
-
-这也是为什么 `TARGETS.md`、`SKILLRUNTIME.md`、runtime contract 与环境文件的表达质量会直接影响系统表现。
-
-### 7.3 `SESSIONS.md` 的协议约定
-
-Watchdog 从 `SESSIONS.md` 的 YAML block 中读取 pending session。最小格式通常类似：
-
-```yaml
-version: runtime_sessions_v1
-sessions:
-  - session_id: sess_example
-    target_ref: target://dummy_sim
-    skillruntime_ref: skillruntime://openpi_sim_vla
-    task_description: run a smoke test
-    status: pending
-    priority: normal
-```
-
-开发自定义工具或外部插件时，必须保持 `target_ref`、`skillruntime_ref` 与 registry 中的 id 一致，否则 scheduler/preflight 会拒绝 session。
-
-### 7.4 任务类能力的特殊点
-
-对新的任务类能力进行扩展时，建议同时检查：
-
-- `TARGETS.md` 是否声明了目标 target、endpoint、adapter、runtime contract
-- `SKILLRUNTIME.md` 是否声明了兼容的 policy/builtin runtime 与 required outputs
-- `ENVIRONMENT.md` 是否包含必要的目标/地图/状态字段
-- runtime target 是否在 observation/status 中回写了足够的可诊断状态
-
-## 8. 导航、感知与 ROS2 相关模块
-
-### 8.1 感知模块的定位
-
-感知相关模块主要在 [../hal/perception](../../hal/perception)。当前结构已经体现出几个层次：
-
-- [../hal/perception/service.py](../../hal/perception/service.py)：服务化入口
-- [../hal/perception/geometry_pipeline.py](../../hal/perception/geometry_pipeline.py)：几何处理
-- [../hal/perception/segmentation_pipeline.py](../../hal/perception/segmentation_pipeline.py)：语义分割
-- [../hal/perception/fusion_pipeline.py](../../hal/perception/fusion_pipeline.py)：多源融合
-- [../hal/perception/environment_writer.py](../../hal/perception/environment_writer.py)：环境文件写回
-
-如果你在开发新的感知链路，建议把“感知处理”和“环境落盘”明确分层，而不是把所有逻辑塞进 driver。
-
-### 8.2 导航相关模块的定位
-
-导航相关代码主要在 [../hal/navigation](../../hal/navigation)。从当前仓库形态看，可以将其理解为：
-
-- 上层工具发起导航意图
-- 导航 backend 负责目标解析、执行或状态查询
-- 运行状态通过 `ENVIRONMENT.md` 中的 `robots.<robot_id>.nav_state` 暴露
-
-对导航能力做扩展时，最重要的不是只让机器人“动起来”，而是让**状态可见、可回写、可解释**。
-
-### 8.3 ROS2 适配入口
-
-ROS2 相关目录位于 [../hal/ros2](../../hal/ros2)。其中：
-
-- [../hal/ros2/bridge.py](../../hal/ros2/bridge.py) 负责 bridge 逻辑
-- [../hal/ros2/messages.py](../../hal/ros2/messages.py) 定义消息结构
-- [../hal/ros2/adapters](../../hal/ros2/adapters) 放置具体 adapter
-
-如果你要接入新的 ROS2 topic / sensor / control 通道，建议优先按 adapter 维度扩展，而不是在单一 driver 内部堆砌临时逻辑。
-
-## 9. 外部插件机制与 ReKep 参考路径
-
-### 9.1 插件发现与注册机制
-
-外部插件机制的核心在 [../hal/plugins.py](../../hal/plugins.py)。其基本流程是：
-
-1. 插件仓库提供 `PhyAgentOS_plugin.toml`
-2. 部署脚本 clone 或复制插件仓库
-3. 主仓库读取 manifest 并写入本地插件 registry
-4. 当内置 `DRIVER_REGISTRY` 找不到目标 driver 时，再从外部 registry 动态解析
-
-对应内置 driver 加载逻辑可参考 [../hal/drivers/__init__.py](../../hal/drivers/__init__.py)。
-
-### 9.2 为什么 ReKep 是一个很好的参考实现
-
-ReKep 真实机器人能力没有硬编码在主仓库，而是通过独立插件仓库接入。这种做法的优点是：
-
-- 主仓库保持轻量
-- 复杂依赖被隔离到插件仓库
-- 真实机器人部署逻辑可独立迭代
-- 社区维护者可以更自然地做独立发版
-
-### 9.3 ReKep 插件在主仓库中的接入入口
-
-主仓库中的部署脚本是 [../scripts/deploy_rekep_real_plugin.py](../../scripts/deploy_rekep_real_plugin.py)。它负责：
-
-- 解析 `--repo-url` / `--ref`
-- clone 或同步插件仓库
-- 安装 `requirements`
-- 调用注册逻辑写入本地 registry
-
-快速安装示例：
-
-```bash
-python scripts/deploy_rekep_real_plugin.py \
-  --repo-url https://github.com/baiyu858/PhyAgentOS-rekep-real-plugin.git
-```
-
-### 9.4 插件作者应该继续读什么
-
-- 想快速部署 ReKep：阅读 [phyagentos-rekep-plugin-blog-zh.md](REKEP_PLUGIN_DEPLOYMENT_zh.md)
-- 想照着模板自己写插件：阅读 [PLUGIN_DEVELOPMENT_GUIDE_zh.md](PLUGIN_DEVELOPMENT_GUIDE_zh.md)
-- 需要英文版模板：阅读 [PLUGIN_DEVELOPMENT_GUIDE.md](PLUGIN_DEVELOPMENT_GUIDE.md)
-
-## 10. 测试、验证与质量门禁
-
-### 10.1 开发前先决定验证层级
-
-建议将验证分成四层：
-
-1. **纯 Python 单测**：接口、配置、注册、解析逻辑
-2. **driver 本地 smoke test**：直接启动 Watchdog
-3. **runtime 层 dry-run**：对真实插件或远程运行时做预检
-4. **Agent 全链路联调**：让 Agent -> SESSIONS -> Watchdog -> runtime target -> ENVIRONMENT 完整走通
-
-### 10.2 主仓库中值得参考的测试
-
-| 路径 | 适合参考的主题 |
-| --- | --- |
-| [../tests/test_hal_external_plugins.py](../../tests/test_hal_external_plugins.py) | 插件注册与外部 driver 解析 |
-| [../tests/test_hal_base_driver.py](../../tests/test_hal_base_driver.py) | driver 基础契约 |
-| [../tests/test_hal_watchdog_driver_config.py](../../tests/test_hal_watchdog_driver_config.py) | `driver-config` 透传 |
-| [../tests/test_go2_navigation_stack.py](../../tests/test_go2_navigation_stack.py) | Go2 导航栈相关能力 |
-| [../tests/test_perception_service.py](../../tests/test_perception_service.py) | 感知服务 |
-| [../tests/test_commands.py](../../tests/test_commands.py) | CLI 命令 |
-| [../tests/test_fleet_watchdog.py](../../tests/test_fleet_watchdog.py) | Fleet Watchdog 相关流程 |
-
-### 10.3 最小测试命令建议
-
-开发期间至少建议执行：
-
-```bash
-pytest tests/
-```
-
-如果你只改了某一块，建议先跑对应文件，例如：
-
-```bash
-pytest tests/test_hal_external_plugins.py
-pytest tests/test_go2_navigation_stack.py
-```
-
-### 10.4 对真实机器人/插件更实用的验证建议
-
-对于外部插件，尤其是真实机器人场景，建议遵循这个顺序：
-
-1. `preflight`
-2. dry-run
-3. Watchdog 直连验证
-4. Agent 全链路验证
-
-这一流程在 [phyagentos-rekep-plugin-blog-zh.md](REKEP_PLUGIN_DEPLOYMENT_zh.md) 与 [PLUGIN_DEVELOPMENT_GUIDE_zh.md](PLUGIN_DEVELOPMENT_GUIDE_zh.md) 中都有较完整体现。
-
-## 11. 文档维护与贡献建议
-
-### 11.1 文档应该如何分层
-
-当前建议采用如下分层：
-
-- **README**：项目总览与入口
-- **用户手册**：面向使用者的运行说明
-- **开发指南**：面向开发者的扩展说明
-- **专题文档**：通信架构、插件开发、具体机器人接入、计划文档
-
-这样做的好处是：
-
-- 首页不至于过载
-- 章节边界更清晰
-- 专题文档可独立迭代
-- 未来可以自然迁移到多级文档站点
-
-### 11.2 什么时候应该单独拆文档
-
-如果某个主题同时满足以下两个条件，建议拆出独立文档：
-
-- 超过“快速说明”范围，需要包含背景、部署、排障、示例、FAQ
-- 有自己稳定的读者群，如插件作者、ROS2 开发者、运维人员
-
-### 11.3 贡献文档时的实用建议
-
-- 先说明“这份文档服务谁”
-- 在开头放目录
-- 给出“先读什么、后读什么”的路线
-- 示例命令尽量与仓库实际路径一致
-- 避免文档仍停留在抽象概念层，不给落地入口
-- 对尚未完成的章节显式标注“开发中”
-
-## 12. 后续扩展主题（开发中）
-
-以下主题建议后续继续独立展开：
-
-### 12.1 Fleet 编排与多 Agent 协同细节（开发中）
-
-计划补充：`TASK.md`、`ORCHESTRATOR.md`、调度边界、机器人选择与冲突处理策略。
-
-### 12.2 感知部署流水线手册（开发中）
-
-计划补充：相机/LiDAR 接入、分割模型依赖、场景图构建与写回协议。
-
-### 12.3 ROS2 适配开发手册（开发中）
-
-计划补充：adapter 模板、topic 映射、TF/地图约定、导航控制链路。
-
-### 12.4 渠道与服务化部署手册（开发中）
-
-计划补充：`paos gateway`、bridge、channel 配置、消息路由与生产部署建议。
-
-### 12.5 示例驱动模板与脚手架（开发中）
-
-计划补充：最小 driver、最小 profile、最小测试、最小插件清单的一键模板。
-
----
-
-当你从“理解系统”进入“修改系统”阶段时，建议把 [COMMUNICATION.md](COMMUNICATION.md)、[PLUGIN_DEVELOPMENT_GUIDE_zh.md](PLUGIN_DEVELOPMENT_GUIDE_zh.md) 与本文配合阅读，形成架构、实现与扩展三层视图。
+Gateway command status可以作为执行证据，但不能替代环境结果证据。
+
+## 6. Provider 与 Verifier 接入
+
+Verifier Provider 通过现有 Provider registry 选择。集成新 Provider 时需要支持：
+
+- `chat_with_retry()`；
+- system + multimodal user content；
+- `temperature=0`；
+- timeout/cancellation；
+- 返回纯 JSON object；
+- 在独立 Verification Service 子进程中可由 serializable provider spec 重建。
+
+公共输出必须通过 `VerificationVerdict` 校验，并且 exactly-once 覆盖全部 criteria、只引用合法 evidence ID。
+
+## 7. PAOS 侧扩展边界
+
+### 可以扩展
+
+- 新的通用 evidence kind；
+- 新的 public-contract version（需要显式版本与迁移决策）；
+- Gateway-neutral observation transport reliability；
+- Store/event observability；
+- Provider；
+- Channel 或其他非执行入口。
+
+### 不应引入
+
+- action-specific verifier 开关或 prompt；
+- PAOS 内部 robot SDK/Policy client；
+- 第二套 SessionRunner 或文件 queue；
+- 基于固定 sleep、静稳、outputs 猜测 Gateway terminal；
+- 调用者指定 session/command ID；
+- 绕过 Store 直接 POST/重发；
+- 把 verdict 写回 Execution Record。
+
+## 8. Fake Gateway 测试闭环
+
+默认集成测试应使用本地 fake HTTP/WebSocket server，模拟真实 Gateway shape：
+
+1. capabilities 通过严格校验；
+2. collectors 接收全部 before sources；
+3. 验证 before snapshot 已落盘后才允许 create；
+4. create 返回匹配 identity；
+5. GET 依次返回 queued/running/terminal；
+6. terminal 后发布更高 sequence；
+7. 断言 Execution/Evidence/Verification 与最终状态；
+8. 覆盖 timeout/cancel、404 resume、断线、乱序、缺证和非法 identity。
+
+可选真实 Gateway 测试只读取 `FORGE_GATEWAY_URL`，不得改写 Gateway 源码、配置或运行时数据。
+
+## 9. 接入验收清单
+
+- [ ] Gateway API version 与四项 required supports 正确。
+- [ ] action capability 完整且 identity 稳定。
+- [ ] required inputs/input mapping 可供 Planner 理解。
+- [ ] create/get/cancel 使用一致的响应 envelope。
+- [ ] `request_id == command_id`。
+- [ ] session/command/action/policy/command identity 全程一致。
+- [ ] terminal status 枚举与 session/command 一致。
+- [ ] 每个图像 source ID 稳定、sequence 单调。
+- [ ] before 可在 POST 前获得，after 可在 terminal 后获得。
+- [ ] 任务标准不依赖 action-specific verifier 代码。
+- [ ] Fake Gateway 成功与全部关键拒绝路径通过。
+
+## 后续阅读
+
+- [开发者手册](../zh/03-developer-manual.md)
+- [通信架构](COMMUNICATION.md)
+- [Forge 接入契约](../forge/README_zh.md)
+- [配置参考](../zh/04-forge-configuration-reference.md)
