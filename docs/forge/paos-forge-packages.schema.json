@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "packages"],
   "properties": {
-    "schema_version": {"const": 2},
+    "schema_version": {"const": 3},
     "packages": {
       "type": "array",
       "minItems": 2,
@@ -30,11 +30,9 @@
     "archive": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["format", "sha256", "size"],
+      "required": ["format"],
       "properties": {
-        "format": {"const": "tar.gz"},
-        "sha256": {"$ref": "#/$defs/digest"},
-        "size": {"type": "integer", "minimum": 1}
+        "format": {"const": "tar.gz"}
       }
     },
     "inventory_item": {
@@ -53,7 +51,7 @@
       "additionalProperties": false,
       "required": [
         "package_key", "version", "kind", "platform", "arch", "archive",
-        "github_release_url", "backend_url", "todos", "install_root", "inventory"
+        "direct_download_url", "backend_url", "todos", "install_root", "inventory"
       ],
       "properties": {
         "package_key": {"$ref": "#/$defs/identifier"},
@@ -62,7 +60,7 @@
         "platform": {"type": "string", "minLength": 1},
         "arch": {"type": "string", "minLength": 1},
         "archive": {"$ref": "#/$defs/archive"},
-        "github_release_url": {"$ref": "#/$defs/nullable_url"},
+        "direct_download_url": {"$ref": "#/$defs/nullable_url"},
         "backend_url": {"$ref": "#/$defs/nullable_url"},
         "todos": {
           "type": "array",

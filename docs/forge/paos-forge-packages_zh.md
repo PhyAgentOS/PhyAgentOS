@@ -1,8 +1,8 @@
 # PAOS Forge 包索引规范
 
 `paos-forge-packages.yaml` 是机器可读发布索引，Schema 为
-`paos-forge-packages.schema.json`。Schema v2 不再发布 Skill 专属的单体
-`runtime_bundle`，资源仅分为 `skill_bundle` 与 `node_bundle`。
+`paos-forge-packages.schema.json`。Schema v3 仅发布 `skill_bundle` 与
+`node_bundle`，并区分无需摘要校验的可信直链和由 Backend 返回摘要的受校验下载。
 
 ## Node Bundle
 
@@ -12,16 +12,15 @@
 ```text
 node-manifest.json
 <binary 或 node 私有目录>
-archive-manifest.json
 ```
 
-安装器会移除仅用于传输校验的 `archive-manifest.json`，并将其余内容原子安装到：
+安装器安全解包后将内容原子安装到：
 
 ```text
 ~/.PhyAgentOS/forge_runtime/nodes/<node_id>/versions/<artifact_id>/
 ```
 
-`node-manifest.json` 固定文件 SHA-256、大小、节点版本、目标平台以及稳定 entrypoint。
+`node-manifest.json` 固定节点身份、版本、目标平台以及稳定 entrypoint。
 不同版本不会覆盖，可以被不同 Skill 同时引用。
 
 ## Skill Bundle
@@ -70,8 +69,13 @@ Skill 不会被“latest”或全局 `current` 隐式改变。
 
 ## 下载与安全
 
-- 后台 URL 优先于 GitHub Release URL；两者均为空时视为尚未发布。
-- 归档下载后先验证压缩文件大小和 SHA-256。
+- 无资源服务时使用
+  `paos skill install <skill> --index <本地路径或 HTTPS URL>` 读取本索引。
+- `direct_download_url` 是 GitHub Release 等可信 HTTPS 直链，不校验归档大小和 SHA-256。
+- `backend_url` 是资源管理服务入口；服务端元数据必须返回 SHA-256，PAOS 下载后计算整个
+  归档的 SHA-256 并比较。摘要不需要写入 `paos-forge-packages.yaml`。
+- 如果 `backend_url` 只是裸文件直链且不返回摘要元数据，则无法执行 SHA-256 校验。
+- 两个 URL 同时存在时优先使用 `backend_url`；均为空时视为尚未发布。
 - 解包时拒绝绝对路径、`..`、链接、特殊文件、重复/Unicode/大小写冲突和压缩炸弹。
-- Node manifest、Skill manifest、inventory 和 entrypoint 必须全部验证后才原子提交。
-- 下载缓存按归档 SHA-256 去重，多个 Skill 可以复用同一 Node Bundle。
+- Node/Skill manifest、归档身份和 entrypoint 验证通过后才原子提交。
+- Backend 下载缓存按归档 SHA-256 去重；直链下载使用 URL/ETag 标识缓存。

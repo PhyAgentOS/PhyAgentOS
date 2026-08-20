@@ -74,10 +74,9 @@ def test_node_inventories_are_safe_and_cover_skill_binaries() -> None:
 
 def test_release_locations_are_https_or_explicit_todos() -> None:
     for package in _index()["packages"]:
-        for field in ("backend_url", "github_release_url"):
+        for field in ("backend_url", "direct_download_url"):
             value = package[field]
             assert value is None or value.startswith("https://")
-        if package["backend_url"] is None and package["github_release_url"] is None:
+        if package["backend_url"] is None and package["direct_download_url"] is None:
             assert package["todos"]
-        assert package["archive"]["sha256"]
-        assert package["archive"]["size"] > 0
+        assert package["archive"] == {"format": "tar.gz"}

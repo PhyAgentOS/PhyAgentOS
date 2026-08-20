@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 packages:
   - package_key: move-arm-by-ee
     version: 0.2.0
@@ -7,9 +7,7 @@ packages:
     arch: any
     archive:
       format: tar.gz
-      sha256: 0e0ad078859b44bacfce1df71d4a3365615b73cf04cc51d04882346e700cc1c2
-      size: 30496239
-    github_release_url: null
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish the self-contained Skill Bundle"]
     install_root: ~/.PhyAgentOS/skills/move-arm-by-ee
@@ -40,8 +38,8 @@ packages:
     node_id: gateway
     artifact_id: gateway-0.2.0-linux-x86_64
     node_digest: 4ef399f96efe0aa6643ac5470e210367b05ed4dcb25820f3f6289363ff4ebe41
-    archive: {format: tar.gz, sha256: 2db8c8dd82924bb271c200fb04b49c3695248da4ad6533c8a6e21e6a31768bda, size: 181722322}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/gateway/versions/gateway-0.2.0-linux-x86_64
@@ -58,8 +56,8 @@ packages:
     node_id: relative_pose_policy
     artifact_id: relative_pose_policy-0.2.0-linux-x86_64
     node_digest: c3fe9da740ef7ad895f6b8f4f5ffdd2eaeeab134e4cfbaf26f854d4f24e663f8
-    archive: {format: tar.gz, sha256: ada4ec6afe42d1b207633fa6948ac89bbf80dc5908614e11c15ecab4e7c52eb3, size: 160900411}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/relative_pose_policy/versions/relative_pose_policy-0.2.0-linux-x86_64
@@ -76,8 +74,8 @@ packages:
     node_id: motion_action_policy
     artifact_id: motion_action_policy-0.2.0-linux-x86_64
     node_digest: fe34697752b8ec92be2e60ed611a6488a9b5f8766a9e2eaee796de447c4f4e15
-    archive: {format: tar.gz, sha256: 805f9970548642269c0a347bd0f4682056fefe5c52cf7ff92313ee58a54083a9, size: 153710846}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/motion_action_policy/versions/motion_action_policy-0.2.0-linux-x86_64
@@ -94,8 +92,8 @@ packages:
     node_id: gripper_action_policy
     artifact_id: gripper_action_policy-0.2.0-linux-x86_64
     node_digest: f3d4de296d697f89107eace5dba5957ba7e4467e53323ab2acfb4cd25afc052b
-    archive: {format: tar.gz, sha256: b5393c9caa5fa5274588fd5eba37e8f226239821d9900cba89319ea51a0476a6, size: 102778873}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/gripper_action_policy/versions/gripper_action_policy-0.2.0-linux-x86_64
@@ -112,8 +110,8 @@ packages:
     node_id: motion_server
     artifact_id: motion_server-0.2.0-linux-x86_64
     node_digest: 598932009fee53196b7d3422bfaa909dc39985103c286aae105b367996c158d9
-    archive: {format: tar.gz, sha256: a733a921375f42ff29c297b0b23c6150315600d8806e6b0984cf94c52f4d6758, size: 153704032}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/motion_server/versions/motion_server-0.2.0-linux-x86_64
@@ -130,8 +128,8 @@ packages:
     node_id: joint_trajectory_controller
     artifact_id: joint_trajectory_controller-0.2.0-linux-x86_64
     node_digest: 133c07d93bb94dd595245a9bcc0489f4195bab7f2e3b5229ef65bea83fc7e900
-    archive: {format: tar.gz, sha256: 4aeee3db096f2f3444ae602649bdd6fa00f32fa3545c8bb0fb6e3c83b9d9d42a, size: 108842537}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/joint_trajectory_controller/versions/joint_trajectory_controller-0.2.0-linux-x86_64
@@ -148,8 +146,8 @@ packages:
     node_id: gripper_action_controller
     artifact_id: gripper_action_controller-0.2.0-linux-x86_64
     node_digest: cbd718cca14cca210f5dbb1377565b49cc5802b1c38a047083292fdda2b3b7b0
-    archive: {format: tar.gz, sha256: bfd5bcc3bba9dfbbe3dd8c72a0a7e842885496affc02d6e374d63d9e21fac8c4, size: 108842519}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/gripper_action_controller/versions/gripper_action_controller-0.2.0-linux-x86_64
@@ -166,8 +164,8 @@ packages:
     node_id: mujoco_sim
     artifact_id: mujoco_sim-0.2.0-linux-x86_64
     node_digest: 0a0e2538351a0bbf3bc7282c67fd6daf33c394394dbf28322ff9b93b72a2f353
-    archive: {format: tar.gz, sha256: 3f36297858094a0b71ff6e7f7168f1b6e41b8a75354f825ee7641ca4819e8dde, size: 184076476}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/mujoco_sim/versions/mujoco_sim-0.2.0-linux-x86_64
@@ -184,8 +182,8 @@ packages:
     node_id: image_viewer
     artifact_id: image_viewer-0.2.0-linux-x86_64
     node_digest: c619b5c61568038d5380f3eb0efb30daa68e658d461fc19ba001536c98f81e52
-    archive: {format: tar.gz, sha256: 4f7ee8d9a85cfd0eb889158055533de81ee3345c99c904fb1d807c49cba011b1, size: 10443729}
-    github_release_url: null
+    archive: {format: tar.gz}
+    direct_download_url: null
     backend_url: null
     todos: ["TODO: publish this immutable Node Bundle"]
     install_root: ~/.PhyAgentOS/forge_runtime/nodes/image_viewer/versions/image_viewer-0.2.0-linux-x86_64

@@ -134,7 +134,7 @@ class NodeLock:
     version: str
     platform: str
     arch: str
-    digest: str
+    digest: str | None = None
 
     @classmethod
     def from_dict(cls, node_id: str, value: Any) -> NodeLock:
@@ -147,9 +147,12 @@ class NodeLock:
         artifact_id = _string(data.get("artifact_id"), f"{label}.artifact_id")
         if artifact_id in {".", ".."} or "/" in artifact_id or "\\" in artifact_id:
             raise ManifestError(f"{label}.artifact_id must be directory-safe")
-        digest = _string(data.get("digest"), f"{label}.digest").lower()
-        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
-            raise ManifestError(f"{label}.digest must be a sha256 digest")
+        raw_digest = data.get("digest")
+        digest = None
+        if raw_digest is not None:
+            digest = _string(raw_digest, f"{label}.digest").lower()
+            if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+                raise ManifestError(f"{label}.digest must be a sha256 digest")
         return cls(
             node_id=safe_node_id,
             artifact_id=artifact_id,

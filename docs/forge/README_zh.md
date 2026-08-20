@@ -18,8 +18,8 @@ dataflow。它与本文的高层 Agent Session API 是并列执行面，不复�
 首批机器可读 Skill/Runtime 包索引及其发布、归档、lock、安装和安全约束见
 [PAOS Forge 包索引规范](paos-forge-packages_zh.md)，验证输入见
 [YAML 索引](paos-forge-packages.yaml)和
-[JSON Schema](paos-forge-packages.schema.json)。该索引目前是发布契约，现有 PAOS
-installer 尚不消费它。
+[JSON Schema](paos-forge-packages.schema.json)。PAOS 可通过
+`paos skill install --index <path-or-url>` 读取 Schema v3 静态索引。
 
 ## 1. 设计边界
 

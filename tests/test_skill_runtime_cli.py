@@ -33,3 +33,11 @@ def test_forge_node_command_exposes_distribution_lifecycle() -> None:
     assert result.exit_code == 0
     for command in ("install", "verify"):
         assert command in result.stdout
+
+
+def test_skill_distribution_commands_accept_static_index() -> None:
+    runner = CliRunner()
+    for command in ("search", "install", "update"):
+        result = runner.invoke(app, ["skill", command, "--help"])
+        assert result.exit_code == 0
+        assert "--index" in result.stdout

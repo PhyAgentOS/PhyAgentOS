@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 
 from PhyAgentOS.config.paths import get_forge_runtime_root, get_skill_bundle_root
-from PhyAgentOS.skill_runtime.archive import ArchiveValidator
+from PhyAgentOS.skill_runtime.archive import ArchiveValidator, sha256_file
 from PhyAgentOS.skill_runtime.manifest import SkillManifest, load_manifest
 from PhyAgentOS.skill_runtime.node_manifest import (
     NodeManifest,
@@ -64,7 +64,13 @@ class SkillInstaller:
         self.validator = validator or ArchiveValidator()
         self.state_store = state_store or RuntimeStateStore()
 
-    def install(self, archive: Path, *, expected_sha256: str | None = None) -> SkillManifest:
+    def install(
+        self,
+        archive: Path,
+        *,
+        expected_sha256: str | None = None,
+        verify_archive_manifest: bool = True,
+    ) -> SkillManifest:
         self.root.mkdir(parents=True, exist_ok=True)
         temporary = Path(tempfile.mkdtemp(prefix=".skill-install-", dir=self.root))
         extracted = temporary / "extracted"
@@ -72,7 +78,12 @@ class SkillInstaller:
         backup: Path | None = None
         committed = False
         try:
-            self.validator.extract(archive, extracted, expected_sha256=expected_sha256)
+            self.validator.extract(
+                archive,
+                extracted,
+                expected_sha256=expected_sha256,
+                verify_manifest=verify_archive_manifest,
+            )
             payload = _payload_root(extracted, "skill.yaml")
             if not (payload / "SKILL.md").is_file():
                 raise InstallerError("Skill archive root must contain SKILL.md")
@@ -208,6 +219,106 @@ class NodeInstaller:
         finally:
             shutil.rmtree(temporary, ignore_errors=True)
 
+    def install_indexed(
+        self,
+        archive: Path,
+        *,
+        node_id: str,
+        artifact_id: str,
+        version: str,
+        platform: str,
+        arch: str,
+        entrypoints: dict[str, str],
+        files: tuple[str, ...],
+    ) -> NodeManifest:
+        """Install a trusted direct-download archive described by a static index."""
+        active = _active_skills(self.state_store)
+        if active:
+            raise InstallerError(
+                f"cannot install Forge nodes while Skills are running: {', '.join(active)}"
+            )
+        self.root.mkdir(parents=True, exist_ok=True)
+        temporary = Path(tempfile.mkdtemp(prefix=".node-install-", dir=self.root))
+        extracted = temporary / "extracted"
+        committed: Path | None = None
+        try:
+            self.validator.extract(archive, extracted, verify_manifest=False)
+            expected = {Path(item) for item in files if item != "node-manifest.json"}
+            if not expected or any(
+                path.is_absolute() or ".." in path.parts or path in {Path("."), Path("")}
+                for path in expected
+            ):
+                raise InstallerError("static node inventory contains an unsafe path")
+            actual = {
+                path.relative_to(extracted)
+                for path in extracted.rglob("*")
+                if path.is_file() and path.name != "node-manifest.json"
+            }
+            if actual != expected:
+                raise InstallerError(
+                    f"static node file set mismatch; missing={sorted(map(str, expected - actual))}, "
+                    f"extra={sorted(map(str, actual - expected))}"
+                )
+            parsed_entrypoints = {name: Path(path) for name, path in entrypoints.items()}
+            if not parsed_entrypoints or any(path not in expected for path in parsed_entrypoints.values()):
+                raise InstallerError("static node entrypoint is not inventoried")
+            for path in parsed_entrypoints.values():
+                target = extracted / path
+                target.chmod(target.stat().st_mode | 0o111)
+
+            value = {
+                "manifest_version": 1,
+                "node_id": node_id,
+                "artifact_id": artifact_id,
+                "version": version,
+                "platform": platform,
+                "arch": arch,
+                "entrypoints": {name: path.as_posix() for name, path in parsed_entrypoints.items()},
+                "files": [
+                    {
+                        "path": path.as_posix(),
+                        "sha256": sha256_file(extracted / path),
+                        "size": (extracted / path).stat().st_size,
+                    }
+                    for path in sorted(expected)
+                ],
+            }
+            value["digest"] = hashlib.sha256(
+                json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            (extracted / "node-manifest.json").write_text(
+                json.dumps(value, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            manifest = NodeManifest.from_dict(value, root=extracted)
+            manifest.verify_host()
+            manifest.verify_files()
+
+            versions = self.root / manifest.node_id / "versions"
+            versions.mkdir(parents=True, exist_ok=True)
+            target = versions / manifest.artifact_id
+            if target.exists():
+                installed = load_node_manifest(target / "node-manifest.json", verify_files=True)
+                if installed.digest != manifest.digest:
+                    raise InstallerError("installed node artifact ID has different contents")
+            else:
+                os.replace(extracted, target)
+                committed = target
+            return load_node_manifest(target / "node-manifest.json", verify_files=True)
+        except InstallerError:
+            raise
+        except Exception as exc:
+            if committed is not None:
+                shutil.rmtree(committed, ignore_errors=True)
+            raise InstallerError(f"static Forge node installation failed: {exc}") from exc
+        finally:
+            shutil.rmtree(temporary, ignore_errors=True)
+
     def load(self, node_id: str, artifact_id: str) -> NodeManifest:
         path = self.root / node_id / "versions" / artifact_id / "node-manifest.json"
         try:
@@ -245,8 +356,9 @@ class SkillEnvironmentBuilder:
                 "version": lock.version,
                 "platform": lock.platform,
                 "arch": lock.arch,
-                "digest": lock.digest,
             }
+            if lock.digest is not None:
+                expected["digest"] = lock.digest
             mismatches = [
                 f"{name}={actual[name]!r} (expected {value!r})"
                 for name, value in expected.items()

@@ -25,6 +25,7 @@ from PhyAgentOS.skill_runtime.registry import (  # noqa: E402
     DownloadCache,
     RegistryArtifact,
     RegistryError,
+    StaticPackageIndex,
 )
 from PhyAgentOS.skill_runtime.runtime_manifest import (  # noqa: E402
     normalize_arch,
@@ -148,6 +149,15 @@ def _distribution_archive(
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _raw_archive(path: Path, files: dict[str, bytes]) -> None:
+    with tarfile.open(path, "w:gz") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(data))
+
+
 def _installable_skill_files(version: str = "1.0.0", *, valid: bool = True) -> dict[str, bytes]:
     manifest = {
         "manifest_version": 2,
@@ -209,6 +219,76 @@ def test_archive_validator_rejects_links_and_duplicate_paths(tmp_path: Path) -> 
             tar.addfile(info, io.BytesIO(b"x"))
     with pytest.raises(ArchiveError, match="collide after normalization"):
         ArchiveValidator().extract(collision, tmp_path / "collision-out")
+
+
+def test_archive_validator_safely_extracts_direct_archive_without_manifest(
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "direct.tar.gz"
+    _raw_archive(archive, {"gateway": b"binary"})
+
+    ArchiveValidator().extract(
+        archive,
+        tmp_path / "direct-out",
+        verify_manifest=False,
+    )
+
+    assert (tmp_path / "direct-out/gateway").read_bytes() == b"binary"
+
+
+def test_static_package_index_resolves_direct_skill_and_node(tmp_path: Path) -> None:
+    index_path = tmp_path / "index.yaml"
+    index_path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 3,
+                "packages": [
+                    {
+                        "package_key": "demo",
+                        "version": "1.0.0",
+                        "kind": "skill_bundle",
+                        "direct_download_url": "https://example.test/demo.tar.gz",
+                    },
+                    {
+                        "package_key": "gateway",
+                        "version": "1.0.2",
+                        "kind": "node_bundle",
+                        "artifact_id": "gateway-1.0.2-linux-x86_64",
+                        "node_id": "gateway",
+                        "platform": "linux",
+                        "arch": "x86_64",
+                        "direct_download_url": "https://example.test/gateway.tar.gz",
+                        "entrypoints": {"gateway": "gateway"},
+                        "inventory": [{"path": "gateway", "category": "executable"}],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with StaticPackageIndex(str(index_path)) as index:
+        assert index.skill("demo").url == "https://example.test/demo.tar.gz"
+        assert index.node("gateway-1.0.2-linux-x86_64").sha256 is None
+        assert index.node_metadata("gateway-1.0.2-linux-x86_64")["node_id"] == "gateway"
+
+
+def test_direct_download_cache_does_not_require_size_or_sha256(tmp_path: Path) -> None:
+    payload = b"direct release asset"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=payload)
+
+    cache = DownloadCache(
+        tmp_path,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    artifact = RegistryArtifact("https://example.test/release.tar.gz", mode="direct")
+
+    result = cache.download(artifact)
+
+    assert result.read_bytes() == payload
+    assert cache.download(artifact) == result
 
 
 def test_download_cache_resumes_and_reuses_verified_archive(tmp_path: Path) -> None:
@@ -290,6 +370,48 @@ def test_node_installer_versions_artifacts_independently(tmp_path: Path) -> None
     installer.install(second, expected_sha256=second_sha)
     assert installer.load("gateway", "gateway-one").artifact_id == "gateway-one"
     assert installer.load("gateway", "gateway-two").artifact_id == "gateway-two"
+
+
+def test_node_installer_accepts_indexed_bare_binary_archive(tmp_path: Path) -> None:
+    archive = tmp_path / "gateway.tar.gz"
+    _raw_archive(archive, {"gateway": b"gateway binary"})
+    installer = NodeInstaller(
+        tmp_path / "runtime",
+        state_store=RuntimeStateStore(tmp_path / "states"),
+    )
+
+    installed = installer.install_indexed(
+        archive,
+        node_id="gateway",
+        artifact_id="gateway-1.0.2-linux-x86_64",
+        version="1.0.2",
+        platform=normalize_platform(),
+        arch=normalize_arch(),
+        entrypoints={"gateway": "gateway"},
+        files=("gateway",),
+    )
+
+    assert installed.entrypoints == {"gateway": Path("gateway")}
+    assert installer.load("gateway", installed.artifact_id).digest == installed.digest
+
+
+def test_node_lock_digest_is_optional_for_direct_release_assets(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    skill = _manifest()
+    skill["artifacts"] = {
+        "resolver": "registry",
+        "nodes": {
+            "gateway": {
+                "artifact_id": "gateway-1.0.2-linux-x86_64",
+                "version": "1.0.2",
+                "platform": normalize_platform(),
+                "arch": normalize_arch(),
+            }
+        },
+    }
+    (bundle / "skill.yaml").write_text(yaml.safe_dump(skill))
+
+    assert load_manifest(bundle / "skill.yaml").artifacts.nodes["gateway"].digest is None
 
 
 def test_node_lock_schema_is_strict(tmp_path: Path) -> None:

@@ -881,13 +881,21 @@ def _skill_runtime_error(error: Exception) -> None:
 
 
 @skill_app.command("search")
-def skill_search(query: str = typer.Argument("", help="Skill name or search text")):
-    """Search public Skills in the configured Resource Registry."""
-    from PhyAgentOS.skill_runtime.registry import RegistryClient
+def skill_search(
+    query: str = typer.Argument("", help="Skill name or search text"),
+    index: str | None = typer.Option(
+        None,
+        "--index",
+        help="Schema-v3 static package index path or URL",
+    ),
+):
+    """Search Skills in a static index or the configured Resource Registry."""
+    from PhyAgentOS.skill_runtime.registry import RegistryClient, StaticPackageIndex
 
     try:
-        with RegistryClient() as registry:
-            items = registry.search_skills(query)
+        source = StaticPackageIndex(index) if index else RegistryClient()
+        with source:
+            items = source.search_skills(query)
     except Exception as error:
         _skill_runtime_error(error)
         return
@@ -904,45 +912,104 @@ def skill_search(query: str = typer.Argument("", help="Skill name or search text
     console.print(table)
 
 
-def _install_skill_from_registry(name: str, version: str | None) -> None:
+def _install_skill_from_source(
+    name: str,
+    version: str | None,
+    index: str | None,
+) -> None:
     import tempfile
 
     from PhyAgentOS.skill_runtime.installer import NodeInstaller, SkillInstaller
-    from PhyAgentOS.skill_runtime.registry import DownloadCache, RegistryClient
+    from PhyAgentOS.skill_runtime.registry import (
+        DownloadCache,
+        RegistryClient,
+        StaticPackageIndex,
+    )
     from PhyAgentOS.skill_runtime.state import RuntimeStateStore
 
+    static = index is not None
     cache = DownloadCache()
     try:
-        with RegistryClient() as registry:
-            artifact = registry.skill(name, version)
-        archive = cache.download(artifact)
-        with tempfile.TemporaryDirectory(prefix="paos-skill-preview-") as directory:
-            preview_root = Path(directory)
-            preview = SkillInstaller(
-                preview_root / "skills",
-                state_store=RuntimeStateStore(preview_root / "run"),
-            ).install(archive, expected_sha256=artifact.sha256)
-            node_installer = NodeInstaller()
-            with RegistryClient() as registry:
+        source = StaticPackageIndex(index) if index else RegistryClient()
+        with source:
+            artifact = source.skill(name, version)
+            archive = cache.download(artifact)
+            with tempfile.TemporaryDirectory(prefix="paos-skill-preview-") as directory:
+                preview_root = Path(directory)
+                preview = SkillInstaller(
+                    preview_root / "skills",
+                    state_store=RuntimeStateStore(preview_root / "run"),
+                ).install(
+                    archive,
+                    expected_sha256=artifact.sha256,
+                    verify_archive_manifest=not static,
+                )
+                node_installer = NodeInstaller()
                 for node_id, lock in sorted(preview.artifacts.nodes.items()):
                     try:
                         installed = node_installer.load(node_id, lock.artifact_id)
-                        if installed.digest == lock.digest:
+                        if lock.digest is None or installed.digest == lock.digest:
                             continue
                     except Exception:
                         pass
-                    node_artifact = registry.node(lock.artifact_id)
-                    if node_artifact.node_digest is None:
-                        raise RuntimeError(
-                            f"Registry node {lock.artifact_id!r} is missing node_digest"
-                        )
+                    node_artifact = source.node(lock.artifact_id)
                     node_archive = cache.download(node_artifact)
-                    node_installer.install(
-                        node_archive,
-                        expected_sha256=node_artifact.sha256,
-                        expected_digest=node_artifact.node_digest,
-                    )
-        manifest = SkillInstaller().install(archive, expected_sha256=artifact.sha256)
+                    if static:
+                        metadata = source.node_metadata(lock.artifact_id)
+                        actual = {
+                            "node_id": metadata.get("node_id"),
+                            "version": str(metadata.get("version", "")),
+                            "platform": str(metadata.get("platform", "")).lower(),
+                            "arch": str(metadata.get("arch", "")).lower(),
+                        }
+                        expected = {
+                            "node_id": node_id,
+                            "version": lock.version,
+                            "platform": lock.platform,
+                            "arch": lock.arch,
+                        }
+                        if actual != expected:
+                            raise RuntimeError(
+                                f"static node metadata does not satisfy Skill lock: {lock.artifact_id}"
+                            )
+                        inventory = metadata.get("inventory")
+                        entrypoints = metadata.get("entrypoints")
+                        if not isinstance(inventory, list) or not isinstance(entrypoints, dict):
+                            raise RuntimeError(
+                                f"static node metadata is incomplete: {lock.artifact_id}"
+                            )
+                        files = tuple(
+                            str(item["path"])
+                            for item in inventory
+                            if isinstance(item, dict) and isinstance(item.get("path"), str)
+                        )
+                        node_installer.install_indexed(
+                            node_archive,
+                            node_id=node_id,
+                            artifact_id=lock.artifact_id,
+                            version=lock.version,
+                            platform=lock.platform,
+                            arch=lock.arch,
+                            entrypoints={
+                                str(key): str(value) for key, value in entrypoints.items()
+                            },
+                            files=files,
+                        )
+                    else:
+                        if node_artifact.node_digest is None:
+                            raise RuntimeError(
+                                f"Registry node {lock.artifact_id!r} is missing node_digest"
+                            )
+                        node_installer.install(
+                            node_archive,
+                            expected_sha256=node_artifact.sha256,
+                            expected_digest=node_artifact.node_digest,
+                        )
+            manifest = SkillInstaller().install(
+                archive,
+                expected_sha256=artifact.sha256,
+                verify_archive_manifest=not static,
+            )
     finally:
         cache.close()
     console.print(
@@ -954,10 +1021,15 @@ def _install_skill_from_registry(name: str, version: str | None) -> None:
 def skill_install(
     name: str = typer.Argument(..., help="Registry Skill name"),
     version: str | None = typer.Option(None, "--version", "-v", help="Exact version"),
+    index: str | None = typer.Option(
+        None,
+        "--index",
+        help="Schema-v3 static package index path or URL",
+    ),
 ):
-    """Download, validate, and atomically install a Skill."""
+    """Install a Skill from a static index or Resource Registry."""
     try:
-        _install_skill_from_registry(name, version)
+        _install_skill_from_source(name, version, index)
     except Exception as error:
         _skill_runtime_error(error)
 
@@ -966,13 +1038,18 @@ def skill_install(
 def skill_update(
     name: str = typer.Argument(..., help="Installed Skill name"),
     version: str | None = typer.Option(None, "--version", "-v", help="Target version"),
+    index: str | None = typer.Option(
+        None,
+        "--index",
+        help="Schema-v3 static package index path or URL",
+    ),
 ):
     """Update an installed, stopped Skill while retaining a backup."""
     try:
         from PhyAgentOS.skill_runtime.catalog import SkillCatalog
 
         SkillCatalog().get(name)
-        _install_skill_from_registry(name, version)
+        _install_skill_from_source(name, version, index)
     except Exception as error:
         _skill_runtime_error(error)
 

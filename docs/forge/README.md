@@ -22,8 +22,8 @@ The initial machine-readable Skill/Runtime package index and its publication,
 archive, lock, installation, and security contract are documented in
 [PAOS Forge Package Index (Chinese)](paos-forge-packages_zh.md). See the
 [YAML index](paos-forge-packages.yaml) and
-[JSON Schema](paos-forge-packages.schema.json) for validation inputs. The index
-is a publication contract; the current PAOS installer does not consume it.
+[JSON Schema](paos-forge-packages.schema.json) for validation inputs. PAOS can
+consume the schema-v3 index with `paos skill install --index <path-or-url>`.
 
 ## 1. Design boundary
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
+import yaml
 
 from PhyAgentOS.config.loader import load_config
 from PhyAgentOS.config.paths import get_artifact_cache_root
@@ -37,8 +39,8 @@ class RegistryArtifact:
     """Download coordinates returned by the Resource Registry."""
 
     url: str
-    sha256: str
-    size: int
+    sha256: str | None = None
+    size: int | None = None
     name: str | None = None
     version: str | None = None
     artifact_set_id: str | None = None
@@ -157,6 +159,114 @@ class RegistryClient:
         return RegistryArtifact.from_dict(value)
 
 
+class StaticPackageIndex:
+    """Minimal Skill/Node locator backed by one schema-v3 YAML document."""
+
+    def __init__(
+        self,
+        source: str,
+        *,
+        client: httpx.Client | None = None,
+        timeout: float = 30.0,
+    ) -> None:
+        self.source = source
+        self._owns_client = client is None
+        self.client = client or httpx.Client(timeout=timeout, follow_redirects=True)
+        self.packages = self._load()
+
+    def close(self) -> None:
+        if self._owns_client:
+            self.client.close()
+
+    def __enter__(self) -> StaticPackageIndex:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    def _load(self) -> list[dict[str, Any]]:
+        try:
+            if self.source.startswith(("http://", "https://")):
+                response = self.client.get(self.source, headers={"Accept": "application/yaml"})
+                response.raise_for_status()
+                value = yaml.safe_load(response.text)
+            else:
+                value = yaml.safe_load(Path(self.source).expanduser().read_text(encoding="utf-8"))
+        except (OSError, httpx.HTTPError, yaml.YAMLError) as exc:
+            raise RegistryError(f"cannot load static package index: {self.source}") from exc
+        if not isinstance(value, dict) or value.get("schema_version") != 3:
+            raise RegistryError("static package index must use schema_version 3")
+        packages = value.get("packages")
+        if not isinstance(packages, list) or not all(isinstance(item, dict) for item in packages):
+            raise RegistryError("static package index packages must be a list")
+        return packages
+
+    def search_skills(self, query: str = "") -> list[dict[str, Any]]:
+        needle = query.casefold()
+        return [
+            {
+                "name": item.get("package_key", ""),
+                "version": item.get("version", ""),
+                "description": "static package index",
+            }
+            for item in self.packages
+            if item.get("kind") == "skill_bundle"
+            and (not needle or needle in str(item.get("package_key", "")).casefold())
+            and item.get("direct_download_url")
+        ]
+
+    def _entry(
+        self,
+        *,
+        kind: str,
+        package_key: str | None = None,
+        version: str | None = None,
+        artifact_id: str | None = None,
+    ) -> dict[str, Any]:
+        matches = [
+            item
+            for item in self.packages
+            if item.get("kind") == kind
+            and (package_key is None or item.get("package_key") == package_key)
+            and (version is None or str(item.get("version")) == version)
+            and (artifact_id is None or item.get("artifact_id") == artifact_id)
+        ]
+        if not matches:
+            identity = artifact_id or package_key or kind
+            raise RegistryError(f"package is not present in static index: {identity}")
+        if version is None:
+            matches.sort(key=lambda item: str(item.get("version", "")), reverse=True)
+        return matches[0]
+
+    @staticmethod
+    def _artifact(item: dict[str, Any]) -> RegistryArtifact:
+        url = item.get("direct_download_url")
+        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+            raise RegistryError("static package does not have a direct_download_url")
+        return RegistryArtifact(
+            url=url,
+            name=str(item.get("package_key", "")) or None,
+            version=str(item.get("version", "")) or None,
+            mode="direct",
+            node_digest=(
+                str(item["node_digest"]).lower()
+                if isinstance(item.get("node_digest"), str)
+                else None
+            ),
+        )
+
+    def skill(self, name: str, version: str | None = None) -> RegistryArtifact:
+        return self._artifact(
+            self._entry(kind="skill_bundle", package_key=name, version=version)
+        )
+
+    def node(self, artifact_id: str) -> RegistryArtifact:
+        return self._artifact(self.node_metadata(artifact_id))
+
+    def node_metadata(self, artifact_id: str) -> dict[str, Any]:
+        return self._entry(kind="node_bundle", artifact_id=artifact_id)
+
+
 class DownloadCache:
     """Resumable archive cache rooted at ``cache/<sha256>/``."""
 
@@ -176,6 +286,8 @@ class DownloadCache:
             self.client.close()
 
     def download(self, artifact: RegistryArtifact) -> Path:
+        if artifact.sha256 is None or artifact.size is None:
+            return self._download_direct(artifact)
         cache_dir = self.root / artifact.sha256
         cache_dir.mkdir(parents=True, exist_ok=True)
         final = cache_dir / "archive.tar.gz"
@@ -218,6 +330,31 @@ class DownloadCache:
             raise RegistryError("artifact download failed; partial download was retained") from exc
         return self._commit(artifact, partial, final)
 
+    def _download_direct(self, artifact: RegistryArtifact) -> Path:
+        cache_key = hashlib.sha256(artifact.url.encode()).hexdigest()
+        cache_dir = self.root / "direct" / cache_key
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        final = cache_dir / "archive.tar.gz"
+        temporary = cache_dir / "archive.tar.gz.part"
+        if final.is_file() and final.stat().st_size > 0:
+            return final
+        try:
+            with self.client.stream(
+                "GET", artifact.url, headers={"Accept": "application/gzip"}
+            ) as response:
+                response.raise_for_status()
+                with temporary.open("wb") as output:
+                    for chunk in response.iter_bytes():
+                        output.write(chunk)
+                    output.flush()
+                    os.fsync(output.fileno())
+        except httpx.HTTPError as exc:
+            raise RegistryError("direct artifact download failed") from exc
+        if not temporary.is_file() or temporary.stat().st_size == 0:
+            raise RegistryError("direct artifact download is empty")
+        os.replace(temporary, final)
+        return final
+
     def _download_fresh(
         self, artifact: RegistryArtifact, partial: Path, final: Path
     ) -> Path:
@@ -252,6 +389,7 @@ class DownloadCache:
 
     @staticmethod
     def _commit(artifact: RegistryArtifact, partial: Path, final: Path) -> Path:
+        assert artifact.size is not None and artifact.sha256 is not None
         if partial.stat().st_size != artifact.size:
             raise RegistryError("downloaded artifact size does not match registry metadata")
         digest = sha256_file(partial)
