@@ -1,525 +1,389 @@
 # PhyAgentOS User Manual
 
-> An operations manual for users, integrators, and demo operators. Covers single-machine mode, Fleet multi-robot mode, scenario configuration, and troubleshooting.
+> Documentation version: 0.1.4.post4. This manual covers the current Forge-only execution path. PhyAgentOS no longer provides the legacy Runtime, Watchdog, or Markdown Session queue.
 
----
+## 1. Requirements and installation
 
-## Table of Contents
+Base requirements:
 
-- [2.1 About This Manual](#21-about-this-manual)
-- [2.2 How the System Works](#22-how-the-system-works)
-- [2.3 Installation & Environment Setup](#23-installation--environment-setup)
-- [2.4 5-Minute Quick Start](#24-5-minute-quick-start)
-- [2.5 Configuration Details](#25-configuration-details)
-- [2.6 Scenario Usage Guide](#26-scenario-usage-guide)
-  - [2.6.1 Simulation](#261-simulation)
-  - [2.6.2 Real Robot Arm (Franka Research 3)](#262-real-robot-arm-franka-research-3)
-  - [2.6.3 Mobile Robot (Go2)](#263-mobile-robot-go2)
-  - [2.6.4 Remote Chassis (XLeRobot)](#264-remote-chassis-xlerobot)
-  - [2.6.5 ReKep Real-Robot Plugin](#265-rekep-real-robot-plugin)
-  - [2.6.6 Fleet Multi-Robot Coordination](#266-fleet-multi-robot-coordination)
-- [2.7 Runtime File Reference](#27-runtime-file-reference)
-- [2.8 Common Interaction Examples](#28-common-interaction-examples)
-- [2.9 Troubleshooting](#29-troubleshooting)
-
----
-
-## 2.1 About This Manual
-
-### Who This Is For
-
-- First-time users wanting to get PhyAgentOS running
-- Integrators needing command-line or gateway-based Agent interaction
-- Demo operators starting simulation, Go2, remote chassis, or real-robot plugins
-- Debuggers needing to understand runtime workspace file changes
-
-### Who This Is NOT For
-
-If you need secondary development, driver authoring, plugin development, or internal architecture research, read [Part 3: API Developer Manual](../03-developer-manual.md).
-
----
-
-## 2.2 How the System Works
-
-### 2.2.1 Dual-Track Structure
-
-PhyAgentOS is an explicitly decoupled dual-track runtime architecture:
-
-- **Track A (Agent / Brain)**: Handles user input understanding, action planning, tool invocation, and Critic validation. Started via `paos agent` or `paos gateway`.
-- **Track B (Runtime / Execution Layer)**: Handles instruction reading, hardware driving, action execution, and state writeback. Started via `python -m PhyAgentOS.runtime.watchdog`.
-
-Shared state between the two is expressed through Markdown files in the workspace, not through cross-layer Python function calls.
-
-### 2.2.2 Single Mode vs Fleet Mode
-
-| Mode | Workspace | Use Case |
-|------|-----------|----------|
-| **Single** | `~/.PhyAgentOS/workspace` | Single robot or simulation quick validation |
-| **Fleet** | Shared + per-robot workspaces | Heterogeneous multi-robot coordination |
-
-### 2.2.3 A Typical Run Cycle
-
-1. Run `paos onboard` to initialize config and workspace
-2. Start `paos agent` or `paos gateway`
-3. When runtime is enabled, PhyAgentOS provisions the runtime workspace and starts the session watchdog
-4. User inputs a natural language task
-5. Agent reads agent context files plus runtime state such as `TARGETS.md`, `SKILLRUNTIME.md`, and `ENVIRONMENT.md`
-6. Agent appends executable work to `SESSIONS.md`
-7. Watchdog claims a pending session, runs preflight, executes the target/skill runtime, and writes results and artifacts
-8. Runtime/perception writers refresh `ENVIRONMENT.md` as state changes
-
----
-
-## 2.3 Installation & Environment Setup
-
-### Prerequisites
-
-- Python 3.11 or higher
-- Git
-- Accessible LLM provider API or compatible service
-- Optional for simulation: `pybullet`, Isaac Sim
-- Optional for bridge/frontend: Node.js 18+
-
-### Clone & Install
+- Python 3.11 or 3.12;
+- Git;
+- a supported LLM provider;
+- a reachable Forge Gateway 1.0.0;
+- for non-`off` verification, a model that supports image input and structured JSON output.
 
 ```bash
 git clone https://github.com/PhyAgentOS/PhyAgentOS.git
 cd PhyAgentOS
-pip install -e .             # Python ≥ 3.11
-pip install -e ".[dev]"      # Dev dependencies
+python -m pip install -e .
+
+# Tests and development
+python -m pip install -e ".[dev]"
 ```
 
-### What You Get After Installation
+Primary commands after installation:
 
-The CLI entry point `paos` comes from the project's Python package:
-
-- `paos onboard` — Initialize workspace
-- `paos agent` — Start interactive Agent CLI
-- `paos agent -m "..."` — Single-turn message call
-- `paos gateway` — Start long-running gateway service
-
----
-
-## 2.4 5-Minute Quick Start
-
-### Step 1: Install
-
-```bash
-git clone https://github.com/PhyAgentOS/PhyAgentOS.git && cd PhyAgentOS
-pip install -e .
+```text
+paos onboard
+paos agent
+paos gateway
+paos status
+paos channels status
+paos channels login
+paos provider login <provider>
 ```
 
-### Step 2: Initialize Workspace
+## 2. Onboarding
 
 ```bash
 paos onboard
 ```
 
-This command: creates/refreshes `~/.PhyAgentOS/config.json`, prepares default workspace, syncs template files.
-
-### Step 3: Start Runtime (Track B)
-
-Open Terminal A:
-
-```bash
-python -m PhyAgentOS.runtime.watchdog
-```
-
-Uses the built-in simulation driver by default — zero hardware needed for full pipeline validation.
-
-### Step 4: Start Agent (Track A)
-
-Open Terminal B:
-
-```bash
-paos agent
-```
-
-Enter interactive mode and type natural language tasks, for example:
+By default this creates or refreshes:
 
 ```text
-Look around the room and tell me what objects you see.
+~/.PhyAgentOS/config.json
+~/.PhyAgentOS/workspace/
 ```
 
-### Verify Pipeline Without Hardware
+If configuration already exists, declining overwrite preserves existing values while adding new fields. Configuration validation never silently falls back to the removed execution path. A root-level `runtime` key raises an explicit error and must be replaced with `forge`.
+
+Use custom configuration or workspace paths as follows:
 
 ```bash
-python scripts/init_runtime_workspace.py --workspace /tmp/paos_runtime_smoke
-python scripts/run_runtime_watchdog.py --workspace /tmp/paos_runtime_smoke --once
-# → session marked succeeded, results in artifacts/
+paos agent --config /path/to/config.json --workspace /path/to/workspace
+paos gateway --config /path/to/config.json --workspace /path/to/workspace
 ```
 
----
+## 3. Configure the model provider
 
-## 2.5 Configuration Details
-
-### Minimal Configuration
+Minimal provider example:
 
 ```json
 {
   "agents": {
     "defaults": {
-      "model": "openrouter/openai/gpt-4o-mini"
+      "model": "openrouter/openai/gpt-4o-mini",
+      "provider": "openrouter",
+      "workspace": "~/.PhyAgentOS/workspace"
     }
   },
   "providers": {
     "openrouter": {
-      "api_key": "YOUR_API_KEY"
+      "apiKey": "YOUR_API_KEY"
     }
   }
 }
 ```
 
-Location: `~/.PhyAgentOS/config.json`
+The Agent and verifier use the same model by default. Set `agents.verification.model` and `agents.verification.provider` to separate them. Never commit API keys; long-running deployments should also restrict configuration-file permissions.
 
-### Key Configuration Domains
+OAuth providers can be authenticated with:
 
-| Domain | Purpose |
-|--------|---------|
-| `agents.defaults` | Default model, workspace path |
-| `providers` | LLM provider API keys and addresses |
-| `gateway` | Gateway service configuration |
-| `tools` | Tool enable/disable |
-| `embodiments` | Embodiment config (single / fleet mode) |
+```bash
+paos provider login openai-codex
+paos provider login github-copilot
+```
 
-### Fleet Mode Minimum Configuration
+## 4. Configure Forge
+
+```json
+{
+  "agents": {
+    "verification": {
+      "serviceEnabled": true,
+      "timeoutS": 180,
+      "evidenceRetention": "failed",
+      "maxReplansPerEpisode": 2,
+      "maxVerifierCallsPerRun": 50,
+      "replanTimeoutS": 120,
+      "serviceHost": "127.0.0.1",
+      "servicePort": 8100
+    }
+  },
+  "forge": {
+    "enabled": true,
+    "baseUrl": "http://127.0.0.1:9001",
+    "apiVersion": "paos-forge-gateway-mvp-plus.v1",
+    "requestTimeoutS": 10,
+    "pollIntervalS": 0.5,
+    "executionTimeoutS": 300,
+    "evidence": {
+      "requiredImageSources": ["front"],
+      "captureTimeoutS": 5,
+      "postCaptureTimeoutS": 5,
+      "connectionTimeoutS": 2,
+      "maxArtifactBytes": 8388608,
+      "associationQuality": "best_effort"
+    }
+  }
+}
+```
+
+PAOS reads `/agent/runtime/capabilities` at startup and refuses startup unless:
+
+- `api_version` is exactly `paos-forge-gateway-mvp-plus.v1`;
+- `supports.sessions`, `supports.command_id`, and `supports.runtime_context` are true;
+- `supports.serial_actions_only` is true;
+- `actions` is an object, and every submitted action is present in it.
+
+Each `requiredImageSources` entry must match the `id` published on Gateway `/ws/images`. If the list is empty, PAOS discovers sources from runtime-context image readiness. If discovery also yields none, non-`off` work fails with `FORGE_EVIDENCE_CONFIGURATION_REQUIRED`.
+
+See the [Forge Configuration Reference](04-forge-configuration-reference.md) for every field and default.
+
+## 5. Startup order
+
+Recommended order:
+
+1. Start Forge Runtime, Dora, and the robot or simulator.
+2. Start Forge Gateway 1.0.0.
+3. Confirm Gateway capabilities, status, context, and image streams.
+4. Start the PAOS Agent or Gateway.
+
+Interactive mode:
+
+```bash
+paos agent
+```
+
+One-message mode:
+
+```bash
+paos agent -m "Inspect Forge capabilities, execute one supported action, audit the outcome, and report execution facts separately from the task verdict."
+```
+
+If that message submits a Forge task, the process does not exit after the first model response. It keeps Agent and Orchestrator alive until the root lineage terminates and completion/recovery system events are handled.
+
+Long-running mode:
+
+```bash
+paos gateway
+paos gateway --port 18790 --verbose
+```
+
+This entry point runs the Agent, enabled channels, Cron, Heartbeat, and Forge Orchestrator together.
+
+## 6. Submit the first task
+
+### 6.1 Inspect capabilities first
+
+Action types and inputs are Gateway-defined and should not be guessed from examples. Ask the Agent:
+
+```text
+Call forge_get_context and list current readiness, actions, required inputs, and input mappings. Do not execute an action.
+```
+
+### 6.2 Describe the goal and acceptance criteria
+
+A good request states:
+
+- the user goal;
+- the acceptable high-level action scope;
+- observable, independently decidable success criteria;
+- safety or task constraints that must be preserved;
+- the verification mode;
+- required evidence kinds and sources.
+
+Example:
+
+```text
+Read Forge capabilities and choose an appropriate high-level action to place the red object in the tray.
+Use recovery verification. The goal is “the red object is inside the tray.”
+Criteria: (1) the red object is visibly within the tray boundary in the final image;
+(2) the blue object remains in its original area. Constraint: do not move the blue object.
+Use front before/after images as evidence.
+```
+
+The Agent eventually calls `forge_execute_task` with a structure such as:
+
+```json
+{
+  "task_description": "...",
+  "action_type": "<advertised action>",
+  "inputs": {},
+  "verification": {
+    "mode": "recovery",
+    "goal": "The red object is inside the tray.",
+    "success_criteria": [
+      "The red object is visibly within the tray boundary in the final image.",
+      "The blue object remains in its original area."
+    ],
+    "constraints": ["Do not move the blue object."],
+    "evidence_policy": {
+      "required_kinds": ["rgb_image"],
+      "required_sources": ["front"],
+      "minimum_association": "best_effort"
+    }
+  }
+}
+```
+
+PAOS generates session and command IDs. Callers cannot specify, reuse, or copy them from prior tasks.
+
+## 7. Verification modes
+
+| Mode | Use when | Behavior |
+|:-----|:---------|:---------|
+| `off` | Gateway command completion is sufficient | Does not build a verification Evidence Bundle or call the verifier; finalizes from execution status. |
+| `audit` | Evaluating verifier quality without blocking execution outcomes | A missing before snapshot does not prevent dispatch; records verdict/error; preserves execution-derived terminal status; never replans. |
+| `enforce` | Task completion requires semantic evidence | Only verifier `success` succeeds. Missing evidence, invalid output, errors, `failure`, `replan_required`, and `inconclusive` fail. |
+| `recovery` | The Planner may try again after a recoverable failure | Same fail-closed behavior as enforce; valid `replan_required` creates a Recovery Request. |
+
+Every non-`off` task requires a non-empty goal, at least one non-empty criterion, and an available Verification Service.
+
+## 8. Query, cancel, review, and reset
+
+The Agent can use:
+
+- `forge_get_session(session_id)` to return the full persistent record;
+- `forge_cancel_session(session_id, reason)` to cancel non-terminal work and request Gateway cancellation after dispatch;
+- `verify_forge_session(session_id)` to review a terminal session whose evidence is retained;
+- `forge_reset(inputs)` only when no active lineage exists;
+- `forge_get_context()` for startup-cached capabilities plus live status and context.
+
+`verify_forge_session` is a review. It never changes `status`, the Execution Record, or the original automatic attempt. It appends an attempt and refreshes the verification view in `verification_result.json`.
+
+## 9. Understand states
+
+| PAOS state | Meaning | Terminal |
+|:-----------|:--------|:---------|
+| `accepted` | Request and generated identities are durable | No |
+| `capturing_before` | Waiting for and persisting pre-execution evidence | No |
+| `dispatching` | Dispatch intent is durable and POST is in progress | No |
+| `running` | Gateway session is not terminal | No |
+| `finalizing` | Writing Execution Record and waiting for after evidence | No |
+| `awaiting_verification` | Evidence Bundle is ready for verification | No |
+| `verifying` | Independent Verification Service is evaluating | No |
+| `awaiting_replan` | Recovery Request exists and awaits a Planner child | No |
+| `replanned` | Parent was atomically replaced by a new child | Yes |
+| `succeeded` / `failed` | PAOS finalized according to the current mode | Yes |
+| `timed_out` / `cancelled` | Execution timed out or was cancelled | Yes |
+
+For `enforce` and `recovery`, inspect all of:
+
+```text
+record.status
+record.execution.status
+record.verification.verdict.verdict
+record.error_code / record.error_message
+```
+
+They represent PAOS task outcome, Gateway execution fact, semantic verdict, and failure reason respectively.
+
+## 10. Artifacts and retention
+
+```text
+<workspace>/.paos/forge/orchestrator.sqlite3
+<workspace>/artifacts/forge/<session_id>/
+  execution_record.json
+  before_snapshot.json
+  after_snapshot.json
+  evidence_bundle.json
+  verification_result.json
+  evidence/
+```
+
+Evidence retention policies:
+
+| Value | Entity-artifact handling |
+|:------|:-------------------------|
+| `all` | Retain every entity |
+| `failed` | Delete entities after final success; retain them after failure |
+| `none` | Delete entities after verification |
+
+After deletion, the Evidence Bundle still retains URI, source, phase, time, sequence, byte size, SHA-256, `retained=false`, and `deleted_at` for audit. Retention never deletes or overwrites the Execution Record.
+
+## 11. Restart and recovery
+
+- No dispatch intent: the Orchestrator may continue the task.
+- Dispatch intent recorded: only GET the original Gateway session; never automatically repeat the action.
+- Original session exists and identity matches: continue polling, after capture, or verification.
+- Original session returns 404: mark `FORGE_EXECUTION_STATE_LOST`.
+- Verification was interrupted: mark the old attempt abandoned and retry.
+- Awaiting replan: the recovery system event may be delivered again; transactional child creation deduplicates it.
+
+On normal shutdown PAOS attempts to cancel the active Gateway session and stores the cancel response. The physical system still needs independent safe shutdown and operator override; PAOS cancellation is not a hardware emergency stop.
+
+## 12. Embodiment and knowledge workspaces
+
+`EMBODIED.md`, `ENVIRONMENT.md`, SceneGraph, and the `embodiments` configuration belong to the knowledge layer. Single mode uses `agents.defaults.workspace`. Fleet mode can organize shared and per-robot knowledge workspaces, but the current process still has one Forge endpoint and one serialized execution slot.
 
 ```json
 {
   "embodiments": {
     "mode": "fleet",
-    "shared_workspace": "~/.PhyAgentOS/workspaces/shared",
+    "sharedWorkspace": "~/.PhyAgentOS/workspaces/shared",
     "instances": [
       {
-        "robot_id": "go2_edu_001",
-        "driver": "go2_edu",
-        "workspace": "~/.PhyAgentOS/workspaces/go2_edu_001"
+        "robotId": "robot_001",
+        "workspace": "~/.PhyAgentOS/workspaces/robot_001",
+        "profileName": "lab-arm",
+        "enabled": true
       }
     ]
   }
 }
 ```
 
-### Workspace Paths
+This configuration contains no driver, Target, or Gateway routing semantics.
 
-| Mode | Path |
-|------|------|
-| Single mode | `~/.PhyAgentOS/workspace` |
-| Fleet shared workspace | `~/.PhyAgentOS/workspaces/shared` |
-| Fleet robot workspace | `~/.PhyAgentOS/workspaces/<robot_id>` |
+## 13. Legacy workspace cleanup
 
-> After each config change, re-run `paos onboard` to refresh templates and add new fields.
-
----
-
-## 2.6 Scenario Usage Guide
-
-### 2.6.1 Simulation
-
-The built-in `simulation` driver is the fastest way to validate the full pipeline.
-
-```bash
-# Terminal 1: Start simulation Watchdog
-python -m PhyAgentOS.runtime.watchdog
-
-# Terminal 2: Start Agent
-paos agent
-```
-
-**Isaac Sim High-Fidelity Simulation (PIPER + Go2 Composite)**:
-
-```bash
-# GUI mode (requires local X display)
-python hal/hal_watchdog.py --gui --interval 0.05 \
-  --driver pipergo2_manipulation \
-  --driver-config examples/pipergo2_manipulation_driver.json
-
-# VNC mode (remote server/container, browser access)
-python hal/hal_watchdog.py --vnc --interval 0.05 \
-  --driver pipergo2_manipulation \
-  --driver-config examples/pipergo2_manipulation_driver.json
-# Open http://<host>:31315/vnc.html in browser
-```
-
-Then send Agent commands:
-
-```bash
-paos agent -m "open simulation"
-paos agent -m "go to desk"
-paos agent -m "pick up the red cube and return to the starting position"
-```
-
-> `--gui` and `--vnc` are mutually exclusive. Without either flag, runs headless.
-
----
-
-### 2.6.2 Real Robot Arm (Franka Research 3)
-
-#### Network Architecture
-
-```
-WorkStation PC → Control Box (Shop Floor: 172.16.0.x) → Robot Arm
-```
-
-#### First-Time Setup
-
-1. Ethernet cable: PC ↔ Control Box (Shop Floor port)
-2. Set PC wired network IP to `172.16.0.x` (e.g., `172.16.0.1`)
-3. Activate FCI in Control Box Desk interface
-4. Install backend drivers
-
-#### Backend Installation
-
-```bash
-# pylibfranka (official Python bindings)
-pip install pylibfranka
-
-# franky-control (alternative high-level library, looser compatibility)
-pip install git+https://github.com/TimSchneider42/franky.git
-```
-
-#### Driver Selection
-
-| Driver Name | Description | Use Case |
-|:------------|:------------|:---------|
-| `franka_research3` | Raw pylibfranka driver | Precise control or real-time 1kHz |
-| `franka_multi` | Multi-backend negotiation driver | Auto-selects available backend |
-
-#### Launch
-
-```bash
-# Multi-backend auto-negotiation (recommended)
-python hal/hal_watchdog.py --driver franka_multi
-
-# Raw pylibfranka driver
-python hal/hal_watchdog.py --driver franka_research3
-
-# Custom configuration
-python hal/hal_watchdog.py \
-  --driver franka_multi \
-  --driver-config examples/franka_research3.driver.json
-```
-
-#### Supported Actions
-
-`move_to` (Cartesian position), `move_joints` (joint positions), `grasp`, `move_gripper`, `stop`, etc.
-
-#### Real-Time Control Mode
-
-Set `realtime_mode: true` to enable 1 kHz real-time control (requires real-time kernel).
-
-> Before installation, verify library version compatibility with your robot system version.
-
----
-
-### 2.6.3 Mobile Robot (Go2)
-
-```bash
-python hal/hal_watchdog.py \
-  --driver go2_edu \
-  --driver-config examples/go2_driver_config.json
-```
-
-The driver config JSON is passed through to the Go2 driver for remote ROS2, video, state streaming, and motion backend initialization.
-
----
-
-### 2.6.4 Remote Chassis (XLeRobot)
-
-```bash
-python hal/hal_watchdog.py \
-  --driver xlerobot_2wheels_remote \
-  --driver-config examples/xlerobot_2wheels_remote.driver.json
-```
-
-Configuration includes ZMQ communication parameters, remote host address, etc.
-
----
-
-### 2.6.5 ReKep Real-Robot Plugin
-
-`rekep_real` is integrated via an external plugin repository:
-
-```bash
-# Deploy plugin
-python scripts/deploy_rekep_real_plugin.py \
-  --repo-url https://github.com/baiyu858/PhyAgentOS-rekep-real-plugin.git
-
-# Start
-python hal/hal_watchdog.py --driver rekep_real
-```
-
----
-
-### 2.6.6 Fleet Multi-Robot Coordination
-
-#### When to Use
-
-- One Agent coordinates multiple robot instances
-- Separate shared environment, target registry, and session queue
-- Manage execution through `TARGETS.md`, `SKILLRUNTIME.md`, and `SESSIONS.md`
-
-#### Startup Sequence
-
-1. Set `embodiments.mode = "fleet"`
-2. Run `paos onboard`
-3. Start `paos agent` or `paos gateway`
-4. Runtime workspace provisioning and the session watchdog start automatically when runtime is enabled
-
-```bash
-paos agent
-```
-
-#### Fleet Mode File Layout
-
-| File | Location | Purpose |
-|------|----------|---------|
-| `ENVIRONMENT.md` | shared/ | Global environment state |
-| `TARGETS.md` | runtime/shared | Target registry |
-| `SKILLRUNTIME.md` | runtime/shared | Skill runtime registry |
-| `SESSIONS.md` | runtime/shared | Session queue and results |
-| `TASK.md` | shared/ | Multi-step task state |
-| `ORCHESTRATOR.md` | shared/ | Global orchestration state |
-
----
-
----
-
-## 2.7 Protocol File Reference
-
-| Context Loading | File | Location | Purpose |
-|------|------|----------|---------|
-| Always loaded into the agent system prompt | `AGENTS.md` | Agent workspace | Project-level operating rules |
-| Always loaded into the agent system prompt | `SOUL.md` | Agent workspace | Identity and assistant behavior |
-| Always loaded into the agent system prompt | `USER.md` | Agent workspace | User preferences and durable profile notes |
-| Always loaded into the agent system prompt | `TOOLS.md` | Agent workspace | Tool usage policy |
-| Always loaded into the agent system prompt | `SKILLS.md` | Agent workspace | Agent skill discovery and loading rules |
-| Loaded when present; filtered by enabled runtime targets where applicable | `EMBODIED.md` | Agent workspace | Human-readable target capability descriptions |
-| Loaded when present as state | `ENVIRONMENT.md` | Agent/runtime workspace | Current target, scene, object, and environment state |
-| Loaded when present as memory/state | `LESSONS.md` | Agent workspace | Operational lessons and failure notes |
-| Loaded when present as task state | `TASK.md` | Agent workspace | Multi-step task decomposition state |
-| Runtime protocol; read before scheduling sessions | `RUNTIME.md` | Runtime workspace | Instructions for writing valid runtime sessions |
-| Runtime protocol; read before scheduling sessions | `TARGETS.md` | Runtime workspace | Target registry, endpoints, adapters, configs, supported skill runtimes |
-| Runtime protocol; read before scheduling sessions | `SKILLRUNTIME.md` | Runtime workspace | Policy/builtin skill runtime registry and execution contracts |
-| Runtime queue/state | `SESSIONS.md` | Runtime workspace | Execution session queue and results |
-
----
-
-## 2.8 Common Interaction Examples
-
-### Environment Query
+PAOS never deletes user-owned files automatically. Back up the workspace, then optionally remove obsolete execution protocol files:
 
 ```text
-Look around and tell me what objects are present.
+RUNTIME.md
+TARGETS.md
+SKILLRUNTIME.md
+SESSIONS.md
+configs/runtime/
+artifacts/runtime/
 ```
 
-Verify: Agent can read `ENVIRONMENT.md`, environment state has been correctly written back by Watchdog.
+Keep `EMBODIED.md`, `ENVIRONMENT.md`, `LESSONS.md`, `TASK.md`, and other user knowledge. Current code neither reads nor generates the obsolete execution protocol.
 
-### Robot Arm Manipulation Task
+## 14. Troubleshooting
 
-```text
-Pick up the red apple on the table and place it on the tray.
-```
+### API or capability failure at startup
 
-Verify: Target object exists in environment state, robot profile declares corresponding actions, Watchdog successfully executes and clears the action queue.
+Ensure the URL points to Forge Gateway 1.0.0 and inspect `/agent/runtime/capabilities`. Version and required supports cannot be downgraded through configuration.
 
-### Mobile Robot Navigation
+### `FORGE_ACTION_UNSUPPORTED`
 
-```text
-Move near the refrigerator and stop.
-```
+The requested action is absent from startup-cached capabilities. Call `forge_get_context`, then replan from advertised actions and required inputs. Restart PAOS after Gateway capability changes so startup validation and the Agent summary refresh together.
 
-Verify: Target semantic location exists in scene graph, current mobile robot supports navigation actions.
+### `FORGE_EVIDENCE_CONFIGURATION_REQUIRED`
 
-### Fleet Multi-Robot Coordination
+No global image sources are configured and runtime context exposes none. Configure real source IDs and ensure `/ws/images` is publishing.
 
-```text
-Send Go2 to patrol the doorway first, then have the robot arm grab the package on the table for handoff.
-```
+### `FORGE_EVIDENCE_UNAVAILABLE`
 
-Verify: Agent recognizes the intended target, the session uses the correct `target_ref`, and `SESSIONS.md` / `ENVIRONMENT.md` update correctly.
+A required source is missing from the before or after window. Check WebSocket connectivity, media format, size limits, source IDs, increasing sequences, and capture timeouts.
 
-### Isaac Sim Environment Manipulation
+### `FORGE_EXECUTION_STATE_LOST`
 
-```bash
-paos agent -m "open simulation"
-paos agent -m "go to desk"
-paos agent -m "pick up the red cube and return to the starting position"
-```
+PAOS persisted dispatch intent but Gateway returns 404. The system intentionally refuses to repeat an unknown physical action. Inspect the physical world and Gateway logs before creating a new high-level task.
 
-### VLA Model Grasping
+### `VERIFICATION_EVIDENCE_UNAVAILABLE`
 
-```bash
-paos agent -m "deploy a VLA to pick up the red cube"
-```
+The bundle is incomplete, an artifact is missing/deleted, a digest differs, or the capture window is invalid. For later reviews, use `all`, or use `failed` when failed evidence must remain.
 
-Customize your VLA checkpoint by editing the `vla` block in `examples/pipergo2_manipulation_driver.json`.
+### `VERIFICATION_INVALID_VERDICT`
 
----
+The model failed to return exactly one legal result per criterion or cited an unknown evidence ID. Select a more reliable model; do not weaken the public contract.
 
-## 2.9 Troubleshooting
+### `VERIFICATION_SERVICE_UNAVAILABLE`
 
-### No API Key
+Check provider settings, model support, `servicePort` conflicts, and timeout. `audit` records the error and preserves execution outcome; `enforce` and `recovery` fail closed.
 
-**Symptom**: Agent starts but reports missing API key.
+### Busy / active lineage
 
-**Resolution**:
-1. Check `~/.PhyAgentOS/config.json` for `providers.<name>.api_key`
-2. Verify `agents.defaults.model` matches the provider
-3. Ensure API key format is correct with no extra whitespace
+Another root lineage is not terminal. Query it with `forge_get_session` and cancel if necessary. Never edit SQLite directly to bypass serialization.
 
-### Runtime Protocol Files Missing
+## Next reading
 
-**Symptom**: `TARGETS.md`, `SKILLRUNTIME.md`, or `SESSIONS.md` is missing.
-
-**Resolution**:
-1. Confirm `runtime.enabled` is true in config
-2. Check whether `runtime.workspace` points to a separate directory
-3. Start `paos agent` / `paos gateway`, or initialize manually with `python scripts/init_runtime_workspace.py --workspace <path>`
-4. In Fleet mode, verify you're inspecting the shared/runtime workspace
-
-### SESSIONS.md Has Pending Work But No Execution
-
-**Resolution**:
-1. Confirm the session watchdog is running
-2. Check that `target_ref` and `skillruntime_ref` exist
-3. Check that the target is `enabled: true` in `TARGETS.md`
-4. Check Watchdog output for preflight or runtime errors
-
-### Session Rejected by Preflight
-
-**Resolution**:
-1. Check the session result/error in `SESSIONS.md`
-2. Verify the target supports the requested `skillruntime_ref`
-3. Check that `SKILLRUNTIME.md` observation/action contracts match the target runtime contract
-4. Check `ENVIRONMENT.md` for required object, map, or connection state
-
-### Fleet Mode Task Not Dispatched to Correct Robot
-
-**Resolution**:
-1. Verify `robot_id`, `driver`, `workspace` in config match
-2. Check target id, workspace, and enabled state in `TARGETS.md`
-3. Check the session `target_ref` in `SESSIONS.md`
-4. Confirm task semantics explicitly identify target robot
-
-### rekep_real Driver Not Found
-
-**Resolution**:
-1. Confirm plugin deployment script was executed: `python scripts/deploy_rekep_real_plugin.py`
-2. Confirm plugin repo is registered in `~/.PhyAgentOS/plugins/`
-3. Restart Watchdog for plugin to take effect
-
-### Isaac Sim Startup Failure
-
-**Resolution**:
-1. Confirm Isaac Sim is correctly installed
-2. Check path config in `pipergo2_manipulation_driver.json` `isaac_env` block
-3. In `--vnc` mode, inspect first-start re-exec logs
-4. Verify `LD_LIBRARY_PATH` is correctly set (auto-handled in VNC mode)
-
----
-
-## Further Reading
-
-- [Part 1: Framework Introduction](../01-framework-introduction.md) — Design philosophy, architecture, roadmap
-- [Part 3: API Developer Manual](../03-developer-manual.md) — API reference, secondary development, coding style
+- [Framework Introduction](01-framework-introduction.md)
+- [Forge Configuration Reference](04-forge-configuration-reference.md)
+- [Operations Manual](../user_manual/README_en.md)
+- [Forge Integration Contract](../forge/README.md)
+- [Documentation Index](../README.md)

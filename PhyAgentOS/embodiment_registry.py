@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
 from PhyAgentOS.config.schema import Config, EmbodimentInstanceConfig
 from PhyAgentOS.utils.helpers import ensure_dir, sync_workspace_templates
-
-_RUNTIME_PROTOCOL_TEMPLATE_FILES = {"TARGETS.md", "SKILLRUNTIME.md", "SESSIONS.md"}
 
 
 @dataclass(frozen=True)
@@ -15,7 +14,6 @@ class EmbodimentInstance:
     """Resolved robot instance settings."""
 
     robot_id: str
-    driver: str
     workspace: Path
     enabled: bool = True
     profile_name: str | None = None
@@ -23,7 +21,7 @@ class EmbodimentInstance:
 
     @property
     def profile_filename(self) -> str:
-        name = self.profile_name or self.driver
+        name = self.profile_name or self.robot_id
         return name if name.endswith(".md") else f"{name}.md"
 
     @property
@@ -32,7 +30,7 @@ class EmbodimentInstance:
 
 
 class EmbodimentRegistry:
-    """Resolve embodiment instances from config and maintain runtime mirrors."""
+    """Resolve embodiment knowledge workspaces independently of robot execution."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -84,14 +82,11 @@ class EmbodimentRegistry:
     def sync_layout(self) -> list[str]:
         created: list[str] = []
         if not self.is_fleet:
-            sync_workspace_templates(self.shared_workspace, exclude=_RUNTIME_PROTOCOL_TEMPLATE_FILES)
+            sync_workspace_templates(self.shared_workspace)
             return created
 
         ensure_dir(self.shared_workspace)
-        created.extend(sync_workspace_templates(
-            self.shared_workspace,
-            exclude=_RUNTIME_PROTOCOL_TEMPLATE_FILES,
-        ))
+        created.extend(sync_workspace_templates(self.shared_workspace))
 
         for instance in self.instances(enabled_only=True):
             ensure_dir(instance.workspace)
@@ -107,7 +102,6 @@ class EmbodimentRegistry:
         shared_env = Path(item.shared_environment).expanduser() if item.shared_environment else None
         return EmbodimentInstance(
             robot_id=item.robot_id,
-            driver=item.driver,
             workspace=Path(item.workspace).expanduser(),
             enabled=item.enabled,
             profile_name=item.profile_name,

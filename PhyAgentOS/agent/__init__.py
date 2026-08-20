@@ -1,8 +1,21 @@
-"""Agent core module."""
+"""Agent core module with lazy exports for isolated Agent services."""
 
-from PhyAgentOS.agent.context import ContextBuilder
-from PhyAgentOS.agent.loop import AgentLoop
-from PhyAgentOS.agent.memory import MemoryStore
-from PhyAgentOS.agent.skills import SkillsLoader
+from importlib import import_module
 
 __all__ = ["AgentLoop", "ContextBuilder", "MemoryStore", "SkillsLoader"]
+
+_EXPORTS = {
+    "AgentLoop": ("PhyAgentOS.agent.loop", "AgentLoop"),
+    "ContextBuilder": ("PhyAgentOS.agent.context", "ContextBuilder"),
+    "MemoryStore": ("PhyAgentOS.agent.memory", "MemoryStore"),
+    "SkillsLoader": ("PhyAgentOS.agent.skills", "SkillsLoader"),
+}
+
+
+def __getattr__(name: str):
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    module_name, attribute = _EXPORTS[name]
+    value = getattr(import_module(module_name), attribute)
+    globals()[name] = value
+    return value

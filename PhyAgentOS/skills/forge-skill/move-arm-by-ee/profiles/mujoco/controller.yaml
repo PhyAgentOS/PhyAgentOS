@@ -1,0 +1,9 @@
+joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]
+control_period_ms: 20
+feedback_timeout_ms: 200
+start_position_tolerance: 0.10
+path_position_tolerance: 0.15
+goal_position_tolerance: 0.03
+goal_velocity_tolerance: 0.05
+goal_time_tolerance_ms: 500
+result_cache_size: 128

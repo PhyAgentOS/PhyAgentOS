@@ -23,6 +23,13 @@ The skill format and metadata structure follow OpenClaw's conventions to maintai
 | `tmux` | Remote-control tmux sessions |
 | `clawhub` | Search and install skills from ClawHub registry |
 | `skill-creator` | Create new skills |
-| `robot-management-guideline` | Must-read manual to manage robot projects |
-| `rekep-robot-onboarding` | Inspect a robot SDK and wire it into the external ReKep plugin |
-| `pipergo2-demo` | Deterministic demo mapping for go-to-desk and red-cube pick then return to spawn |
+| `pipergo2-demo` | Plan and verify PiperGo2 actions through Forge tools |
+
+## Runtime-gated Skills
+
+These skills become available only after their declared runtime has been started explicitly
+and its Gateway Tool API is healthy:
+
+| Skill | Description |
+|-------|-------------|
+| `move-arm-by-ee` | Resolve relative end-effector motion and execute an absolute pose |

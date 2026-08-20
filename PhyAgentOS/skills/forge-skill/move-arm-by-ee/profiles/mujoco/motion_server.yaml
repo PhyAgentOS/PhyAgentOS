@@ -1,0 +1,35 @@
+state_timeout_ms: 200
+planning_timeout_ms: 100
+execution_timeout_margin_ms: 2000
+final_state_timeout_ms: 200
+child_cancel_retry_ms: 100
+child_cancel_timeout_ms: 1000
+result_cache_size: 128
+
+groups:
+  piper_arm:
+    joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]
+    urdf_path: ../../assets/piper_with_gripper.urdf
+    base_frame: arm_base
+    tip_frame: tcp
+    max_velocity:
+      joint1: 1.0
+      joint2: 1.0
+      joint3: 1.0
+      joint4: 1.0
+      joint5: 1.0
+      joint6: 1.0
+    max_acceleration:
+      joint1: 2.0
+      joint2: 2.0
+      joint3: 2.0
+      joint4: 2.0
+      joint5: 2.0
+      joint6: 2.0
+    trajectory_sample_period_ms: 50
+    max_trajectory_points: 10000
+    start_velocity_tolerance: 0.10
+    final_joint_tolerance: 0.03
+    final_position_tolerance_m: 0.01
+    final_orientation_tolerance_rad: 0.05
+    ik_max_solution_joint_displacement: 0.50

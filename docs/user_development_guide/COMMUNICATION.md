@@ -1,256 +1,200 @@
-# Communication Architecture / 通信架构说明
+# PhyAgentOS 通信架构
 
-This document explains how Physical Agent Operating System components communicate at runtime.
-It is a bilingual architectural guide, not a live protocol bus by itself.
+> 版本：0.1.4.post4 · [English](COMMUNICATION_en.md)
 
-本文说明 Physical Agent Operating System 在运行时如何通信。
-它是一份中英双语的架构说明书，不是实际承载通信的运行态总线。
+## 1. 五个通信边界
 
-## 1. Core Principle / 核心原则
+PhyAgentOS 不用一条内部总线混合用户消息、物理执行与验证：
 
-Physical Agent Operating System follows a Markdown-first design:
-
-- Track A (Agent side) plans, reasons, and validates.
-- Track B (Runtime / HAL side) executes through watchdog-supervised targets and skills.
-- Shared state is exposed through Markdown files instead of direct cross-layer Python calls.
-
-Physical Agent Operating System 采用 Markdown-first 设计：
-
-- Track A（Agent 侧）负责理解、规划、校验。
-- Track B（Runtime / HAL 侧）负责通过 watchdog 监督的 target 与 skill 执行。
-- 跨层共享状态优先通过 Markdown 文件暴露，而不是直接跨层 Python 调用。
-
-## 2. Workspaces / 工作区拓扑
-
-### Single mode
-
-- One workspace, usually `~/.PhyAgentOS/workspace`
-- Agent and watchdog both operate around the same runtime directory
-
-### Fleet mode
-
-- One shared workspace, usually `~/.PhyAgentOS/workspaces/shared`
-- One robot workspace per embodied instance, for example:
-  - `~/.PhyAgentOS/workspaces/go2_edu_001`
-  - `~/.PhyAgentOS/workspaces/desktop_pet_001`
-
-单实例模式：
-
-- 只有一个 workspace，通常是 `~/.PhyAgentOS/workspace`
-- Agent 和 watchdog 围绕同一个运行目录工作
-
-Fleet 模式：
-
-- 一个 shared workspace，通常是 `~/.PhyAgentOS/workspaces/shared`
-- 每个机器人实例一个 robot workspace，例如：
-  - `~/.PhyAgentOS/workspaces/go2_edu_001`
-  - `~/.PhyAgentOS/workspaces/desktop_pet_001`
-
-## 3. File Responsibilities / 文件职责
-
-### Shared workspace files
-
-- `ENVIRONMENT.md`
-  - Global environment truth source
-  - Scene graph, map, TF, and per-robot runtime state
-- `LESSONS.md`
-  - Shared failure memory and action rejection notes
-- `TARGETS.md`, `SKILLRUNTIME.md`, `SESSIONS.md`
-  - Runtime target registry, skill registry, and session queue
-  - Used by the session-centered runtime instead of direct Agent-to-target calls
-- `TASK.md`
-  - Multi-step task decomposition state
-- `ORCHESTRATOR.md`
-  - Global supervision and coordination state
-
-Shared workspace 文件：
-
-- `ENVIRONMENT.md`
-  - 全局环境真相源
-  - 保存 scene graph、map、TF 和各机器人的运行态
-- `LESSONS.md`
-  - 共享失败经验和动作拒绝记录
-- `TARGETS.md`、`SKILLRUNTIME.md`、`SESSIONS.md`
-  - Runtime target registry、skill registry 与 session 队列
-  - 被 session-centered runtime 使用，避免 Agent 直接调用 target
-- `TASK.md`
-  - 多步骤任务拆解状态
-- `ORCHESTRATOR.md`
-  - 全局监督与协调状态
-
-### Agent-facing workspace files
-
-- `SKILLS.md`
-  - Describes how agent skills are discovered and loaded.
-- `EMBODIED.md`
-  - Human-readable target capability descriptions; target sections can be filtered by enabled runtime targets.
-
-Agent-facing workspace 文件：
-
-- `SKILLS.md`
-  - 描述 Agent skills 的发现与加载规则。
-- `EMBODIED.md`
-  - 面向 Agent 的 target 能力描述；可按启用的 runtime target 过滤 target section。
-
-## 4. Template vs Profile / 模板与 Profile 的区别
-
-`PhyAgentOS/templates/EMBODIED.md` is only a structural template.
-It explains:
-
-- what sections `EMBODIED.md` should contain
-- what each section means
-- what belongs in static profile data
-- what belongs in runtime state instead
-
-Concrete robot values must live in `hal/profiles/*.md`.
-
-`PhyAgentOS/templates/EMBODIED.md` 只是结构模板。
-它用于说明：
-
-- `EMBODIED.md` 应包含哪些 section
-- 每个 section 的作用是什么
-- 哪些信息属于静态 profile
-- 哪些信息应该写进运行态文件
-
-具体机器人参数必须写在 `hal/profiles/*.md`。
-
-## 5. Who Reads What / 谁读取什么
-
-### Planner / main Agent
-
-Usually reads the shared workspace:
-
-- `ENVIRONMENT.md`
-- `LESSONS.md`
-- `TASK.md`
-- `ORCHESTRATOR.md`
-
-The main Agent does not automatically ingest every robot profile in fleet mode.
-
-When scheduling runtime execution, it reads:
-
-- `TARGETS.md`
-- `SKILLRUNTIME.md`
-- `ENVIRONMENT.md`
-- `RUNTIME.md`
-
-It writes pending work to `SESSIONS.md`.
-
-### Watchdog
-
-The session-centered `WatchdogSupervisor` reads:
-
-- `TARGETS.md`
-- `SKILLRUNTIME.md`
-- `SESSIONS.md`
-- external runtime YAML under `configs/runtime/`
-
-It writes:
-
-- session status and result back to `SESSIONS.md`
-- perception deltas to `ENVIRONMENT.md`
-- reusable preflight failures to `LESSONS.md`
-- transient runtime history to `LOG.md`
-- episode artifacts under `artifacts/runtime/<session_id>/`
-
-During execution, the watchdog schedules sessions serially and supervises each runner through heartbeat snapshots and `execute_timeout_s`. A timed-out session is written as `timed_out` with an episode artifact and transient history entry; cleanup is best-effort because the first runtime implementation uses thread supervision rather than process termination.
-
-Planner / 主 Agent：
-
-  - 默认主要读取 shared workspace：
-  - `ENVIRONMENT.md`
-  - `LESSONS.md`
-  - `TASK.md`
-  - `ORCHESTRATOR.md`
-- 创建 runtime session 前会读取：
-  - `TARGETS.md`
-  - `SKILLRUNTIME.md`
-  - `ENVIRONMENT.md`
-  - `RUNTIME.md`
-- 然后向 `SESSIONS.md` 写入 pending work
-
-Watchdog：
-
-- session-centered `WatchdogSupervisor` 读取：
-  - `TARGETS.md`
-  - `SKILLRUNTIME.md`
-  - `SESSIONS.md`
-  - `configs/runtime/` 下的外部 runtime YAML
-- 它写入：
-  - `SESSIONS.md` 中的 session 状态与结果
-  - `ENVIRONMENT.md` 中的感知增量
-  - `LESSONS.md` 中可复用的 preflight 失败经验
-  - `LOG.md` 中的临时 runtime history
-  - `artifacts/runtime/<session_id>/` 下的 episode artifacts
-
-执行期间，watchdog 会按串行方式调度 session，并通过 runner heartbeat snapshot 与 `execute_timeout_s` 监督单个 runner。超时 session 会以 `timed_out` 写回，并生成 episode artifact 与临时 history；当前 runtime 使用线程监督，因此超时后的资源清理是 best-effort，而不是强制终止进程。
-
-## 6. Runtime Session Protocol / Runtime Session 协议
-
-The runtime protocol keeps the upper/lower boundary file-based while moving execution to sessions:
-
-- `TARGETS.md` answers which targets exist, whether they are enabled, which skill runtimes they support, and which target class/kind, runtime endpoint, target adapter, sensor config, perception config, and runtime contract they use.
-- `SKILLRUNTIME.md` declares `runtime_kind`, loop mode, agent exposure, supported target kinds, policy requirements, observation contract, required sensors/environment outputs, output action contract, target-tool policy, and allowed deterministic bridges.
-- `SESSIONS.md` declares a task, target, skill runtime, timeout, priority, and routing hints. It does not bind pair adapters.
-- `configs/runtime/contracts/<target_id>.runtime.yaml` declares target action contract and safety limits.
-- Adapter and bridge references use explicit URI namespaces such as `target_adapter://`, `policy_adapter://`, and `bridge://`.
-
-Runtime status flow:
+1. **用户消息边界**：Channel ↔ MessageBus ↔ AgentLoop。
+2. **Agent/Forge 编排边界**：Agent tools ↔ `ForgeSessionOrchestrator`。
+3. **PAOS/Gateway 边界**：异步 HTTP + WebSocket。
+4. **Verifier 边界**：Orchestrator ↔ 独立 Verification Service 进程。
+5. **持久化边界**：Orchestrator ↔ SQLite；Adapter/Verifier ↔ workspace artifacts。
 
 ```text
-pending -> claimed -> preflight_checking -> running -> succeeded / failed / timed_out / cancelled
-preflight_checking -> rejected
+External Channel
+      │ InboundMessage / OutboundMessage
+      ▼
+  MessageBus ─ AgentLoop ─ Forge tools ─ Orchestrator
+                                          │
+                ┌─────────────────────────┼────────────────────┐
+                ▼                         ▼                    ▼
+          HTTP / WebSocket             SQLite          Verification HTTP
+                ▼                         ▼                    ▼
+          Forge Gateway             Event Store          Child process
+                │
+                ▼
+        Forge Runtime / Dora
 ```
 
-`RuntimeCompatibilityPreflight` resolves an `AdapterPlan` before execution. It validates protocol files, target/skill compatibility, adapter/bridge availability, sensor config declarations, perception config declarations, and runtime contracts. Actual target observation channels are checked when runtime reads an observation for environment refresh or skill execution. After preflight, `WatchdogSupervisor` creates a `SessionRunner`; the runner owns target lifecycle and exposes the target to policy or builtin skills only through `TargetSessionHandle`. Target runtimes and policy servers do not call each other directly.
+## 2. 用户消息边界
 
-For remote targets, `targetws://` messages use the runtime envelope and msgpack serialization. RPC responses are correlated with the request by message type, sequence number, session id, target id, and skill runtime id; mismatched responses are treated as target protocol errors.
+Channel 将外部消息转换为 `InboundMessage`。AgentLoop 根据 `session_key` 加载上下文、调用模型与工具，再产生 `OutboundMessage`。CLI 单消息可直接调用 `process_direct`，但内部 Planner 与 Forge tools 相同。
 
-Runtime 协议继续保持文件边界，但执行单位变成 session：
+Channel 不得：
 
-- `TARGETS.md` 描述有哪些 target、是否启用、支持哪些 skill runtime，以及 target class/kind、runtime endpoint、target adapter、sensor config、perception config、runtime contract。
-- `SKILLRUNTIME.md` 声明 `runtime_kind`、loop mode、agent exposure、支持的 target kinds、policy 需求、observation contract、所需 sensors/environment outputs、输出动作契约、target-tool policy 和允许的确定性 bridge。
-- `SESSIONS.md` 声明任务、target、skill runtime、timeout、priority 和 routing hints，不绑定 pair adapter。
-- `configs/runtime/contracts/<target_id>.runtime.yaml` 声明 target action contract 与安全限制。
-- Adapter 与 bridge 引用使用 `target_adapter://`、`policy_adapter://`、`bridge://` 等显式 URI 命名空间。
+- 直接调用 Gateway；
+- 直接写 SQLite/Artifact；
+- 生成或复用 Forge session/command ID；
+- 把 Gateway `succeeded` 直接报告为任务成功。
 
-运行状态流：
+## 3. Agent/Orchestrator 边界
+
+Forge tools 是 Agent 唯一可用的执行接口：
 
 ```text
-pending -> claimed -> preflight_checking -> running -> succeeded / failed / timed_out / cancelled
-preflight_checking -> rejected
+forge_execute_task
+forge_get_session
+forge_cancel_session
+forge_get_context
+forge_reset
+verify_forge_session
+create_replanned_forge_session
 ```
 
-`RuntimeCompatibilityPreflight` 会在执行前解析 `AdapterPlan`，并校验协议文件、target/skill 兼容性、adapter/bridge 可用性、sensor config 声明、perception config 声明和 runtime contract。真实 target observation 的 channel 会在 runtime 为环境刷新或技能执行读取 observation 时校验。Preflight 通过后，`WatchdogSupervisor` 创建 `SessionRunner`；runner 负责 target lifecycle，并且只通过 `TargetSessionHandle` 把 target 暴露给 policy 或 builtin skill。Target runtime 与 policy server 不直接互相调用。
+`forge_execute_task` 立即返回生成的 ID 与 `accepted`，不阻塞模型调用等待物理执行。Orchestrator 在后台推进状态，并通过 system event 把终态送回原 `session_key`。
 
-对于 remote target，`targetws://` 消息使用 runtime envelope 与 msgpack 序列化。RPC response 会通过 message type、sequence number、session id、target id 和 skill runtime id 与 request 严格关联；关联不匹配会被视为 target protocol error。
+Completion event 包含：
 
-## 7. Typical Runtime Pipeline / 典型运行流程
+```json
+{
+  "session_id": "...",
+  "root_session_id": "...",
+  "status": "succeeded|failed|timed_out|cancelled",
+  "execution_status": "succeeded|failed|timed_out|cancelled|unknown",
+  "verification_verdict": "success|failure|replan_required|inconclusive|null",
+  "error_code": null,
+  "error_message": null
+}
+```
 
-1. `paos onboard` prepares workspaces.
-2. Runtime protocol files define targets, skill runtimes, sessions, and external configs.
-3. User starts `paos agent` or `paos gateway`; when runtime is enabled in config, the runtime workspace is provisioned and the session watchdog starts automatically.
-4. Agent plans from shared state and writes or updates a session.
-5. Watchdog claims a pending session and runs compatibility preflight.
-7. If accepted, watchdog creates a `SessionRunner`; the runner enters `running`, configures and starts the target session, then runs the selected skill runtime through `TargetSessionHandle` under heartbeat and execution-timeout supervision.
-8. Runtime writes session results, environment deltas, lessons, and artifacts.
+Recovery event 包含 parent、goal、criteria、preserved constraints、unmet criteria、guidance、evidence refs 和 deadline。它明确要求 Planner 调用 `create_replanned_forge_session`，但不携带可执行 action。
 
-1. `paos onboard` 准备工作区。
-2. Runtime 协议文件定义 targets、skill runtimes、sessions 与外部配置。
-3. 用户启动 `paos agent` 或 `paos gateway`；当 config 启用 runtime 时，系统自动创建 runtime workspace 并启动 session watchdog。
-4. Agent 基于 shared state 规划并写入或更新 session。
-5. Watchdog claim pending session 并执行 compatibility preflight。
-7. 如通过，watchdog 创建 `SessionRunner`；runner 进入 `running`，配置并启动 target session，然后在 heartbeat 与执行超时监督下通过 `TargetSessionHandle` 运行选定的 skill runtime。
-8. Runtime 写回 session result、environment delta、lessons 与 artifacts。
+## 4. PAOS/Gateway HTTP
 
-## 8. Design Intent / 设计意图
+| Method | Path | PAOS 用途 | 状态影响 |
+|:-------|:-----|:----------|:---------|
+| GET | `/agent/runtime/capabilities` | 启动契约与 action 发现 | 启动前校验/缓存 |
+| GET | `/agent/runtime/status` | `forge_get_context` 实时状态 | 只读 |
+| GET | `/agent/runtime/context` | readiness、image source 与上下文 | 只读/证据 source 发现 |
+| POST | `/agent/runtime/reset` | 显式 reset | 仅无活动 lineage |
+| POST | `/agent/sessions` | 创建唯一高层 action | dispatch intent 持久化后才调用 |
+| GET | `/agent/sessions/{session_id}` | 唯一执行终态来源 | queued/running/terminal |
+| POST | `/agent/sessions/{session_id}/cancel` | timeout、用户取消、正常停机 | 保存 cancel response |
 
-- Keep shared context concise enough for planning
-- Keep robot-specific validation precise
-- Keep runtime state visible and inspectable
-- Avoid hiding hardware facts inside opaque code paths
+`ForgeGatewayClient` 使用 `httpx.AsyncClient`，关闭 proxy environment 继承（`trust_env=False`），统一解析 JSON object。HTTP 错误或 `ok=false` 转换为 `ForgeGatewayError`，并保留 HTTP status code 供 404 restart 语义使用。
 
-- 让 shared 上下文足够简洁，便于规划
-- 让机器人级校验保持精确
-- 让运行态保持可见、可检查
-- 避免把硬件事实藏在不可见的黑盒代码路径里
+## 5. Session/command identity
+
+PAOS 为一次动作生成：
+
+```text
+session_id = forge_<random>
+command_id = command_<random>
+```
+
+POST 后每次响应都必须保持：
+
+```text
+response session_id == PAOS session_id
+response command_id == PAOS command_id
+command.session_id == PAOS session_id
+command.request_id == PAOS command_id
+session.action_type == request.action_type
+command action_type/policy_id/command == advertised capability
+```
+
+PAOS 不把 Gateway 新生成的 ID 当作 alias，也不接受模糊关联。解析阶段即使只有一个 command，后续仍必须通过严格 identity 校验。
+
+## 6. PAOS/Gateway WebSocket
+
+### `/ws/images`
+
+```json
+{
+  "type": "image",
+  "id": "front",
+  "seq": 42,
+  "timestamp": 1785744000.123,
+  "content_type": "image/jpeg",
+  "data": "<base64>"
+}
+```
+
+PAOS 记录 Gateway `timestamp` 为 `captured_at`（如果提供），并独立记录本机 `received_at`。per-source sequence 是 before/after 边界的一部分。
+
+### `/ws/state`
+
+消息为 JSON object。Gateway 1.0.0 没有统一 source timestamp 字段，因此 PAOS 保存完整 payload 和本机 `received_at`，`captured_at=null`。
+
+### 连接语义
+
+- HTTP(S) base URL 自动映射到 WS(S)；
+- images 与 state 独立连接、独立重连；
+- collector 只保留各 source 的最高合法 sequence；
+- 非 required source 可忽略；
+- 连接、消息与校验错误进入 Bundle quality，不伪装成有效证据。
+
+## 7. Gateway terminal 语义
+
+唯一终态源是 `GET /agent/sessions/{session_id}`。PAOS 接受：
+
+```text
+session.status == command.status == succeeded | failed | cancelled
+```
+
+PAOS 不使用固定等待、机器人静稳、图像是否变化、command outputs 内容或 WebSocket state 猜测终态。
+
+Execution timeout 由 PAOS deadline 产生 `timed_out`，随后调用 cancel；它不是 Gateway 报告的原生 terminal。
+
+## 8. Verification Service 边界
+
+独立子进程提供本地 HTTP：
+
+| Method | Path | 用途 |
+|:-------|:-----|:-----|
+| GET | `/healthz` | 最多等待有界 readiness |
+| POST | `/v1/verify-task` | 提交 `forge_verification_request_v1` |
+
+请求需要随机派生的 `X-PAOS-Admin-Token`。Service 只接收已解析的公共 contracts、多模态 evidence、history 和 lessons。它不访问 Gateway，也不创建 recovery child。
+
+## 9. 持久化边界
+
+### SQLite
+
+SQLite 保存 `ForgeSessionRecord` JSON、唯一身份、状态索引与 append-only event。数据库是 Orchestrator 的恢复依据；业务代码不直接修改表。
+
+### Artifact
+
+Adapter 使用原子文件替换写：
+
+```text
+execution_record.json
+before_snapshot.json / after_snapshot.json
+evidence_bundle.json
+evidence/*
+```
+
+Verifier 写 `verification_result.json` 与 `LESSONS.md`。Artifact URI 必须相对 workspace，读取时再次 resolve 并检查不越界。
+
+### 一致性边界
+
+SQLite 与 artifact 不是一个跨资源事务。因此关键顺序是：before entity/manifest 先完成再记录 reference；dispatch intent 在 HTTP mutation 前完成；Execution Record 首次写入后可在 DB commit crash window 中重新读取，但 identity 不匹配会失败。
+
+## 10. 信任边界
+
+| 数据 | 信任策略 |
+|:-----|:---------|
+| Gateway capabilities | 版本和结构严格校验，action identity 在每次 response 重验 |
+| Gateway JSON | 必须为 object，HTTP/`ok=false` 失败 |
+| WebSocket image | Base64、size、media type、magic bytes、sequence 全校验 |
+| Artifact | safe URI、existence、byte size、SHA-256、media type 再校验 |
+| Verifier output | JSON、Pydantic、exact criteria、known evidence refs 校验 |
+| Recovery guidance | 只作为 Planner context，不作为命令 |
+
+## 后续阅读
+
+- [集成开发指南](README.md)
+- [开发者手册](../zh/03-developer-manual.md)
+- [Forge 接入契约](../forge/README_zh.md)

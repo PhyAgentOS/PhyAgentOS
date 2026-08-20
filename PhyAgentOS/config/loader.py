@@ -5,7 +5,6 @@ from pathlib import Path
 
 from PhyAgentOS.config.schema import Config
 
-
 # Global variable to store current config path (for multi-instance support)
 _current_config_path: Path | None = None
 
@@ -39,11 +38,12 @@ def load_config(config_path: Path | None = None) -> Config:
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-            data = _migrate_config(data)
-            return Config.model_validate(data)
-        except (json.JSONDecodeError, ValueError) as e:
+        except json.JSONDecodeError as e:
             print(f"Warning: Failed to load config from {path}: {e}")
             print("Using default configuration.")
+        else:
+            data = _migrate_config(data)
+            return Config.model_validate(data)
 
     return Config()
 

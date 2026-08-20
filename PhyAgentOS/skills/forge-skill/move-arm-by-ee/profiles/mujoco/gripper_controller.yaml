@@ -1,0 +1,13 @@
+joint_name: gripper
+coordinate_type: prismatic
+min_position: 0.0
+max_position: 0.105
+
+control_period_ms: 20
+feedback_timeout_ms: 300
+goal_tolerance: 0.001
+stall_velocity_threshold: 0.0005
+stall_timeout_ms: 1500
+allow_stalling: false
+goal_timeout_ms: 8000
+terminal_history_size: 128

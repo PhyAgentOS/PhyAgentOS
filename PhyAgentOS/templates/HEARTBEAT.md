@@ -10,7 +10,7 @@ If this file has no tasks (only headers and comments), the agent will skip the h
 <!-- Add your periodic tasks below this line -->
 
 - [ ] Read ENVIRONMENT.md and check if any objects have changed state. If something notable happened (e.g., an object fell, moved, or disappeared), proactively report to the user.
-- [ ] Read SESSIONS.md — if a session has remained pending or running longer than its timeout, warn the user that the runtime watchdog may not be running or may be stuck.
+- [ ] If the user asks about a Forge task, use `forge_get_session` rather than inferring its state from elapsed time.
 
 ## Completed
 

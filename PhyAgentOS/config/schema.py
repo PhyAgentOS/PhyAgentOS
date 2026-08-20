@@ -1,9 +1,9 @@
 """Configuration schema using Pydantic."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 from pydantic_settings import BaseSettings
 
@@ -252,10 +252,15 @@ class AgentDefaults(Base):
 
 
 class EmbodimentInstanceConfig(Base):
-    """One embodied robot instance in fleet mode."""
+    """One robot knowledge profile; it has no execution adapter semantics."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        extra="forbid",
+    )
 
     robot_id: str
-    driver: str
     workspace: str
     enabled: bool = True
     profile_name: str | None = None
@@ -270,14 +275,51 @@ class EmbodimentsConfig(Base):
     instances: list[EmbodimentInstanceConfig] = Field(default_factory=list)
 
 
-class RuntimeConfig(Base):
-    """Runtime workspace and watchdog configuration."""
+class ForgeEvidenceConfig(Base):
+    """Best-effort evidence capture performed by the PAOS Forge adapter."""
 
-    enabled: bool = True
-    workspace: str | None = None
-    autostart_watchdog: bool = True
-    watchdog_poll_interval_s: float = 1.0
-    target_enabled: dict[str, bool] = Field(default_factory=dict)
+    required_image_sources: list[str] = Field(default_factory=list)
+    capture_timeout_s: float = Field(default=5.0, gt=0)
+    post_capture_timeout_s: float = Field(default=5.0, gt=0)
+    connection_timeout_s: float = Field(default=2.0, gt=0)
+    max_artifact_bytes: int = Field(default=8 * 1024 * 1024, gt=0)
+    association_quality: Literal["best_effort"] = "best_effort"
+
+
+class ForgeConfig(Base):
+    """The only supported robot execution integration."""
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:9001"
+    api_version: Literal["paos-forge-gateway-mvp-plus.v1"] = (
+        "paos-forge-gateway-mvp-plus.v1"
+    )
+    request_timeout_s: float = Field(default=10.0, gt=0)
+    poll_interval_s: float = Field(default=0.5, ge=0.1, le=5.0)
+    execution_timeout_s: float = Field(default=300.0, gt=0)
+    evidence: ForgeEvidenceConfig = Field(default_factory=ForgeEvidenceConfig)
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        if not normalized.startswith(("http://", "https://")):
+            raise ValueError("forge.baseUrl must be an HTTP(S) URL")
+        return normalized
+
+
+class ResourceRegistryConfig(Base):
+    """Public artifact registry used for Skill and Forge Runtime downloads."""
+
+    url: str = ""
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        if normalized and not normalized.startswith(("http://", "https://")):
+            raise ValueError("resourceRegistry.url must be an HTTP(S) URL")
+        return normalized
 
 
 class ModeConfig(Base):
@@ -295,11 +337,33 @@ class AgentModes(Base):
     models: dict[str, ModeConfig] = Field(default_factory=dict)
 
 
+class AgentVerificationConfig(Base):
+    """Global semantic verification service, retention, and recovery budgets."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    service_enabled: bool = True
+    model: str | None = None
+    provider: str | None = None
+    timeout_s: float = Field(default=180.0, gt=0)
+    evidence_retention: Literal["all", "failed", "none"] = "none"
+    max_replans_per_episode: int = Field(default=2, ge=0)
+    max_verifier_calls_per_run: int = Field(default=50, ge=0)
+    replan_timeout_s: float = Field(default=120.0, gt=0)
+    service_host: str = "127.0.0.1"
+    service_port: int = Field(default=8100, ge=1, le=65535)
+
+
 class AgentsConfig(Base):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
     modes: AgentModes = Field(default_factory=AgentModes)
+    verification: AgentVerificationConfig = Field(default_factory=AgentVerificationConfig)
 
 
 class ProviderConfig(Base):
@@ -402,7 +466,17 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     embodiments: EmbodimentsConfig = Field(default_factory=EmbodimentsConfig)
-    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
+    forge: ForgeConfig = Field(default_factory=ForgeConfig)
+    resource_registry: ResourceRegistryConfig = Field(default_factory=ResourceRegistryConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_runtime_config(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "runtime" in value:
+            raise ValueError(
+                "legacy `runtime` configuration is unsupported; remove it and configure `forge`"
+            )
+        return value
 
     @property
     def is_fleet_mode(self) -> bool:
@@ -415,13 +489,6 @@ class Config(BaseSettings):
         if self.is_fleet_mode:
             return Path(self.embodiments.shared_workspace).expanduser()
         return Path(self.agents.defaults.workspace).expanduser()
-
-    @property
-    def runtime_workspace_path(self) -> Path:
-        """Get expanded runtime workspace path."""
-        if self.runtime.workspace:
-            return Path(self.runtime.workspace).expanduser()
-        return self.workspace_path
 
     def _match_provider(
         self, model: str | None = None

@@ -219,10 +219,7 @@ def sync_workspace_templates(
     if not tpl.is_dir():
         return []
 
-    runtime_protocol_files = {"TARGETS.md", "SKILLRUNTIME.md", "SESSIONS.md"}
     effective_exclude = set(exclude or ())
-    if include is None:
-        effective_exclude.update(runtime_protocol_files)
 
     added: list[str] = []
 

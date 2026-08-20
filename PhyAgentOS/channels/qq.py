@@ -75,8 +75,8 @@ class QQChannel(BaseChannel):
             return
 
         self._running = True
-        BotClass = _make_bot_class(self)
-        self._client = BotClass()
+        bot_class = _make_bot_class(self)
+        self._client = bot_class()
         logger.info("QQ bot started (C2C & Group supported)")
         await self._run_bot()
 

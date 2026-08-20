@@ -61,7 +61,7 @@ Delete this entire "Structuring This Skill" section when done - it's just guidan
 
 ## [TODO: Replace with the first main section based on chosen structure]
 
-[TODO: Add content here. See examples in existing skillruntimes:
+[TODO: Add content here. See examples in existing skills:
 - Code samples for technical skills
 - Decision trees for complex workflows
 - Concrete examples with realistic user requests
@@ -74,7 +74,7 @@ Create only the resource directories this skill actually needs. Delete this sect
 ### scripts/
 Executable code (Python/Bash/etc.) that can be run directly to perform specific operations.
 
-**Examples from other skillruntimes:**
+**Examples from other skills:**
 - PDF skill: `fill_fillable_fields.py`, `extract_form_field_info.py` - utilities for PDF manipulation
 - DOCX skill: `document.py`, `utilities.py` - Python modules for document processing
 
@@ -85,7 +85,7 @@ Executable code (Python/Bash/etc.) that can be run directly to perform specific 
 ### references/
 Documentation and reference material intended to be loaded into context to inform Codex's process and thinking.
 
-**Examples from other skillruntimes:**
+**Examples from other skills:**
 - Product management: `communication.md`, `context_building.md` - detailed workflow guides
 - BigQuery: API reference documentation and query examples
 - Finance: Schema documentation, company policies
@@ -95,7 +95,7 @@ Documentation and reference material intended to be loaded into context to infor
 ### assets/
 Files not intended to be loaded into context, but rather used within the output Codex produces.
 
-**Examples from other skillruntimes:**
+**Examples from other skills:**
 - Brand styling: PowerPoint template files (.pptx), logo files
 - Frontend builder: HTML/React boilerplate project directories
 - Typography: Font files (.ttf, .woff2)
@@ -114,7 +114,7 @@ Example helper script for {skill_name}
 This is a placeholder script that can be executed directly.
 Replace with actual implementation or delete if not needed.
 
-Example real scripts from other skillruntimes:
+Example real scripts from other skills:
 - pdf/scripts/fill_fillable_fields.py - Fills PDF form fields
 - pdf/scripts/convert_pdf_to_images.py - Converts PDF pages to images
 """
@@ -133,7 +133,7 @@ EXAMPLE_REFERENCE = """# Reference Documentation for {skill_title}
 This is a placeholder for detailed reference documentation.
 Replace with actual reference content or delete if not needed.
 
-Example real reference docs from other skillruntimes:
+Example real reference docs from other skills:
 - product-management/references/communication.md - Comprehensive guide for status updates
 - product-management/references/context_building.md - Deep-dive on gathering context
 - bigquery/references/ - API references and query examples
@@ -172,7 +172,7 @@ Replace with actual asset files (templates, images, fonts, etc.) or delete if no
 Asset files are NOT intended to be loaded into context, but rather used within
 the output Codex produces.
 
-Example asset files from other skillruntimes:
+Example asset files from other skills:
 - Brand guidelines: logo.png, slides_template.pptx
 - Frontend builder: hello-world/ directory with HTML/React boilerplate
 - Typography: custom-font.ttf, font-family.woff2
