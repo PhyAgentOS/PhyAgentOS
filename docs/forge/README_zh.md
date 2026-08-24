@@ -6,7 +6,7 @@
 
 `move-arm-by-ee` 使用 Gateway Tool API，并由 `paos skill` 显式管理本地 Dora
 dataflow。它与本文的高层 Agent Session API 是并列执行面，不复用
-`ForgeSessionOrchestrator`。参见 [move-arm-by-ee Skill Runtime](move-arm-by-ee-skill-runtime.md)。
+`ForgeSessionOrchestrator`。
 
 当前已经实现的 Skill/Tool/Endpoint/ToolCall/ToolSpec 关系、运行时边界和统一 Registry
 下载设计，参见

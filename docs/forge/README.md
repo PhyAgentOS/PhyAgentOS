@@ -6,8 +6,7 @@ This document is the technical contract for the only robot-execution path suppor
 
 `move-arm-by-ee` uses the parallel Gateway Tool API execution plane and an
 explicitly managed local Dora dataflow; it does not reuse the high-level
-`ForgeSessionOrchestrator`. See
-[move-arm-by-ee Skill Runtime](move-arm-by-ee-skill-runtime.md).
+`ForgeSessionOrchestrator`.
 
 For the as-built Skill/Tool/Endpoint/ToolCall/ToolSpec relationships, runtime
 boundaries, and unified Registry download model, see
