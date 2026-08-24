@@ -10,20 +10,13 @@ explicitly managed local Dora dataflow; it does not reuse the high-level
 [move-arm-by-ee Skill Runtime](move-arm-by-ee-skill-runtime.md).
 
 For the as-built Skill/Tool/Endpoint/ToolCall/ToolSpec relationships, runtime
-boundaries, and the planned two-supply-chain download model, see
+boundaries, and unified Registry download model, see
 [PAOS Skill Runtime and Forge Tool Architecture](skill-runtime-tool-architecture.md).
 
-The Chinese
-[PAOS Skill Runtime collaborative development guide](skill-runtime-development-guide.md)
-documents the source/install layouts, nine-node topology, canonical repository
-boundaries, and local development and acceptance workflow.
-
-The initial machine-readable Skill/Runtime package index and its publication,
-archive, lock, installation, and security contract are documented in
-[PAOS Forge Package Index (Chinese)](paos-forge-packages_zh.md). See the
-[YAML index](paos-forge-packages.yaml) and
-[JSON Schema](paos-forge-packages.schema.json) for validation inputs. PAOS can
-consume the schema-v3 index with `paos skill install --index <path-or-url>`.
+The [Skill Bundle manual publishing guide](skill-bundle-publishing.md) documents
+the archive root, Node locks, asset collection, TOS upload, static-catalog
+registration, and post-release acceptance. PAOS uses only the unified Resource
+Registry API and does not read repository YAML directly.
 
 ## 1. Design boundary
 

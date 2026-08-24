@@ -1,0 +1,105 @@
+manifest_version: 2
+name: move-arm-by-ee
+version: "0.2.0"
+description: Resolve relative end-effector motion and control the gripper opening.
+skill_document: SKILL.md
+gateway_url: http://127.0.0.1:19002
+required_tools:
+  - motion.resolve_relative_pose
+  - motion.move_pose
+  - gripper.set_opening
+profiles:
+  mujoco:
+    dataflow: profiles/mujoco/dataflow.yaml
+    required_binaries:
+      - gateway
+      - relative_pose_policy
+      - motion_action_policy
+      - motion_server
+      - joint_trajectory_controller
+      - gripper_action_policy
+      - gripper_action_controller
+      - mujoco_sim
+      - image_viewer
+    required_assets:
+      - assets/piper_with_gripper.urdf
+      - assets/piper_mujoco/scene.xml
+      - assets/piper_mujoco/PIPER.xml
+    required_environment: []
+    environment: {}
+artifacts:
+  resolver: registry
+  nodes:
+    # Replace every sha256 below with the matching GitHub .tar.gz Asset digest.
+    gateway:
+      artifact_id: gateway-1.0.2-linux-x86_64-tar-gz
+      version: "1.0.2"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: gateway
+      sha256: "07584846f16012c6137b10cf743073cd2fe9a7f64564ba2322a7090e66fd3076"
+    relative_pose_policy:
+      artifact_id: relative_pose_policy-0.1.0-linux-x86_64-tar-gz
+      version: "0.1.0"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: relative_pose_policy
+      sha256: "ee6857068bf295fc0f18a06f99e7c7310486dd48cf119b380ddcd894e4a5d767"
+    motion_action_policy:
+      artifact_id: motion_action_policy-0.1.0-linux-x86_64-tar-gz
+      version: "0.1.0"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: motion_action_policy
+      sha256: "c64c3c8a725ce70174f9f545c3bb3b793680544adc551afb9ee504a4010c50d9"
+    gripper_action_policy:
+      artifact_id: gripper_action_policy-0.1.0-linux-x86_64-tar-gz
+      version: "0.1.0"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: gripper_action_policy
+      sha256: "1afc5157bae3ddf8cf673db3375d6e05d6a82b1d061f0dcb142ff6480b9d38d0"
+    motion_server:
+      artifact_id: motion_server-0.1.0-linux-x86_64-tar-gz
+      version: "0.1.0"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: motion_server
+      sha256: "91041350abbef24226527ffc8a9f3854ef1c57d4d488972b9ff536f8db265c99"
+    joint_trajectory_controller:
+      artifact_id: joint_trajectory_controller-0.1.0-linux-x86_64-tar-gz
+      version: "0.1.0"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: joint_trajectory_controller
+      sha256: "a57da3fa4211a5df4e1485724f2d11ef402fbce844950a176b64d2e4ab681efc"
+    gripper_action_controller:
+      artifact_id: gripper_action_controller-0.1.0-linux-x86_64-tar-gz
+      version: "0.1.0"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: gripper_action_controller
+      sha256: "a210987c1694d8fb9ed6576af469027c934ab707e470b43f164be3aee876c0f1"
+    mujoco_sim:
+      artifact_id: mujoco_sim-1.1.1-linux-x86_64-tar-gz
+      version: "1.1.1"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: mujoco_sim
+      sha256: "63e7586ef3100a527fb504db2f6bf7e51e818b256be10f5b6cd3635ed1e73e78"
+    image_viewer:
+      artifact_id: image_viewer-1.0.1-linux-x86_64-tar-gz
+      version: "1.0.1"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: image_viewer
+      sha256: "80b274c94851017533b327cb57fbefacfe226e4dad325334ffc928ab3850871d"

@@ -98,7 +98,6 @@ class ArchiveValidator:
         destination: Path,
         *,
         expected_sha256: str | None = None,
-        verify_manifest: bool = True,
     ) -> Path:
         if expected_sha256 and sha256_file(archive) != expected_sha256.lower():
             raise ArchiveError("archive sha256 mismatch")
@@ -142,26 +141,23 @@ class ArchiveValidator:
                     raise ArchiveError("archive exceeds compression ratio limit")
 
                 manifest_path = next((name for name in self.manifest_names if name in files), None)
-                if manifest_path is None and verify_manifest:
+                if manifest_path is None:
                     raise ArchiveError("archive does not contain an embedded file manifest")
-                expected_files: dict[str, tuple[str, int | None]] | None = None
-                if verify_manifest:
-                    assert manifest_path is not None
-                    manifest_handle = tar.extractfile(files[manifest_path])
-                    if manifest_handle is None:
-                        raise ArchiveError("cannot read embedded archive manifest")
-                    try:
-                        expected_files = _parse_file_manifest(json.load(manifest_handle))
-                    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                        raise ArchiveError("embedded archive manifest is not valid JSON") from exc
+                manifest_handle = tar.extractfile(files[manifest_path])
+                if manifest_handle is None:
+                    raise ArchiveError("cannot read embedded archive manifest")
+                try:
+                    expected_files = _parse_file_manifest(json.load(manifest_handle))
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    raise ArchiveError("embedded archive manifest is not valid JSON") from exc
 
-                    payload_files = set(files) - set(self.manifest_names)
-                    if payload_files != set(expected_files):
-                        missing = sorted(set(expected_files) - payload_files)
-                        extra = sorted(payload_files - set(expected_files))
-                        raise ArchiveError(
-                            f"archive manifest file set mismatch; missing={missing}, extra={extra}"
-                        )
+                payload_files = set(files) - set(self.manifest_names)
+                if payload_files != set(expected_files):
+                    missing = sorted(set(expected_files) - payload_files)
+                    extra = sorted(payload_files - set(expected_files))
+                    raise ArchiveError(
+                        f"archive manifest file set mismatch; missing={missing}, extra={extra}"
+                    )
 
                 for member in members:
                     path = _safe_path(member.name)
@@ -188,14 +184,12 @@ class ArchiveValidator:
                             output.write(chunk)
                             digest.update(chunk)
                     if written != member.size or (
-                        expected_files is not None
-                        and expected_files[path.as_posix()][1] is not None
+                        expected_files[path.as_posix()][1] is not None
                         and written != expected_files[path.as_posix()][1]
                     ):
                         raise ArchiveError(f"file size mismatch: {path.as_posix()}")
                     if (
-                        expected_files is not None
-                        and digest.hexdigest() != expected_files[path.as_posix()][0]
+                        digest.hexdigest() != expected_files[path.as_posix()][0]
                     ):
                         raise ArchiveError(f"file sha256 mismatch: {path.as_posix()}")
                     safe_mode = member.mode & 0o755

@@ -8,6 +8,9 @@
 `SKILL.md` 将“将夹爪向前移动 5cm”转换为 Query + Action Tool 调用，或通过独立
 Gripper Action Tool 设置夹爪开度。
 
+开发参考源码位于 `examples/forge-skills/move-arm-by-ee/`，不属于 PAOS 内置 Skill，
+不会进入 wheel；运行时内容必须由 Resource Registry 安装到 `~/.PhyAgentOS`。
+
 总体架构和核心概念见
 [PAOS Skill Runtime 与 Forge Tool 架构（当前实现）](skill-runtime-tool-architecture.md)。
 
@@ -103,15 +106,15 @@ PAOS 使用两个相互独立的本地根目录。
 - MuJoCo dataflow；
 - 九个 required binaries；
 - Piper URDF 和 MJCF 资产；
-- 九个独立 Node Bundle 的精确 artifact/digest lock。
+- 九个独立 Node `.tar.gz` 的 artifact、entrypoint 与 GitHub Asset SHA-256 lock。
 
 ### 3.2 Forge Nodes 与 Skill environment
 
 ```text
 ~/.PhyAgentOS/forge_runtime/
 ├── nodes/<node-id>/versions/<artifact-id>/
-│   ├── node-manifest.json
-│   └── <node payload>
+│   ├── .paos-node.json
+│   └── <entrypoint executable>
 └── environments/move-arm-by-ee/mujoco/<lock-digest>/
     ├── runtime-lock.json
     └── bin/
@@ -120,8 +123,9 @@ PAOS 使用两个相互独立的本地根目录。
         └── ...
 ```
 
-每个 Node 独立下载、版本化和校验。Skill 安装会依据 `artifacts.nodes` 下载缺失节点；
-启动前重新验证 node manifest、host、文件 digest 和 Skill lock，再生成 profile 专用
+每个 Node 是独立下载和版本化的 GitHub Release `.tar.gz`，归档中只有一个根目录
+entrypoint。Skill 安装会依据 `artifacts.nodes` 下载缺失节点，校验归档 SHA-256 后安全
+提取；启动前根据本地 receipt 重新验证 lock 与二进制摘要，再生成 profile 专用
 environment。dataflow/config/assets 始终从 Skill Bundle 读取。
 
 ## 4. MuJoCo 九节点架构
@@ -830,5 +834,6 @@ PhyAgentOS/cli/commands.py
 ~/.PhyAgentOS/forge_runtime/environments/move-arm-by-ee/mujoco/<lock-digest>/
 ```
 
-正式发布后，各节点仓负责生成预构建 Node Bundle，资源服务负责索引和分发；PAOS
-根据 `skill.yaml` lock 下载并安装，不在 PhyAgentOS 仓内收集或构建节点二进制。
+正式发布后，各节点仓负责将预构建单文件可执行程序打成平坦 `.tar.gz` 并发布到 GitHub
+Release，资源服务负责索引；PAOS 根据 `skill.yaml` lock 下载、验证和提取，不在
+PhyAgentOS 仓内收集或构建节点二进制。

@@ -10,7 +10,6 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-import yaml
 
 from PhyAgentOS.config.loader import load_config
 from PhyAgentOS.config.paths import get_artifact_cache_root
@@ -42,11 +41,8 @@ class RegistryArtifact:
     sha256: str | None = None
     size: int | None = None
     name: str | None = None
-    version: str | None = None
-    artifact_set_id: str | None = None
+    artifact_id: str | None = None
     mode: str | None = None
-    runtime_digest: str | None = None
-    node_digest: str | None = None
 
     @classmethod
     def from_dict(cls, value: Any) -> RegistryArtifact:
@@ -60,14 +56,17 @@ class RegistryArtifact:
         size = source.get("size", source.get("content_length"))
         if not isinstance(url, str) or not url.startswith(("http://", "https://")):
             raise RegistryError("registry artifact has an invalid download URL")
-        if (
-            not isinstance(digest, str)
-            or len(digest) != 64
-            or any(char not in "0123456789abcdefABCDEF" for char in digest)
-        ):
-            raise RegistryError("registry artifact has an invalid sha256")
-        if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
-            raise RegistryError("registry artifact has an invalid size")
+        if (digest is None) != (size is None):
+            raise RegistryError("registry artifact must provide both sha256 and size")
+        if digest is not None:
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(char not in "0123456789abcdefABCDEF" for char in digest)
+            ):
+                raise RegistryError("registry artifact has an invalid sha256")
+            if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+                raise RegistryError("registry artifact has an invalid size")
 
         def optional_string(*names: str) -> str | None:
             for name in names:
@@ -76,28 +75,16 @@ class RegistryArtifact:
                     return item
             return None
 
-        runtime_digest = optional_string("runtime_digest", "artifact_set_digest")
-        if runtime_digest is not None and (
-            len(runtime_digest) != 64
-            or any(char not in "0123456789abcdefABCDEF" for char in runtime_digest)
-        ):
-            raise RegistryError("registry artifact has an invalid runtime digest")
-        node_digest = optional_string("node_digest")
-        if node_digest is not None and (
-            len(node_digest) != 64
-            or any(char not in "0123456789abcdefABCDEF" for char in node_digest)
-        ):
-            raise RegistryError("registry artifact has an invalid node digest")
+        mode = optional_string("mode")
+        if mode == "verified" and digest is None:
+            raise RegistryError("verified registry artifact is missing sha256 and size")
         return cls(
             url=url,
-            sha256=digest.lower(),
+            sha256=digest.lower() if isinstance(digest, str) else None,
             size=size,
             name=optional_string("name"),
-            version=optional_string("version"),
-            artifact_set_id=optional_string("artifact_set_id", "artifactSetId"),
-            mode=optional_string("mode"),
-            runtime_digest=runtime_digest.lower() if runtime_digest else None,
-            node_digest=node_digest.lower() if node_digest else None,
+            artifact_id=optional_string("artifact_id"),
+            mode=mode,
         )
 
 
@@ -145,126 +132,16 @@ class RegistryClient:
             raise RegistryError("registry skill search response must contain an item list")
         return value
 
-    def skill(self, name: str, version: str | None = None) -> RegistryArtifact:
-        suffix = f"/{quote(version, safe='')}" if version else ""
-        value = self._get(f"/v1/skills/{quote(name, safe='')}{suffix}")
-        return RegistryArtifact.from_dict(value)
-
-    def runtime(self, artifact_set_id: str) -> RegistryArtifact:
-        value = self._get(f"/v1/forge-runtimes/{quote(artifact_set_id, safe='')}")
-        return RegistryArtifact.from_dict(value)
+    def skill(self, name: str) -> RegistryArtifact:
+        value = self._get(f"/v1/skills/{quote(name, safe='')}")
+        artifact = RegistryArtifact.from_dict(value)
+        if artifact.sha256 is None or artifact.size is None:
+            raise RegistryError("registry Skill is missing required sha256 and size")
+        return artifact
 
     def node(self, artifact_id: str) -> RegistryArtifact:
         value = self._get(f"/v1/forge-nodes/{quote(artifact_id, safe='')}")
         return RegistryArtifact.from_dict(value)
-
-
-class StaticPackageIndex:
-    """Minimal Skill/Node locator backed by one schema-v3 YAML document."""
-
-    def __init__(
-        self,
-        source: str,
-        *,
-        client: httpx.Client | None = None,
-        timeout: float = 30.0,
-    ) -> None:
-        self.source = source
-        self._owns_client = client is None
-        self.client = client or httpx.Client(timeout=timeout, follow_redirects=True)
-        self.packages = self._load()
-
-    def close(self) -> None:
-        if self._owns_client:
-            self.client.close()
-
-    def __enter__(self) -> StaticPackageIndex:
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        self.close()
-
-    def _load(self) -> list[dict[str, Any]]:
-        try:
-            if self.source.startswith(("http://", "https://")):
-                response = self.client.get(self.source, headers={"Accept": "application/yaml"})
-                response.raise_for_status()
-                value = yaml.safe_load(response.text)
-            else:
-                value = yaml.safe_load(Path(self.source).expanduser().read_text(encoding="utf-8"))
-        except (OSError, httpx.HTTPError, yaml.YAMLError) as exc:
-            raise RegistryError(f"cannot load static package index: {self.source}") from exc
-        if not isinstance(value, dict) or value.get("schema_version") != 3:
-            raise RegistryError("static package index must use schema_version 3")
-        packages = value.get("packages")
-        if not isinstance(packages, list) or not all(isinstance(item, dict) for item in packages):
-            raise RegistryError("static package index packages must be a list")
-        return packages
-
-    def search_skills(self, query: str = "") -> list[dict[str, Any]]:
-        needle = query.casefold()
-        return [
-            {
-                "name": item.get("package_key", ""),
-                "version": item.get("version", ""),
-                "description": "static package index",
-            }
-            for item in self.packages
-            if item.get("kind") == "skill_bundle"
-            and (not needle or needle in str(item.get("package_key", "")).casefold())
-            and item.get("direct_download_url")
-        ]
-
-    def _entry(
-        self,
-        *,
-        kind: str,
-        package_key: str | None = None,
-        version: str | None = None,
-        artifact_id: str | None = None,
-    ) -> dict[str, Any]:
-        matches = [
-            item
-            for item in self.packages
-            if item.get("kind") == kind
-            and (package_key is None or item.get("package_key") == package_key)
-            and (version is None or str(item.get("version")) == version)
-            and (artifact_id is None or item.get("artifact_id") == artifact_id)
-        ]
-        if not matches:
-            identity = artifact_id or package_key or kind
-            raise RegistryError(f"package is not present in static index: {identity}")
-        if version is None:
-            matches.sort(key=lambda item: str(item.get("version", "")), reverse=True)
-        return matches[0]
-
-    @staticmethod
-    def _artifact(item: dict[str, Any]) -> RegistryArtifact:
-        url = item.get("direct_download_url")
-        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
-            raise RegistryError("static package does not have a direct_download_url")
-        return RegistryArtifact(
-            url=url,
-            name=str(item.get("package_key", "")) or None,
-            version=str(item.get("version", "")) or None,
-            mode="direct",
-            node_digest=(
-                str(item["node_digest"]).lower()
-                if isinstance(item.get("node_digest"), str)
-                else None
-            ),
-        )
-
-    def skill(self, name: str, version: str | None = None) -> RegistryArtifact:
-        return self._artifact(
-            self._entry(kind="skill_bundle", package_key=name, version=version)
-        )
-
-    def node(self, artifact_id: str) -> RegistryArtifact:
-        return self._artifact(self.node_metadata(artifact_id))
-
-    def node_metadata(self, artifact_id: str) -> dict[str, Any]:
-        return self._entry(kind="node_bundle", artifact_id=artifact_id)
 
 
 class DownloadCache:
@@ -334,8 +211,8 @@ class DownloadCache:
         cache_key = hashlib.sha256(artifact.url.encode()).hexdigest()
         cache_dir = self.root / "direct" / cache_key
         cache_dir.mkdir(parents=True, exist_ok=True)
-        final = cache_dir / "archive.tar.gz"
-        temporary = cache_dir / "archive.tar.gz.part"
+        final = cache_dir / "artifact.download"
+        temporary = cache_dir / "artifact.download.part"
         if final.is_file() and final.stat().st_size > 0:
             return final
         try:

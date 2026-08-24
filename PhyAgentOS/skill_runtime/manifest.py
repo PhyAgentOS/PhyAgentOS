@@ -34,7 +34,9 @@ _NODE_LOCK_FIELDS = {
     "version",
     "platform",
     "arch",
-    "digest",
+    "artifact_type",
+    "entrypoint",
+    "sha256",
 }
 
 
@@ -127,14 +129,16 @@ class RuntimeProfile:
 
 @dataclass(frozen=True)
 class NodeLock:
-    """Immutable reference to one independently installed Forge node."""
+    """Immutable reference to one single-executable ``tar.gz`` release asset."""
 
     node_id: str
     artifact_id: str
     version: str
     platform: str
     arch: str
-    digest: str | None = None
+    artifact_type: str
+    entrypoint: str
+    sha256: str
 
     @classmethod
     def from_dict(cls, node_id: str, value: Any) -> NodeLock:
@@ -147,19 +151,29 @@ class NodeLock:
         artifact_id = _string(data.get("artifact_id"), f"{label}.artifact_id")
         if artifact_id in {".", ".."} or "/" in artifact_id or "\\" in artifact_id:
             raise ManifestError(f"{label}.artifact_id must be directory-safe")
-        raw_digest = data.get("digest")
-        digest = None
-        if raw_digest is not None:
-            digest = _string(raw_digest, f"{label}.digest").lower()
-            if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
-                raise ManifestError(f"{label}.digest must be a sha256 digest")
+        artifact_type = _string(
+            data.get("artifact_type"), f"{label}.artifact_type"
+        ).lower()
+        if artifact_type != "executable_tar_gz":
+            raise ManifestError(
+                f"{label}.artifact_type must be 'executable_tar_gz'; "
+                "additional artifact types are reserved for future installers"
+            )
+        entrypoint = _string(data.get("entrypoint"), f"{label}.entrypoint")
+        if entrypoint in {".", ".."} or "/" in entrypoint or "\\" in entrypoint:
+            raise ManifestError(f"{label}.entrypoint must be a directory-safe filename")
+        sha256 = _string(data.get("sha256"), f"{label}.sha256").lower()
+        if len(sha256) != 64 or any(char not in "0123456789abcdef" for char in sha256):
+            raise ManifestError(f"{label}.sha256 must be a sha256 digest")
         return cls(
             node_id=safe_node_id,
             artifact_id=artifact_id,
             version=_string(data.get("version"), f"{label}.version"),
             platform=_string(data.get("platform"), f"{label}.platform").lower(),
             arch=_string(data.get("arch"), f"{label}.arch").lower(),
-            digest=digest,
+            artifact_type=artifact_type,
+            entrypoint=entrypoint,
+            sha256=sha256,
         )
 
 

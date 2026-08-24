@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import tarfile
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,13 +14,9 @@ from pathlib import Path
 import yaml
 
 from PhyAgentOS.config.paths import get_forge_runtime_root, get_skill_bundle_root
-from PhyAgentOS.skill_runtime.archive import ArchiveValidator, sha256_file
-from PhyAgentOS.skill_runtime.manifest import SkillManifest, load_manifest
-from PhyAgentOS.skill_runtime.node_manifest import (
-    NodeManifest,
-    NodeManifestError,
-    load_node_manifest,
-)
+from PhyAgentOS.skill_runtime.archive import ArchiveLimits, ArchiveValidator, sha256_file
+from PhyAgentOS.skill_runtime.manifest import NodeLock, SkillManifest, load_manifest
+from PhyAgentOS.skill_runtime.runtime_manifest import normalize_arch, normalize_platform
 from PhyAgentOS.skill_runtime.state import RuntimeStateStore
 
 
@@ -69,7 +66,6 @@ class SkillInstaller:
         archive: Path,
         *,
         expected_sha256: str | None = None,
-        verify_archive_manifest: bool = True,
     ) -> SkillManifest:
         self.root.mkdir(parents=True, exist_ok=True)
         temporary = Path(tempfile.mkdtemp(prefix=".skill-install-", dir=self.root))
@@ -82,7 +78,6 @@ class SkillInstaller:
                 archive,
                 extracted,
                 expected_sha256=expected_sha256,
-                verify_manifest=verify_archive_manifest,
             )
             payload = _payload_root(extracted, "skill.yaml")
             if not (payload / "SKILL.md").is_file():
@@ -157,178 +152,161 @@ class SkillInstaller:
 
 
 class NodeInstaller:
-    """Install and verify independently versioned Forge node bundles."""
+    """Install SHA-256-pinned ``tar.gz`` assets containing one executable."""
+
+    receipt_name = ".paos-node.json"
 
     def __init__(
         self,
         root: Path | None = None,
         *,
-        validator: ArchiveValidator | None = None,
         state_store: RuntimeStateStore | None = None,
     ) -> None:
         runtime_root = (root or get_forge_runtime_root()).expanduser()
         self.root = runtime_root / "nodes"
-        self.validator = validator or ArchiveValidator()
         self.state_store = state_store or RuntimeStateStore()
 
-    def install(
-        self,
-        archive: Path,
-        *,
-        expected_sha256: str,
-        expected_digest: str | None = None,
-    ) -> NodeManifest:
+    def install(self, archive: Path, lock: NodeLock) -> Path:
         active = _active_skills(self.state_store)
         if active:
             raise InstallerError(
                 f"cannot install Forge nodes while Skills are running: {', '.join(active)}"
             )
-        self.root.mkdir(parents=True, exist_ok=True)
-        temporary = Path(tempfile.mkdtemp(prefix=".node-install-", dir=self.root))
-        extracted = temporary / "extracted"
-        committed: Path | None = None
+        self._verify_lock_host(lock)
+        if not archive.is_file() or archive.is_symlink():
+            raise InstallerError("downloaded Forge node archive is not a regular file")
+        if sha256_file(archive) != lock.sha256:
+            raise InstallerError("downloaded Forge node archive sha256 does not match Skill lock")
+
+        versions = self.root / lock.node_id / "versions"
+        versions.mkdir(parents=True, exist_ok=True)
+        target = versions / lock.artifact_id
+        if target.exists():
+            if self.satisfies(lock):
+                return target / lock.entrypoint
+            raise InstallerError("installed node artifact ID has different contents")
+
+        temporary = Path(tempfile.mkdtemp(prefix=".node-install-", dir=versions))
         try:
-            self.validator.extract(archive, extracted, expected_sha256=expected_sha256)
-            payload = _payload_root(extracted, "node-manifest.json")
-            try:
-                value = json.loads((payload / "node-manifest.json").read_text(encoding="utf-8"))
-                manifest = NodeManifest.from_dict(value, root=payload)
-                manifest.verify_host()
-                manifest.verify_files()
-            except (OSError, json.JSONDecodeError, NodeManifestError) as exc:
-                raise InstallerError(f"invalid node-manifest.json: {exc}") from exc
-            if expected_digest is not None and manifest.digest != expected_digest.lower():
-                raise InstallerError("node manifest digest does not match registry metadata")
-            versions = self.root / manifest.node_id / "versions"
-            versions.mkdir(parents=True, exist_ok=True)
-            target = versions / manifest.artifact_id
-            if target.exists():
-                installed = load_node_manifest(target / "node-manifest.json", verify_files=True)
-                if installed.digest != manifest.digest:
-                    raise InstallerError("installed node artifact ID has different contents")
-            else:
-                os.replace(payload, target)
-                committed = target
-            return load_node_manifest(target / "node-manifest.json", verify_files=True)
+            staged = temporary / lock.entrypoint
+            self._extract_executable(archive, staged, lock)
+            staged.chmod(0o755)
+            binary_sha256 = sha256_file(staged)
+            receipt = {
+                "schema_version": 1,
+                "node_id": lock.node_id,
+                "artifact_id": lock.artifact_id,
+                "artifact_type": lock.artifact_type,
+                "entrypoint": lock.entrypoint,
+                "archive_sha256": lock.sha256,
+                "binary_sha256": binary_sha256,
+            }
+            (temporary / self.receipt_name).write_text(
+                json.dumps(receipt, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+                encoding="utf-8",
+            )
+            os.replace(temporary, target)
+            return target / lock.entrypoint
         except InstallerError:
             raise
         except Exception as exc:
-            if committed is not None:
-                shutil.rmtree(committed, ignore_errors=True)
             raise InstallerError(f"Forge node installation failed: {exc}") from exc
         finally:
             shutil.rmtree(temporary, ignore_errors=True)
 
-    def install_indexed(
-        self,
-        archive: Path,
-        *,
-        node_id: str,
-        artifact_id: str,
-        version: str,
-        platform: str,
-        arch: str,
-        entrypoints: dict[str, str],
-        files: tuple[str, ...],
-    ) -> NodeManifest:
-        """Install a trusted direct-download archive described by a static index."""
-        active = _active_skills(self.state_store)
-        if active:
-            raise InstallerError(
-                f"cannot install Forge nodes while Skills are running: {', '.join(active)}"
-            )
-        self.root.mkdir(parents=True, exist_ok=True)
-        temporary = Path(tempfile.mkdtemp(prefix=".node-install-", dir=self.root))
-        extracted = temporary / "extracted"
-        committed: Path | None = None
+    def load(self, lock: NodeLock) -> Path:
+        self._verify_lock_host(lock)
+        path = self.root / lock.node_id / "versions" / lock.artifact_id / lock.entrypoint
+        receipt_path = path.parent / self.receipt_name
+        if not path.is_file() or path.is_symlink():
+            raise InstallerError("installed Forge node executable is missing")
+        if path.stat().st_mode & 0o111 == 0:
+            raise InstallerError("installed Forge node is not executable")
         try:
-            self.validator.extract(archive, extracted, verify_manifest=False)
-            expected = {Path(item) for item in files if item != "node-manifest.json"}
-            if not expected or any(
-                path.is_absolute() or ".." in path.parts or path in {Path("."), Path("")}
-                for path in expected
-            ):
-                raise InstallerError("static node inventory contains an unsafe path")
-            actual = {
-                path.relative_to(extracted)
-                for path in extracted.rglob("*")
-                if path.is_file() and path.name != "node-manifest.json"
-            }
-            if actual != expected:
-                raise InstallerError(
-                    f"static node file set mismatch; missing={sorted(map(str, expected - actual))}, "
-                    f"extra={sorted(map(str, actual - expected))}"
-                )
-            parsed_entrypoints = {name: Path(path) for name, path in entrypoints.items()}
-            if not parsed_entrypoints or any(path not in expected for path in parsed_entrypoints.values()):
-                raise InstallerError("static node entrypoint is not inventoried")
-            for path in parsed_entrypoints.values():
-                target = extracted / path
-                target.chmod(target.stat().st_mode | 0o111)
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise InstallerError("installed Forge node receipt is missing or invalid") from exc
+        expected = {
+            "schema_version": 1,
+            "node_id": lock.node_id,
+            "artifact_id": lock.artifact_id,
+            "artifact_type": lock.artifact_type,
+            "entrypoint": lock.entrypoint,
+            "archive_sha256": lock.sha256,
+        }
+        if not isinstance(receipt, dict) or any(
+            receipt.get(name) != value for name, value in expected.items()
+        ):
+            raise InstallerError("installed Forge node receipt does not match Skill lock")
+        binary_sha256 = receipt.get("binary_sha256")
+        if (
+            not isinstance(binary_sha256, str)
+            or len(binary_sha256) != 64
+            or sha256_file(path) != binary_sha256
+        ):
+            raise InstallerError("installed Forge node executable sha256 does not match receipt")
+        return path
 
-            value = {
-                "manifest_version": 1,
-                "node_id": node_id,
-                "artifact_id": artifact_id,
-                "version": version,
-                "platform": platform,
-                "arch": arch,
-                "entrypoints": {name: path.as_posix() for name, path in parsed_entrypoints.items()},
-                "files": [
-                    {
-                        "path": path.as_posix(),
-                        "sha256": sha256_file(extracted / path),
-                        "size": (extracted / path).stat().st_size,
-                    }
-                    for path in sorted(expected)
-                ],
-            }
-            value["digest"] = hashlib.sha256(
-                json.dumps(
-                    value,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ).encode()
-            ).hexdigest()
-            (extracted / "node-manifest.json").write_text(
-                json.dumps(value, ensure_ascii=False, indent=2),
-                encoding="utf-8",
+    def satisfies(self, lock: NodeLock) -> bool:
+        """Return whether the exact locked executable is installed and valid."""
+        try:
+            self.load(lock)
+        except InstallerError:
+            return False
+        return True
+
+    @staticmethod
+    def _verify_lock_host(lock: NodeLock) -> None:
+        if lock.artifact_type != "executable_tar_gz":
+            raise InstallerError(f"unsupported Forge node artifact type: {lock.artifact_type}")
+        if lock.platform != normalize_platform() or lock.arch != normalize_arch():
+            raise InstallerError(
+                f"node platform/arch {lock.platform}/{lock.arch} does not match host "
+                f"{normalize_platform()}/{normalize_arch()}"
             )
-            manifest = NodeManifest.from_dict(value, root=extracted)
-            manifest.verify_host()
-            manifest.verify_files()
 
-            versions = self.root / manifest.node_id / "versions"
-            versions.mkdir(parents=True, exist_ok=True)
-            target = versions / manifest.artifact_id
-            if target.exists():
-                installed = load_node_manifest(target / "node-manifest.json", verify_files=True)
-                if installed.digest != manifest.digest:
-                    raise InstallerError("installed node artifact ID has different contents")
-            else:
-                os.replace(extracted, target)
-                committed = target
-            return load_node_manifest(target / "node-manifest.json", verify_files=True)
+    @staticmethod
+    def _extract_executable(archive: Path, output: Path, lock: NodeLock) -> None:
+        limits = ArchiveLimits()
+        try:
+            with tarfile.open(archive, mode="r:gz") as bundle:
+                files = []
+                for member in bundle.getmembers():
+                    if member.isdir():
+                        continue
+                    if not member.isfile():
+                        raise InstallerError("Forge node archive may contain only one regular file")
+                    files.append(member)
+                if len(files) != 1:
+                    raise InstallerError(
+                        "Forge node archive must contain exactly one executable file"
+                    )
+                member = files[0]
+                normalized_name = member.name.removeprefix("./")
+                if "/" in normalized_name or "\\" in normalized_name:
+                    raise InstallerError(
+                        "Forge node executable must be at the archive root"
+                    )
+                if normalized_name != lock.entrypoint:
+                    raise InstallerError(
+                        "Forge node archive filename does not match Skill entrypoint"
+                    )
+                if member.size > limits.max_file_size:
+                    raise InstallerError("Forge node executable exceeds the size limit")
+                archive_size = max(archive.stat().st_size, 1)
+                if member.size / archive_size > limits.max_compression_ratio:
+                    raise InstallerError("Forge node archive compression ratio is too high")
+                source = bundle.extractfile(member)
+                if source is None:
+                    raise InstallerError("cannot read Forge node executable from archive")
+                with source, output.open("xb") as destination:
+                    shutil.copyfileobj(source, destination, length=1024 * 1024)
+                    destination.flush()
+                    os.fsync(destination.fileno())
         except InstallerError:
             raise
-        except Exception as exc:
-            if committed is not None:
-                shutil.rmtree(committed, ignore_errors=True)
-            raise InstallerError(f"static Forge node installation failed: {exc}") from exc
-        finally:
-            shutil.rmtree(temporary, ignore_errors=True)
-
-    def load(self, node_id: str, artifact_id: str) -> NodeManifest:
-        path = self.root / node_id / "versions" / artifact_id / "node-manifest.json"
-        try:
-            manifest = load_node_manifest(path, verify_files=True)
-            manifest.verify_host()
-        except NodeManifestError as exc:
-            raise InstallerError(f"installed Forge node is invalid: {exc}") from exc
-        if manifest.node_id != node_id:
-            raise InstallerError("installed Forge node ID does not match its directory")
-        return manifest
+        except (OSError, tarfile.TarError) as exc:
+            raise InstallerError(f"invalid Forge node tar.gz archive: {exc}") from exc
 
 
 class SkillEnvironmentBuilder:
@@ -343,40 +321,12 @@ class SkillEnvironmentBuilder:
         profile = skill.profiles.get(profile_name)
         if profile is None:
             raise InstallerError(f"unknown Skill profile: {profile_name}")
-        manifests: list[NodeManifest] = []
-        for node_id, lock in sorted(skill.artifacts.nodes.items()):
-            manifest = self.nodes.load(node_id, lock.artifact_id)
-            actual = {
-                "version": manifest.version,
-                "platform": manifest.platform,
-                "arch": manifest.arch,
-                "digest": manifest.digest,
-            }
-            expected = {
-                "version": lock.version,
-                "platform": lock.platform,
-                "arch": lock.arch,
-            }
-            if lock.digest is not None:
-                expected["digest"] = lock.digest
-            mismatches = [
-                f"{name}={actual[name]!r} (expected {value!r})"
-                for name, value in expected.items()
-                if actual[name] != value
-            ]
-            if mismatches:
-                raise InstallerError(
-                    f"Forge node {node_id!r} does not satisfy Skill lock: "
-                    + "; ".join(mismatches)
-                )
-            manifests.append(manifest)
-
-        providers: dict[str, tuple[NodeManifest, Path]] = {}
-        for manifest in manifests:
-            for name, relative in manifest.entrypoints.items():
-                if name in providers:
-                    raise InstallerError(f"duplicate Forge node entrypoint: {name}")
-                providers[name] = (manifest, relative)
+        providers: dict[str, tuple[NodeLock, Path]] = {}
+        for _, lock in sorted(skill.artifacts.nodes.items()):
+            binary = self.nodes.load(lock)
+            if lock.entrypoint in providers:
+                raise InstallerError(f"duplicate Forge node entrypoint: {lock.entrypoint}")
+            providers[lock.entrypoint] = (lock, binary)
         required = {path.as_posix() for path in profile.required_binaries}
         missing = sorted(required - providers.keys())
         if missing:
@@ -390,11 +340,13 @@ class SkillEnvironmentBuilder:
             "skill_version": skill.version,
             "profile": profile_name,
             "nodes": {
-                manifest.node_id: {
-                    "artifact_id": manifest.artifact_id,
-                    "digest": manifest.digest,
+                lock.node_id: {
+                    "artifact_id": lock.artifact_id,
+                    "artifact_type": lock.artifact_type,
+                    "entrypoint": lock.entrypoint,
+                    "sha256": lock.sha256,
                 }
-                for manifest in manifests
+                for lock, _ in providers.values()
             },
             "entrypoints": sorted(required),
         }
@@ -414,8 +366,7 @@ class SkillEnvironmentBuilder:
                 bin_dir = temporary / "bin"
                 bin_dir.mkdir()
                 for name in sorted(required):
-                    manifest, relative = providers[name]
-                    source = manifest.root / relative
+                    _, source = providers[name]
                     os.symlink(os.path.relpath(source, bin_dir), bin_dir / name)
                 (temporary / "runtime-lock.json").write_bytes(encoded)
                 launch_root = temporary / "launch"
