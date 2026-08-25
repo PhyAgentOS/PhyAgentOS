@@ -27,8 +27,10 @@ tests/
 !tests/
 tests/*
 !tests/test_skills.py
-!tests/test_forge_package_index.py
 !tests/test_skill_runtime_cli.py
 !tests/test_skill_runtime_manager.py
 !tests/test_skill_runtime_manifest.py
+!tests/test_skill_registry_install.py
+!tests/test_skill_local_install.py
+!tests/test_skill_package_script.py
 plan/

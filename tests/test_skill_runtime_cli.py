@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -35,9 +36,41 @@ def test_forge_node_command_exposes_distribution_lifecycle() -> None:
         assert command in result.stdout
 
 
-def test_skill_distribution_commands_accept_static_index() -> None:
+def test_skill_distribution_commands_use_registry_only() -> None:
     runner = CliRunner()
     for command in ("search", "install", "update"):
         result = runner.invoke(app, ["skill", command, "--help"])
         assert result.exit_code == 0
-        assert "--index" in result.stdout
+        assert "--index" not in result.stdout
+
+
+def test_skill_search_merges_registry_with_local_status(monkeypatch) -> None:
+    from PhyAgentOS.skill_runtime import catalog, registry
+
+    class FakeRegistry:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def search_skills(self, query: str):
+            assert query == "arm"
+            return [
+                {"name": "move-arm-by-ee", "description": "demo"},
+                {"name": "other-arm", "description": "other"},
+            ]
+
+    class FakeCatalog:
+        def list(self):
+            return [SimpleNamespace(name="move-arm-by-ee")]
+
+    monkeypatch.setattr(registry, "RegistryClient", FakeRegistry)
+    monkeypatch.setattr(catalog, "SkillCatalog", FakeCatalog)
+
+    result = CliRunner().invoke(app, ["skill", "search", "arm"])
+
+    assert result.exit_code == 0
+    assert "move-arm-by-ee" in result.stdout
+    assert "installed" in result.stdout
+    assert "not-installed" in result.stdout

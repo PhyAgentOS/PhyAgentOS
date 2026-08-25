@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco>
+    <compiler angle="radian" />
+    <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast" />
+    <visual>
+        <headlight ambient="0.8 0.8 0.8" diffuse="0.2 0.2 0.2" specular="0 0 0" active="1" />
+        <map force="0.1" zfar="40" />
+        <rgba haze="0.15 0.25 0.35 1" />
+        <global offwidth="2560" offheight="1440" elevation="-20" azimuth="135" />
+    </visual>
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072" />
+        <texture type="2d" name="groundplane" builtin="flat" mark="edge" rgb1="0.1 0.1 0.1" rgb2="0.3 0.5 0.3" markrgb="0.8 0.8 0.8" width="300" height="300" />
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2" />
+        <model name="RobotModel" file="PIPER.xml" />
+    </asset>
+    <worldbody>
+        <light castshadow="false" directional="true" diffuse=".3 .3 .3" specular="0.3 0.3 0.3" pos="-1 -1 1" dir="1 1 -1" />
+        <light directional="true" diffuse=".3 .3 .3" specular="0.3 0.3 0.3" pos="1 -1 1" dir="-1 1 -1" />
+        <light castshadow="false" directional="true" diffuse=".3 .3 .3" specular="0.3 0.3 0.3" pos="0 1 1" dir="0 -1 -1" />
+        <geom name="floor" size="14 14 0.05" pos="0 0 0" type="plane" material="groundplane" />
+        
+        
+        <geom name="origin_marker" type="sphere" pos="0 0 0" size="0.01" rgba="1 0 0 1" contype="0" conaffinity="0" />
+
+        <geom name="x_axis" type="cylinder" fromto="0 0 0 0.1 0 0" size="0.002" rgba="1 0 0 1" contype="0" conaffinity="0" />
+        <geom name="y_axis" type="cylinder" fromto="0 0 0 0 0.1 0" size="0.002" rgba="0 1 0 1" contype="0" conaffinity="0" />
+        <geom name="z_axis" type="cylinder" fromto="0 0 0 0 0 0.1" size="0.002" rgba="0 0 1 1" contype="0" conaffinity="0" />
+
+        <camera name="left_pillar" pos="-0.5 0.2 0.6" xyaxes="0.75 0.66 0 -0.31 0.35 0.88" fovy="78" />
+        <camera name="top" pos="0 0.6 0.8" xyaxes="1 0 0 0 0.36 0.93" fovy="78" />
+        <camera name="angle" pos="0 -0.6 0.6" xyaxes="1 0 0 0 0.5 0.87" fovy="78" />
+
+        <body name="item_1" pos="0.0 0.0 0.0" quat="1.000000 0.000000 0.000000 -0.000000">
+            <attach model="RobotModel" body="base_link" prefix="item_1/" />
+        </body>
+    </worldbody>
+</mujoco>

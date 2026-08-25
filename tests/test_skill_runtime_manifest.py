@@ -5,6 +5,7 @@ import io
 import json
 import sys
 import tarfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import httpx
@@ -13,6 +14,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
+ROOT = Path(__file__).parents[1]
+
 from PhyAgentOS.skill_runtime.archive import ArchiveError, ArchiveValidator  # noqa: E402
 from PhyAgentOS.skill_runtime.catalog import SkillCatalog  # noqa: E402
 from PhyAgentOS.skill_runtime.installer import (  # noqa: E402
@@ -20,12 +23,16 @@ from PhyAgentOS.skill_runtime.installer import (  # noqa: E402
     NodeInstaller,
     SkillInstaller,
 )
-from PhyAgentOS.skill_runtime.manifest import ManifestError, load_manifest  # noqa: E402
+from PhyAgentOS.skill_runtime.manifest import (  # noqa: E402
+    ManifestError,
+    NodeLock,
+    load_manifest,
+)
 from PhyAgentOS.skill_runtime.registry import (  # noqa: E402
     DownloadCache,
     RegistryArtifact,
+    RegistryClient,
     RegistryError,
-    StaticPackageIndex,
 )
 from PhyAgentOS.skill_runtime.runtime_manifest import (  # noqa: E402
     normalize_arch,
@@ -76,6 +83,60 @@ def test_manifest_and_catalog_load_only_installed_bundle(tmp_path: Path) -> None
         "profiles/mujoco/dataflow.yaml"
     )
     assert [item.name for item in SkillCatalog(tmp_path).list()] == ["move-arm-by-ee"]
+
+
+def test_move_arm_example_locks_single_file_github_assets() -> None:
+    manifest = load_manifest(
+        ROOT / "examples/forge-skills/move-arm-by-ee/skill.yaml"
+    )
+    locks = manifest.artifacts.nodes.values()
+
+    assert all(lock.artifact_type == "executable_tar_gz" for lock in locks)
+    assert all(len(lock.sha256) == 64 for lock in locks)
+    assert {lock.entrypoint for lock in locks} == {
+        path.as_posix()
+        for path in manifest.profiles["mujoco"].required_binaries
+    }
+
+
+def test_move_arm_example_contains_closed_robot_asset_graph() -> None:
+    bundle = ROOT / "examples/forge-skills/move-arm-by-ee"
+    manifest = load_manifest(bundle / "skill.yaml")
+    for relative in manifest.profiles["mujoco"].required_assets:
+        assert manifest.resolve_bundle_path(relative).is_file()
+
+    scene = ET.parse(bundle / "assets/piper_mujoco/scene.xml").getroot()
+    model_file = scene.find("./asset/model").attrib["file"]
+    model_path = bundle / "assets/piper_mujoco" / model_file
+    assert model_path.is_file()
+
+    model = ET.parse(model_path).getroot()
+    mesh_dir = model.find("./compiler").attrib["meshdir"]
+    for mesh in model.findall("./asset/mesh"):
+        assert (model_path.parent / mesh_dir / mesh.attrib["file"]).is_file()
+
+    urdf = ET.parse(bundle / "assets/piper_with_gripper.urdf").getroot()
+    for mesh in urdf.findall(".//mesh"):
+        assert (bundle / "assets" / mesh.attrib["filename"]).is_file()
+
+    assert (bundle / "assets/LICENSE.piper_ros-noetic").is_file()
+    assert (bundle / "assets/piper_mujoco/LICENSE").is_file()
+    assert (bundle / "THIRD_PARTY_NOTICES.md").is_file()
+
+    archive_manifest = json.loads(
+        (bundle / "archive-manifest.json").read_text(encoding="utf-8")
+    )
+    listed = {item["path"]: item for item in archive_manifest["files"]}
+    actual = {
+        path.relative_to(bundle).as_posix(): path
+        for path in bundle.rglob("*")
+        if path.is_file() and path.name != "archive-manifest.json"
+    }
+    assert set(listed) == set(actual)
+    for relative, path in actual.items():
+        data = path.read_bytes()
+        assert listed[relative]["size"] == len(data)
+        assert listed[relative]["sha256"] == hashlib.sha256(data).hexdigest()
 
 
 @pytest.mark.parametrize(
@@ -149,15 +210,6 @@ def _distribution_archive(
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _raw_archive(path: Path, files: dict[str, bytes]) -> None:
-    with tarfile.open(path, "w:gz") as tar:
-        for name, data in files.items():
-            info = tarfile.TarInfo(name)
-            info.size = len(data)
-            info.mode = 0o644
-            tar.addfile(info, io.BytesIO(data))
-
-
 def _installable_skill_files(version: str = "1.0.0", *, valid: bool = True) -> dict[str, bytes]:
     manifest = {
         "manifest_version": 2,
@@ -175,24 +227,6 @@ def _installable_skill_files(version: str = "1.0.0", *, valid: bool = True) -> d
         "skill.yaml": yaml.safe_dump(manifest).encode(),
         "SKILL.md": b"# Demo\n",
     }
-
-
-def _node_artifact_files(node_id: str, artifact_id: str, marker: bytes) -> dict[str, bytes]:
-    file_digest = hashlib.sha256(marker).hexdigest()
-    manifest = {
-        "manifest_version": 1,
-        "node_id": node_id,
-        "artifact_id": artifact_id,
-        "version": "1.0.0",
-        "platform": normalize_platform(),
-        "arch": normalize_arch(),
-        "entrypoints": {node_id: node_id},
-        "files": [{"path": "gateway", "size": len(marker), "sha256": file_digest}],
-    }
-    manifest["digest"] = hashlib.sha256(
-        json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
-    ).hexdigest()
-    return {"node-manifest.json": json.dumps(manifest).encode(), "gateway": marker}
 
 
 def test_archive_validator_rejects_links_and_duplicate_paths(tmp_path: Path) -> None:
@@ -221,56 +255,36 @@ def test_archive_validator_rejects_links_and_duplicate_paths(tmp_path: Path) -> 
         ArchiveValidator().extract(collision, tmp_path / "collision-out")
 
 
-def test_archive_validator_safely_extracts_direct_archive_without_manifest(
-    tmp_path: Path,
-) -> None:
-    archive = tmp_path / "direct.tar.gz"
-    _raw_archive(archive, {"gateway": b"binary"})
+def test_registry_distinguishes_verified_skill_and_direct_node() -> None:
+    digest = "a" * 64
+    responses = {
+        "/v1/skills/demo": {
+            "download_url": "https://tos.example/demo.tar.gz",
+            "sha256": digest,
+            "size": 42,
+            "mode": "verified",
+        },
+        "/v1/forge-nodes/gateway-one": {
+            "download_url": "https://github.com/example/gateway.tar.gz",
+            "artifact_id": "gateway-one",
+            "mode": "direct",
+        },
+    }
 
-    ArchiveValidator().extract(
-        archive,
-        tmp_path / "direct-out",
-        verify_manifest=False,
-    )
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=responses[request.url.path])
 
-    assert (tmp_path / "direct-out/gateway").read_bytes() == b"binary"
+    with RegistryClient(
+        "https://registry.example",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    ) as registry:
+        skill = registry.skill("demo")
+        node = registry.node("gateway-one")
 
-
-def test_static_package_index_resolves_direct_skill_and_node(tmp_path: Path) -> None:
-    index_path = tmp_path / "index.yaml"
-    index_path.write_text(
-        yaml.safe_dump(
-            {
-                "schema_version": 3,
-                "packages": [
-                    {
-                        "package_key": "demo",
-                        "version": "1.0.0",
-                        "kind": "skill_bundle",
-                        "direct_download_url": "https://example.test/demo.tar.gz",
-                    },
-                    {
-                        "package_key": "gateway",
-                        "version": "1.0.2",
-                        "kind": "node_bundle",
-                        "artifact_id": "gateway-1.0.2-linux-x86_64",
-                        "node_id": "gateway",
-                        "platform": "linux",
-                        "arch": "x86_64",
-                        "direct_download_url": "https://example.test/gateway.tar.gz",
-                        "entrypoints": {"gateway": "gateway"},
-                        "inventory": [{"path": "gateway", "category": "executable"}],
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with StaticPackageIndex(str(index_path)) as index:
-        assert index.skill("demo").url == "https://example.test/demo.tar.gz"
-        assert index.node("gateway-1.0.2-linux-x86_64").sha256 is None
-        assert index.node_metadata("gateway-1.0.2-linux-x86_64")["node_id"] == "gateway"
+    assert skill.sha256 == digest
+    assert skill.size == 42
+    assert node.sha256 is None
+    assert node.size is None
 
 
 def test_direct_download_cache_does_not_require_size_or_sha256(tmp_path: Path) -> None:
@@ -289,6 +303,31 @@ def test_direct_download_cache_does_not_require_size_or_sha256(tmp_path: Path) -
 
     assert result.read_bytes() == payload
     assert cache.download(artifact) == result
+
+
+def test_verified_download_rejects_skill_sha256_mismatch(tmp_path: Path) -> None:
+    payload = b"tampered Skill Bundle"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Content-Length": str(len(payload))},
+            content=payload,
+        )
+
+    cache = DownloadCache(
+        tmp_path,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    artifact = RegistryArtifact(
+        "https://tos.example/skill.tar.gz",
+        "0" * 64,
+        len(payload),
+        mode="verified",
+    )
+
+    with pytest.raises(RegistryError, match="sha256 does not match"):
+        cache.download(artifact)
 
 
 def test_download_cache_resumes_and_reuses_verified_archive(tmp_path: Path) -> None:
@@ -357,45 +396,75 @@ def test_node_installer_versions_artifacts_independently(tmp_path: Path) -> None
     installer = NodeInstaller(
         root, state_store=RuntimeStateStore(tmp_path / "states")
     )
-    first = tmp_path / "first.tar.gz"
-    second = tmp_path / "second.tar.gz"
-    first_sha = _distribution_archive(
-        first, _node_artifact_files("gateway", "gateway-one", b"one")
+    first = tmp_path / "gateway-one.tar.gz"
+    second = tmp_path / "gateway-two.tar.gz"
+    with tarfile.open(first, "w:gz") as archive:
+        info = tarfile.TarInfo("gateway")
+        info.size = 3
+        archive.addfile(info, io.BytesIO(b"one"))
+    with tarfile.open(second, "w:gz") as archive:
+        info = tarfile.TarInfo("gateway")
+        info.size = 3
+        archive.addfile(info, io.BytesIO(b"two"))
+    first_lock = NodeLock.from_dict(
+        "gateway",
+        {
+            "artifact_id": "gateway-one",
+            "version": "1.0.0",
+            "platform": normalize_platform(),
+            "arch": normalize_arch(),
+            "artifact_type": "executable_tar_gz",
+            "entrypoint": "gateway",
+            "sha256": hashlib.sha256(first.read_bytes()).hexdigest(),
+        },
     )
-    second_sha = _distribution_archive(
-        second, _node_artifact_files("gateway", "gateway-two", b"two")
+    second_lock = NodeLock.from_dict(
+        "gateway",
+        {
+            "artifact_id": "gateway-two",
+            "version": "2.0.0",
+            "platform": normalize_platform(),
+            "arch": normalize_arch(),
+            "artifact_type": "executable_tar_gz",
+            "entrypoint": "gateway",
+            "sha256": hashlib.sha256(second.read_bytes()).hexdigest(),
+        },
     )
 
-    installer.install(first, expected_sha256=first_sha)
-    installer.install(second, expected_sha256=second_sha)
-    assert installer.load("gateway", "gateway-one").artifact_id == "gateway-one"
-    assert installer.load("gateway", "gateway-two").artifact_id == "gateway-two"
+    installer.install(first, first_lock)
+    installer.install(second, second_lock)
+    assert installer.load(first_lock).read_bytes() == b"one"
+    assert installer.load(second_lock).read_bytes() == b"two"
 
 
-def test_node_installer_accepts_indexed_bare_binary_archive(tmp_path: Path) -> None:
-    archive = tmp_path / "gateway.tar.gz"
-    _raw_archive(archive, {"gateway": b"gateway binary"})
-    installer = NodeInstaller(
-        tmp_path / "runtime",
-        state_store=RuntimeStateStore(tmp_path / "states"),
+def test_node_installer_rejects_archive_with_multiple_files(tmp_path: Path) -> None:
+    archive_path = tmp_path / "gateway.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for name in ("gateway", "unexpected"):
+            info = tarfile.TarInfo(name)
+            info.size = 1
+            archive.addfile(info, io.BytesIO(b"x"))
+    lock = NodeLock.from_dict(
+        "gateway",
+        {
+            "artifact_id": "gateway-one",
+            "version": "1.0.0",
+            "platform": normalize_platform(),
+            "arch": normalize_arch(),
+            "artifact_type": "executable_tar_gz",
+            "entrypoint": "gateway",
+            "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+        },
     )
 
-    installed = installer.install_indexed(
-        archive,
-        node_id="gateway",
-        artifact_id="gateway-1.0.2-linux-x86_64",
-        version="1.0.2",
-        platform=normalize_platform(),
-        arch=normalize_arch(),
-        entrypoints={"gateway": "gateway"},
-        files=("gateway",),
-    )
-
-    assert installed.entrypoints == {"gateway": Path("gateway")}
-    assert installer.load("gateway", installed.artifact_id).digest == installed.digest
+    with pytest.raises(InstallerError, match="exactly one executable"):
+        NodeInstaller(
+            tmp_path / "runtime",
+            state_store=RuntimeStateStore(tmp_path / "states"),
+        ).install(archive_path, lock)
 
 
-def test_node_lock_digest_is_optional_for_direct_release_assets(tmp_path: Path) -> None:
+def test_node_lock_sha256_and_executable_metadata_are_required(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path)
     skill = _manifest()
     skill["artifacts"] = {
@@ -411,7 +480,24 @@ def test_node_lock_digest_is_optional_for_direct_release_assets(tmp_path: Path) 
     }
     (bundle / "skill.yaml").write_text(yaml.safe_dump(skill))
 
-    assert load_manifest(bundle / "skill.yaml").artifacts.nodes["gateway"].digest is None
+    with pytest.raises(ManifestError, match="artifact_type must be a non-empty string"):
+        load_manifest(bundle / "skill.yaml")
+
+
+def test_node_lock_reserves_future_artifact_types_without_guessing() -> None:
+    with pytest.raises(ManifestError, match="reserved for future installers"):
+        NodeLock.from_dict(
+            "gateway",
+            {
+                "artifact_id": "gateway-one",
+                "version": "1.0.0",
+                "platform": normalize_platform(),
+                "arch": normalize_arch(),
+                "artifact_type": "archive",
+                "entrypoint": "gateway",
+                "sha256": "0" * 64,
+            },
+        )
 
 
 def test_node_lock_schema_is_strict(tmp_path: Path) -> None:
@@ -425,7 +511,9 @@ def test_node_lock_schema_is_strict(tmp_path: Path) -> None:
                 "version": "1.0.0",
                 "platform": normalize_platform(),
                 "arch": normalize_arch(),
-                "digest": "0" * 64,
+                "artifact_type": "executable_tar_gz",
+                "entrypoint": "gateway",
+                "sha256": "0" * 64,
                 "unexpected": True,
             }
         }

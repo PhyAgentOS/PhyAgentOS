@@ -6,20 +6,15 @@
 
 `move-arm-by-ee` 使用 Gateway Tool API，并由 `paos skill` 显式管理本地 Dora
 dataflow。它与本文的高层 Agent Session API 是并列执行面，不复用
-`ForgeSessionOrchestrator`。参见 [move-arm-by-ee Skill Runtime](move-arm-by-ee-skill-runtime.md)。
+`ForgeSessionOrchestrator`。
 
-当前已经实现的 Skill/Tool/Endpoint/ToolCall/ToolSpec 关系、运行时边界和后续双供应链
+当前已经实现的 Skill/Tool/Endpoint/ToolCall/ToolSpec 关系、运行时边界和统一 Registry
 下载设计，参见
 [PAOS Skill Runtime 与 Forge Tool 架构（当前实现）](skill-runtime-tool-architecture.md)。
 
-[PAOS Skill Runtime 协作开发指南](skill-runtime-development-guide.md)说明源码与安装目录、
-九节点组成、权威仓库边界、本地开发和验收流程。
-
-首批机器可读 Skill/Runtime 包索引及其发布、归档、lock、安装和安全约束见
-[PAOS Forge 包索引规范](paos-forge-packages_zh.md)，验证输入见
-[YAML 索引](paos-forge-packages.yaml)和
-[JSON Schema](paos-forge-packages.schema.json)。PAOS 可通过
-`paos skill install --index <path-or-url>` 读取 Schema v3 静态索引。
+Skill Bundle 的根结构、Node lock、资产收集、TOS 人工上传、静态目录登记和发布后验收见
+[Skill Bundle 人工发布流程](skill-bundle-publishing.md)。PAOS 只访问统一 Resource
+Registry API，不直接读取仓库 YAML。
 
 ## 1. 设计边界
 

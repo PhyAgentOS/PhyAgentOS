@@ -5,14 +5,16 @@ image_format: raw
 
 # Keep the demo away from the all-zero singularity and leave forward workspace.
 # This profile-specific ready pose is applied only when the simulator starts.
-initial_positions:
-  joint1: 0.0
-  joint2: 0.0383
-  joint3: -0.0708
-  joint4: 0.0
-  joint5: 0.008
-  joint6: 0.0
-  gripper: 0.0
+initial_state:
+  joint_positions:
+    joint1: 0.0
+    joint2: 0.0383
+    joint3: -0.0708
+    joint4: 0.0
+    joint5: 0.008
+    joint6: 0.0
+    gripper: 0.0
+
 
 joints:
   - {name: joint1, mode: position, unit: radians}

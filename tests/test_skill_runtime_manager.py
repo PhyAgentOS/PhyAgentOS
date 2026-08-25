@@ -35,24 +35,7 @@ def _setup(tmp_path: Path) -> tuple[SkillCatalog, Path, Path, RuntimeStateStore]
     (bundle / "assets" / "scene.xml").write_text("<mujoco/>\n", encoding="utf-8")
     marker = b"#!/bin/sh\n"
     file_digest = hashlib.sha256(marker).hexdigest()
-    node_manifest = {
-        "manifest_version": 1,
-        "node_id": "gateway",
-        "artifact_id": "gateway-one",
-        "version": "1.0.0",
-        "platform": normalize_platform(),
-        "arch": normalize_arch(),
-        "entrypoints": {"gateway": "gateway"},
-        "files": [{"path": "gateway", "size": len(marker), "sha256": file_digest}],
-    }
-    node_manifest["digest"] = hashlib.sha256(
-        json.dumps(
-            node_manifest,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode()
-    ).hexdigest()
+    archive_digest = "a" * 64
     manifest = {
         "manifest_version": 2,
         "name": "move-arm-by-ee",
@@ -76,7 +59,9 @@ def _setup(tmp_path: Path) -> tuple[SkillCatalog, Path, Path, RuntimeStateStore]
                     "version": "1.0.0",
                     "platform": normalize_platform(),
                     "arch": normalize_arch(),
-                    "digest": node_manifest["digest"],
+                    "artifact_type": "executable_tar_gz",
+                    "entrypoint": "gateway",
+                    "sha256": archive_digest,
                 }
             },
         },
@@ -91,7 +76,19 @@ def _setup(tmp_path: Path) -> tuple[SkillCatalog, Path, Path, RuntimeStateStore]
     gateway = node / "gateway"
     gateway.write_bytes(marker)
     gateway.chmod(0o755)
-    (node / "node-manifest.json").write_text(json.dumps(node_manifest))
+    (node / ".paos-node.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "node_id": "gateway",
+                "artifact_id": "gateway-one",
+                "artifact_type": "executable_tar_gz",
+                "entrypoint": "gateway",
+                "archive_sha256": archive_digest,
+                "binary_sha256": file_digest,
+            }
+        )
+    )
     return SkillCatalog(bundles), runtime, tmp_path / "logs", RuntimeStateStore(
         tmp_path / "state"
     )
@@ -260,7 +257,7 @@ def test_start_rejects_node_that_does_not_match_lock(tmp_path: Path) -> None:
     catalog, runtime, logs, states = _setup(tmp_path)
     bundle = catalog.root / "move-arm-by-ee"
     skill = yaml.safe_load((bundle / "skill.yaml").read_text())
-    skill["artifacts"]["nodes"]["gateway"]["digest"] = "0" * 64
+    skill["artifacts"]["nodes"]["gateway"]["sha256"] = "0" * 64
     (bundle / "skill.yaml").write_text(yaml.safe_dump(skill))
     manager = RuntimeManager(
         catalog=catalog,
@@ -269,5 +266,5 @@ def test_start_rejects_node_that_does_not_match_lock(tmp_path: Path) -> None:
         logs_root=logs,
     )
 
-    with pytest.raises(RuntimeManagerError, match="does not satisfy Skill lock"):
+    with pytest.raises(RuntimeManagerError, match="receipt does not match Skill lock"):
         manager.start("move-arm-by-ee", "mujoco")
