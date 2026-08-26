@@ -1,6 +1,6 @@
 [project]
 name = "PhyAgentOS-ai"
-version = "0.1.4.post4"
+version = "0.2.2"
 description = "A lightweight personal AI assistant framework"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -98,7 +98,12 @@ include = [
 include = [
     "PhyAgentOS/",
     "bridge/",
+    "docs/",
+    "scripts/",
     "README.md",
+    "README_zh.md",
+    "CHANGELOG.md",
+    "Dockerfile",
     "LICENSE",
 ]
 

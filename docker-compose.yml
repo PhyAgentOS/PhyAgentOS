@@ -11,8 +11,8 @@ services:
     <<: *common-config
     command: ["gateway"]
     restart: unless-stopped
-    ports:
-      - 18790:18790
+    # No host port mapping: the gateway is a message-bus service that makes
+    # outbound connections only (it does not bind an inbound port).
     deploy:
       resources:
         limits:
@@ -26,6 +26,6 @@ services:
     <<: *common-config
     profiles:
       - cli
-    command: ["status"]
+    command: ["agent"]
     stdin_open: true
     tty: true

@@ -25,16 +25,21 @@ COPY PhyAgentOS/ PhyAgentOS/
 COPY bridge/ bridge/
 RUN uv pip install --system --no-cache .
 
-# Build the WhatsApp bridge
+# Build the WhatsApp bridge. Best-effort: it is only needed for the WhatsApp
+# channel (paos channels login), and a transitive Baileys dependency fetches
+# libsignal-node over git+ssh, which can fail in restricted build
+# environments. Skipping it does not affect the CLI or gateway defaults.
 WORKDIR /app/bridge
-RUN npm install && npm run build
+RUN npm install && npm run build \
+    || echo "WARN: WhatsApp bridge build skipped (channel unavailable in this image)"
 WORKDIR /app
 
 # Create config directory
 RUN mkdir -p /root/.PhyAgentOS
 
-# Gateway default port
-EXPOSE 18790
-
+# NOTE: The gateway is a message-bus service (agent + channels + cron +
+# heartbeat). It makes outbound connections only and does NOT bind an inbound
+# port, so no EXPOSE is needed. If an inbound HTTP endpoint is added later,
+# re-add EXPOSE <port> here.
 ENTRYPOINT ["paos"]
-CMD ["status"]
+CMD ["agent"]

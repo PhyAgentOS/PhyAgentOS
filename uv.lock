@@ -1693,7 +1693,7 @@ wheels = [
 
 [[package]]
 name = "phyagentos-ai"
-version = "0.1.4.post4"
+version = "0.2.2"
 source = { editable = "." }
 dependencies = [
     { name = "chardet" },
