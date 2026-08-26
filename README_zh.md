@@ -25,6 +25,23 @@
     </a>
   </p>
   <p>
+    <a href="https://space.bilibili.com/3546880296355920?spm_id_from=333.1007.0.0">
+      <img src="https://img.shields.io/badge/Bilibili-00A1D6?logo=bilibili&logoColor=white" alt="Bilibili">
+    </a>
+    <a href="https://www.xiaohongshu.com/user/profile/673d83e3000000001c01a183">
+      <img src="https://img.shields.io/badge/%E5%B0%8F%E7%BA%A2%E4%B9%A6-FF2442?logo=xiaohongshu&logoColor=white" alt="小红书">
+    </a>
+    <a href="https://x.com/phyagentos">
+      <img src="https://img.shields.io/badge/X-000000?logo=x&logoColor=white" alt="X">
+    </a>
+    <a href="https://www.linkedin.com/in/phyagent-os-252372401/">
+      <img src="https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white" alt="LinkedIn">
+    </a>
+    <a href="https://discord.gg/YJztZ4wUM">
+      <img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord">
+    </a>
+  </p>
+  <p>
     <sub><a href="./README.md">English</a> · <a href="./README_zh.md">中文</a></sub>
   </p>
 </div>
