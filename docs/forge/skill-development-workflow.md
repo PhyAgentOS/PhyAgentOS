@@ -28,7 +28,8 @@ uv sync
 uv run paos skill --help          # 确认 CLI 可用
 dora --version                    # skill start 前置检查
 
-# Registry 地址二选一：环境变量优先，其次 config.json 的 resourceRegistry.url
+# 默认使用 https://paos-resource-manager.dev.x-era.com
+# 本地或私有 Registry 可通过环境变量覆盖（优先级最高）
 export PAOS_RESOURCE_REGISTRY_URL=http://127.0.0.1:8080
 ```
 

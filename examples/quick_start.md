@@ -4,9 +4,10 @@ PAOS 通过统一 Resource Registry API 安装 Skill，不直接读取仓库索�
 参考源码位于 `examples/forge-skills/move-arm-by-ee/`，它不会进入 PAOS wheel，不能视为已安装
 Skill。
 
-## 1. 配置资源目录服务
+## 1. 资源目录服务
 
-在 `~/.PhyAgentOS/config.json` 中配置：
+PAOS 默认使用 `https://paos-resource-manager.dev.x-era.com`，拉取并安装 PAOS 后无需额外
+配置即可使用。私有部署可在 `~/.PhyAgentOS/config.json` 中覆盖：
 
 ```json
 {
@@ -16,7 +17,7 @@ Skill。
 }
 ```
 
-也可以临时覆盖：
+也可以用环境变量临时覆盖；环境变量优先级最高：
 
 ```bash
 export PAOS_RESOURCE_REGISTRY_URL=https://registry.example.com
@@ -37,6 +38,9 @@ paos skill search move-arm-by-ee
 paos skill install move-arm-by-ee
 paos skill inspect move-arm-by-ee
 ```
+
+`install` 会先显示 Skill Bundle 的来源、大小和后续 Node 下载提示，并要求 `y/N` 确认。
+自动化环境可使用 `paos skill install move-arm-by-ee --yes`。
 
 `install` 下载当前 Skill Bundle并校验 SHA-256，读取 Node lock，只下载本地缺失或不满足
 lock 的 Node `.tar.gz`。PAOS 校验 host 与 GitHub Asset SHA-256，要求归档根目录只有一个

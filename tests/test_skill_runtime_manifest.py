@@ -16,6 +16,11 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 ROOT = Path(__file__).parents[1]
 
+from PhyAgentOS.config.schema import (  # noqa: E402
+    DEFAULT_RESOURCE_REGISTRY_URL,
+    ResourceRegistryConfig,
+)
+from PhyAgentOS.skill_runtime import registry as registry_module  # noqa: E402
 from PhyAgentOS.skill_runtime.archive import ArchiveError, ArchiveValidator  # noqa: E402
 from PhyAgentOS.skill_runtime.catalog import SkillCatalog  # noqa: E402
 from PhyAgentOS.skill_runtime.installer import (  # noqa: E402
@@ -33,6 +38,7 @@ from PhyAgentOS.skill_runtime.registry import (  # noqa: E402
     RegistryArtifact,
     RegistryClient,
     RegistryError,
+    get_registry_base_url,
 )
 from PhyAgentOS.skill_runtime.runtime_manifest import (  # noqa: E402
     normalize_arch,
@@ -287,8 +293,28 @@ def test_registry_distinguishes_verified_skill_and_direct_node() -> None:
     assert node.size is None
 
 
+def test_resource_registry_has_public_default_and_environment_override(monkeypatch) -> None:
+    monkeypatch.delenv("PAOS_RESOURCE_REGISTRY_URL", raising=False)
+    monkeypatch.setattr(
+        registry_module,
+        "load_config",
+        lambda: type(
+            "Config",
+            (),
+            {"resource_registry": ResourceRegistryConfig(url="")},
+        )(),
+    )
+
+    assert ResourceRegistryConfig().url == DEFAULT_RESOURCE_REGISTRY_URL
+    assert get_registry_base_url() == DEFAULT_RESOURCE_REGISTRY_URL
+
+    monkeypatch.setenv("PAOS_RESOURCE_REGISTRY_URL", "http://127.0.0.1:8080/")
+    assert get_registry_base_url() == "http://127.0.0.1:8080"
+
+
 def test_direct_download_cache_does_not_require_size_or_sha256(tmp_path: Path) -> None:
     payload = b"direct release asset"
+    events: list[tuple[str, int, int | None]] = []
 
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=payload)
@@ -296,6 +322,9 @@ def test_direct_download_cache_does_not_require_size_or_sha256(tmp_path: Path) -
     cache = DownloadCache(
         tmp_path,
         client=httpx.Client(transport=httpx.MockTransport(handler)),
+        progress=lambda event, _artifact, downloaded, total: events.append(
+            (event, downloaded, total)
+        ),
     )
     artifact = RegistryArtifact("https://example.test/release.tar.gz", mode="direct")
 
@@ -303,6 +332,9 @@ def test_direct_download_cache_does_not_require_size_or_sha256(tmp_path: Path) -
 
     assert result.read_bytes() == payload
     assert cache.download(artifact) == result
+    assert ("advance", len(payload), len(payload)) in events
+    assert ("complete", len(payload), len(payload)) in events
+    assert events[-1] == ("cached", len(payload), len(payload))
 
 
 def test_verified_download_rejects_skill_sha256_mismatch(tmp_path: Path) -> None:

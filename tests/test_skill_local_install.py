@@ -317,7 +317,7 @@ def test_skill_install_cli_accepts_local_bundle(tmp_path: Path, monkeypatch) -> 
     skills, _runtime = _isolate(tmp_path, monkeypatch)
     _requests, server = _node_registry(monkeypatch, node_archive)
     try:
-        result = CliRunner().invoke(app, ["skill", "install", str(skill_archive)])
+        result = CliRunner().invoke(app, ["skill", "install", str(skill_archive), "--yes"])
         assert result.exit_code == 0
         assert "Installed Skill" in result.stdout
         assert SkillCatalog(skills).get("demo").version == "1.0.0"
@@ -333,7 +333,7 @@ def test_skill_install_cli_local_flag(tmp_path: Path, monkeypatch) -> None:
     _requests, server = _node_registry(monkeypatch, node_archive)
     try:
         result = CliRunner().invoke(
-            app, ["skill", "install", "--local", str(skill_archive)]
+            app, ["skill", "install", "--local", str(skill_archive), "--yes"]
         )
         assert result.exit_code == 0
         assert "Installed Skill" in result.stdout

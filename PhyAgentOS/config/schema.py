@@ -308,10 +308,13 @@ class ForgeConfig(Base):
         return normalized
 
 
+DEFAULT_RESOURCE_REGISTRY_URL = "https://paos-resource-manager.dev.x-era.com"
+
+
 class ResourceRegistryConfig(Base):
     """Public artifact registry used for Skill and Forge Runtime downloads."""
 
-    url: str = ""
+    url: str = DEFAULT_RESOURCE_REGISTRY_URL
 
     @field_validator("url")
     @classmethod

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ import httpx
 
 from PhyAgentOS.config.loader import load_config
 from PhyAgentOS.config.paths import get_artifact_cache_root
+from PhyAgentOS.config.schema import DEFAULT_RESOURCE_REGISTRY_URL
 from PhyAgentOS.skill_runtime.archive import sha256_file
 
 
@@ -25,10 +27,12 @@ def get_registry_base_url() -> str:
     configured = os.environ.get("PAOS_RESOURCE_REGISTRY_URL", "").strip()
     if not configured:
         configured = load_config().resource_registry.url.strip()
+    if not configured:
+        configured = DEFAULT_RESOURCE_REGISTRY_URL
     if not configured.startswith(("http://", "https://")):
         raise RegistryError(
-            "Resource Registry URL is not configured; set PAOS_RESOURCE_REGISTRY_URL "
-            "or resourceRegistry.url"
+            "Resource Registry URL must use HTTP(S); set PAOS_RESOURCE_REGISTRY_URL "
+            "or resourceRegistry.url to override the default"
         )
     return configured.rstrip("/")
 
@@ -86,6 +90,9 @@ class RegistryArtifact:
             artifact_id=optional_string("artifact_id"),
             mode=mode,
         )
+
+
+DownloadProgressCallback = Callable[[str, RegistryArtifact, int, int | None], None]
 
 
 class RegistryClient:
@@ -153,10 +160,12 @@ class DownloadCache:
         *,
         client: httpx.Client | None = None,
         timeout: float = 60.0,
+        progress: DownloadProgressCallback | None = None,
     ) -> None:
         self.root = (root or get_artifact_cache_root()).expanduser()
         self._owns_client = client is None
         self.client = client or httpx.Client(timeout=timeout, follow_redirects=True)
+        self.progress = progress
 
     def close(self) -> None:
         if self._owns_client:
@@ -171,6 +180,7 @@ class DownloadCache:
         partial = cache_dir / "archive.tar.gz.part"
         if final.is_file():
             if final.stat().st_size == artifact.size and sha256_file(final) == artifact.sha256:
+                self._notify("cached", artifact, artifact.size, artifact.size)
                 return final
             final.unlink()
 
@@ -179,10 +189,13 @@ class DownloadCache:
             partial.unlink()
             offset = 0
         if offset == artifact.size:
-            return self._commit(artifact, partial, final)
+            result = self._commit(artifact, partial, final)
+            self._notify("complete", artifact, artifact.size, artifact.size)
+            return result
         headers = {"Accept": "application/gzip"}
         if offset:
             headers["Range"] = f"bytes={offset}-"
+        self._notify("start", artifact, offset, artifact.size)
         try:
             with self.client.stream("GET", artifact.url, headers=headers) as response:
                 response.raise_for_status()
@@ -198,14 +211,22 @@ class DownloadCache:
                         raise RegistryError("download resume Content-Range does not match request")
                 self._validate_content_length(response, artifact.size - offset)
                 mode = "ab" if offset else "wb"
+                downloaded = offset
                 with partial.open(mode) as output:
                     for chunk in response.iter_bytes():
                         output.write(chunk)
+                        downloaded += len(chunk)
+                        self._notify("advance", artifact, downloaded, artifact.size)
                     output.flush()
                     os.fsync(output.fileno())
         except httpx.HTTPError as exc:
-            raise RegistryError("artifact download failed; partial download was retained") from exc
-        return self._commit(artifact, partial, final)
+            raise RegistryError(
+                f"artifact download failed for {artifact.url}: {exc}; "
+                "partial download was retained"
+            ) from exc
+        result = self._commit(artifact, partial, final)
+        self._notify("complete", artifact, artifact.size, artifact.size)
+        return result
 
     def _download_direct(self, artifact: RegistryArtifact) -> Path:
         cache_key = hashlib.sha256(artifact.url.encode()).hexdigest()
@@ -214,41 +235,82 @@ class DownloadCache:
         final = cache_dir / "artifact.download"
         temporary = cache_dir / "artifact.download.part"
         if final.is_file() and final.stat().st_size > 0:
+            self._notify("cached", artifact, final.stat().st_size, final.stat().st_size)
             return final
+        self._notify("start", artifact, 0, None)
         try:
             with self.client.stream(
                 "GET", artifact.url, headers={"Accept": "application/gzip"}
             ) as response:
                 response.raise_for_status()
+                total = self._response_content_length(response)
+                self._notify("start", artifact, 0, total)
+                downloaded = 0
                 with temporary.open("wb") as output:
                     for chunk in response.iter_bytes():
                         output.write(chunk)
+                        downloaded += len(chunk)
+                        self._notify("advance", artifact, downloaded, total)
                     output.flush()
                     os.fsync(output.fileno())
         except httpx.HTTPError as exc:
-            raise RegistryError("direct artifact download failed") from exc
+            raise RegistryError(
+                f"direct artifact download failed for {artifact.url}: {exc}"
+            ) from exc
         if not temporary.is_file() or temporary.stat().st_size == 0:
             raise RegistryError("direct artifact download is empty")
         os.replace(temporary, final)
+        self._notify("complete", artifact, final.stat().st_size, final.stat().st_size)
         return final
 
     def _download_fresh(
         self, artifact: RegistryArtifact, partial: Path, final: Path
     ) -> Path:
+        self._notify("start", artifact, 0, artifact.size)
         try:
             with self.client.stream(
                 "GET", artifact.url, headers={"Accept": "application/gzip"}
             ) as response:
                 response.raise_for_status()
                 self._validate_content_length(response, artifact.size)
+                downloaded = 0
                 with partial.open("wb") as output:
                     for chunk in response.iter_bytes():
                         output.write(chunk)
+                        downloaded += len(chunk)
+                        self._notify("advance", artifact, downloaded, artifact.size)
                     output.flush()
                     os.fsync(output.fileno())
         except httpx.HTTPError as exc:
-            raise RegistryError("artifact download failed; partial download was retained") from exc
-        return self._commit(artifact, partial, final)
+            raise RegistryError(
+                f"artifact download failed for {artifact.url}: {exc}; "
+                "partial download was retained"
+            ) from exc
+        result = self._commit(artifact, partial, final)
+        assert artifact.size is not None
+        self._notify("complete", artifact, artifact.size, artifact.size)
+        return result
+
+    def _notify(
+        self,
+        event: str,
+        artifact: RegistryArtifact,
+        downloaded: int,
+        total: int | None,
+    ) -> None:
+        if self.progress is not None:
+            self.progress(event, artifact, downloaded, total)
+
+    @staticmethod
+    def _response_content_length(response: httpx.Response) -> int | None:
+        raw = response.headers.get("Content-Length")
+        if raw is None:
+            return None
+        try:
+            value = int(raw)
+        except ValueError:
+            return None
+        return value if value >= 0 else None
 
     @staticmethod
     def _validate_content_length(response: httpx.Response, expected: int) -> None:

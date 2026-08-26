@@ -7,21 +7,12 @@ import json
 import os
 import tarfile
 import unicodedata
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 
 class ArchiveError(ValueError):
     """Raised when an archive is malformed, unsafe, or fails integrity checks."""
-
-
-@dataclass(frozen=True)
-class ArchiveLimits:
-    max_files: int = 10_000
-    max_file_size: int = 512 * 1024 * 1024
-    max_total_size: int = 2 * 1024 * 1024 * 1024
-    max_compression_ratio: float = 200.0
 
 
 def sha256_file(path: Path) -> str:
@@ -89,9 +80,6 @@ class ArchiveValidator:
 
     manifest_names = ("archive-manifest.json", ".paos-manifest.json")
 
-    def __init__(self, limits: ArchiveLimits | None = None) -> None:
-        self.limits = limits or ArchiveLimits()
-
     def extract(
         self,
         archive: Path,
@@ -108,12 +96,9 @@ class ArchiveValidator:
         try:
             with tarfile.open(archive, mode="r:gz") as tar:
                 members = tar.getmembers()
-                if len(members) > self.limits.max_files:
-                    raise ArchiveError("archive exceeds member count limit")
                 files: dict[str, tarfile.TarInfo] = {}
                 seen: set[str] = set()
                 collision_keys: dict[str, str] = {}
-                total_size = 0
                 for member in members:
                     path = _safe_path(member.name).as_posix()
                     if path in seen:
@@ -131,14 +116,7 @@ class ArchiveValidator:
                     if not (member.isfile() or member.isdir()):
                         raise ArchiveError(f"special archive member is forbidden: {path}")
                     if member.isfile():
-                        if member.size > self.limits.max_file_size:
-                            raise ArchiveError(f"archive member exceeds size limit: {path}")
-                        total_size += member.size
                         files[path] = member
-                if total_size > self.limits.max_total_size:
-                    raise ArchiveError("archive exceeds total extracted size limit")
-                if total_size / compressed_size > self.limits.max_compression_ratio:
-                    raise ArchiveError("archive exceeds compression ratio limit")
 
                 manifest_path = next((name for name in self.manifest_names if name in files), None)
                 if manifest_path is None:
@@ -177,7 +155,7 @@ class ArchiveValidator:
                     with os.fdopen(os.open(target, flags, 0o600), "wb") as output:
                         for chunk in iter(lambda: source.read(1024 * 1024), b""):
                             written += len(chunk)
-                            if written > member.size or written > self.limits.max_file_size:
+                            if written > member.size:
                                 raise ArchiveError(
                                     f"archive member expanded beyond declared size: {path.as_posix()}"
                                 )

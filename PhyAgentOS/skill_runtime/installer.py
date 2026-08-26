@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 from PhyAgentOS.config.paths import get_forge_runtime_root, get_skill_bundle_root
-from PhyAgentOS.skill_runtime.archive import ArchiveLimits, ArchiveValidator, sha256_file
+from PhyAgentOS.skill_runtime.archive import ArchiveValidator, sha256_file
 from PhyAgentOS.skill_runtime.manifest import NodeLock, SkillManifest, load_manifest
 from PhyAgentOS.skill_runtime.runtime_manifest import normalize_arch, normalize_platform
 from PhyAgentOS.skill_runtime.state import RuntimeStateStore
@@ -267,7 +267,6 @@ class NodeInstaller:
 
     @staticmethod
     def _extract_executable(archive: Path, output: Path, lock: NodeLock) -> None:
-        limits = ArchiveLimits()
         try:
             with tarfile.open(archive, mode="r:gz") as bundle:
                 files = []
@@ -291,11 +290,6 @@ class NodeInstaller:
                     raise InstallerError(
                         "Forge node archive filename does not match Skill entrypoint"
                     )
-                if member.size > limits.max_file_size:
-                    raise InstallerError("Forge node executable exceeds the size limit")
-                archive_size = max(archive.stat().st_size, 1)
-                if member.size / archive_size > limits.max_compression_ratio:
-                    raise InstallerError("Forge node archive compression ratio is too high")
                 source = bundle.extractfile(member)
                 if source is None:
                     raise InstallerError("cannot read Forge node executable from archive")

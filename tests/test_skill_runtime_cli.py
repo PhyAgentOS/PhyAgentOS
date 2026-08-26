@@ -44,6 +44,41 @@ def test_skill_distribution_commands_use_registry_only() -> None:
         assert "--index" not in result.stdout
 
 
+def test_skill_install_confirms_by_default_and_yes_skips_prompt(monkeypatch) -> None:
+    from PhyAgentOS.cli import commands
+
+    calls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        commands,
+        "_install_skill_from_registry",
+        lambda name, *, ask_confirmation: calls.append((name, ask_confirmation)),
+    )
+    runner = CliRunner()
+
+    assert runner.invoke(app, ["skill", "install", "demo"]).exit_code == 0
+    assert runner.invoke(app, ["skill", "install", "demo", "--yes"]).exit_code == 0
+
+    assert calls == [("demo", True), ("demo", False)]
+
+
+def test_local_skill_install_uses_the_same_confirmation(tmp_path: Path, monkeypatch) -> None:
+    from PhyAgentOS.cli import commands
+
+    bundle = tmp_path / "demo.tar.gz"
+    bundle.write_bytes(b"bundle")
+    calls: list[tuple[Path, bool]] = []
+    monkeypatch.setattr(
+        commands,
+        "_install_skill_from_local_bundle",
+        lambda path, *, ask_confirmation: calls.append((path, ask_confirmation)),
+    )
+
+    result = CliRunner().invoke(app, ["skill", "install", str(bundle)])
+
+    assert result.exit_code == 0
+    assert calls == [(bundle, True)]
+
+
 def test_skill_search_merges_registry_with_local_status(monkeypatch) -> None:
     from PhyAgentOS.skill_runtime import catalog, registry
 
