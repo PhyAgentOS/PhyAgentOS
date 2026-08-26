@@ -37,7 +37,6 @@ from PhyAgentOS.session.manager import Session, SessionManager
 if TYPE_CHECKING:
     from PhyAgentOS.config.schema import ChannelsConfig, ExecToolConfig
     from PhyAgentOS.cron.service import CronService
-    from PhyAgentOS.forge.orchestrator import ForgeSessionOrchestrator
     from PhyAgentOS.forge.tool_client import ForgeToolClient
 
 
@@ -72,7 +71,6 @@ class AgentLoop:
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
         embodiment_registry: EmbodimentRegistry | None = None,
-        forge_orchestrator: ForgeSessionOrchestrator | None = None,
         forge_tool_client: ForgeToolClient | None = None,
         forge_tool_invocation_ids: MutableSet[str] | None = None,
         runtime_availability_provider: Callable[[str], bool] | None = None,
@@ -90,17 +88,11 @@ class AgentLoop:
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
-        self.forge_orchestrator = forge_orchestrator
         self.forge_tool_client = forge_tool_client
         self.forge_tool_invocation_ids = forge_tool_invocation_ids
 
         self.context = ContextBuilder(
             workspace,
-            forge_context_provider=(
-                forge_orchestrator.capabilities_summary
-                if forge_orchestrator is not None
-                else None
-            ),
             runtime_availability_provider=runtime_availability_provider,
         )
         self.sessions = session_manager or SessionManager(workspace)
@@ -164,28 +156,6 @@ class AgentLoop:
             self.tools.register(ImageTool(self.provider, send_callback=self.bus.publish_outbound))
 
         self.tools.register(SceneGraphQueryTool(workspace=self.workspace))
-        if self.forge_orchestrator is not None:
-            from PhyAgentOS.agent.tools.forge import (
-                CreateReplannedForgeSessionTool,
-                ForgeCancelSessionTool,
-                ForgeExecuteTaskTool,
-                ForgeGetContextTool,
-                ForgeGetSessionTool,
-                ForgeResetTool,
-                VerifyForgeSessionTool,
-            )
-
-            for tool in (
-                ForgeExecuteTaskTool(self.forge_orchestrator),
-                ForgeGetSessionTool(self.forge_orchestrator),
-                ForgeCancelSessionTool(self.forge_orchestrator),
-                ForgeGetContextTool(self.forge_orchestrator),
-                ForgeResetTool(self.forge_orchestrator),
-                VerifyForgeSessionTool(self.forge_orchestrator),
-                CreateReplannedForgeSessionTool(self.forge_orchestrator),
-            ):
-                self.tools.register(tool)
-
         if self.forge_tool_client is not None:
             from PhyAgentOS.agent.tools.forge_tool_api import build_forge_tool_api_tools
 
@@ -229,9 +199,6 @@ class AgentLoop:
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
-        if tool := self.tools.get("forge_execute_task"):
-            tool.set_context(channel, chat_id, session_key)
-
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
         """Remove <think>…</think> blocks that some models embed in content."""
@@ -353,15 +320,7 @@ class AgentLoop:
             except (asyncio.CancelledError, Exception):
                 pass
         sub_cancelled = await self.subagents.cancel_by_session(msg.session_key)
-        forge_cancelled = 0
-        if self.forge_orchestrator is not None:
-            for record in self.forge_orchestrator.store.nonterminal():
-                if record.origin_session_key == msg.session_key:
-                    await self.forge_orchestrator.cancel_session(
-                        record.session_id, reason="user_stop"
-                    )
-                    forge_cancelled += 1
-        total = cancelled + sub_cancelled + forge_cancelled
+        total = cancelled + sub_cancelled
         content = f"Stopped {total} task(s)." if total else "No active task to stop."
         await self.bus.publish_outbound(OutboundMessage(
             channel=msg.channel, chat_id=msg.chat_id, content=content,

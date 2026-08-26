@@ -33,11 +33,9 @@ class ContextBuilder:
         self,
         workspace: Path,
         *,
-        forge_context_provider: Callable[[], str] | None = None,
         runtime_availability_provider: Callable[[str], bool] | None = None,
     ):
         self.workspace = workspace
-        self.forge_context_provider = forge_context_provider
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(
             workspace,
@@ -97,16 +95,6 @@ Skills with available="false" need dependencies installed first - you can try in
 - Use file tools when they are simpler or more reliable than shell commands.
 """
 
-        forge_policy = ""
-        if self.forge_context_provider is not None:
-            forge_policy = (
-                "- Robot execution is available only through the registered Forge tools. "
-                "Never invent Gateway actions or write an execution queue. Use "
-                "forge_get_context when live state is needed.\n\n"
-                "## Forge Execution\n"
-                + self.forge_context_provider()
-            )
-
         return f"""# PhyAgentOS 🍞
 
 You are PhyAgentOS, a helpful AI assistant.
@@ -128,7 +116,6 @@ Your workspace is at: {workspace_path}
 - After writing or editing a file, re-read it if accuracy matters.
 - If a tool call fails, analyze the error before retrying with a different approach.
 - Ask for clarification when the request is ambiguous.
-{forge_policy}
 
 Reply directly with text for conversations. Only use the 'message' tool to send to a specific chat channel."""
 

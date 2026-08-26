@@ -7,10 +7,6 @@ readiness:
   require_proprio_state: false
   require_images: false
 
-agent:
-  enabled: false
-  action_manifests: []
-
 tools:
   enabled: true
   lease_ttl_ms: 3000

@@ -325,65 +325,6 @@ def _make_provider(config: Config):
     return provider
 
 
-def _make_forge_verifier(config: Config, provider):
-    """Create the Forge task verifier and its serializable child provider config."""
-    if not config.forge.enabled or not config.agents.verification.service_enabled:
-        return None
-    from PhyAgentOS.agent.session_verifier import ForgeTaskVerifier
-
-    settings = config.agents.verification
-    model = settings.model or config.agents.defaults.model
-    provider_name = settings.provider or config.get_provider_name(model)
-    if not provider_name:
-        raise RuntimeError(f"cannot resolve verification provider for model {model!r}")
-    provider_name = provider_name.replace("-", "_")
-    provider_config = getattr(config.providers, provider_name, None)
-    if settings.provider is not None and provider_config is None:
-        raise RuntimeError(f"unknown verification provider {settings.provider!r}")
-    provider_spec = {
-        "provider_name": provider_name,
-        "model": model,
-        "api_key": provider_config.api_key if provider_config is not None else None,
-        "api_base": (
-            provider_config.api_base
-            if provider_config is not None and provider_config.api_base
-            else config.get_api_base(model)
-        ),
-        "extra_headers": (
-            provider_config.extra_headers if provider_config is not None else None
-        ),
-        "temperature": 0.0,
-        "max_tokens": min(4096, config.agents.defaults.max_tokens),
-        "reasoning_effort": config.agents.defaults.reasoning_effort,
-    }
-    return ForgeTaskVerifier(
-        workspace=config.workspace_path,
-        provider=provider,
-        model=model,
-        evidence_retention=settings.evidence_retention,
-        timeout_s=settings.timeout_s,
-        service_host=settings.service_host,
-        service_port=settings.service_port,
-        service_provider_spec=provider_spec,
-        max_calls=settings.max_verifier_calls_per_run,
-    )
-
-
-def _make_forge_orchestrator(config: Config, provider, bus):
-    if not config.forge.enabled:
-        return None
-    from PhyAgentOS.forge.orchestrator import ForgeSessionOrchestrator
-
-    return ForgeSessionOrchestrator(
-        workspace=config.workspace_path,
-        config=config.forge,
-        verifier=_make_forge_verifier(config, provider),
-        bus=bus,
-        max_replans=config.agents.verification.max_replans_per_episode,
-        replan_timeout_s=config.agents.verification.replan_timeout_s,
-    )
-
-
 def _active_skill_runtime():
     """Discover an explicitly started, healthy Skill runtime."""
     from PhyAgentOS.skill_runtime.integration import discover_active_runtime
@@ -467,7 +408,6 @@ def gateway(
         sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     provider = _make_provider(config)
-    forge_orchestrator = _make_forge_orchestrator(config, provider, bus)
     active_skill_runtime = _active_skill_runtime()
     session_manager = SessionManager(config.workspace_path)
 
@@ -492,7 +432,6 @@ def gateway(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         embodiment_registry=registry,
-        forge_orchestrator=forge_orchestrator,
         forge_tool_client=(
             active_skill_runtime.client
             if active_skill_runtime is not None
@@ -621,15 +560,7 @@ def gateway(
         try:
             await cron.start()
             await heartbeat.start()
-            if forge_orchestrator is not None:
-                await forge_orchestrator.start()
-            services = [
-                agent.run(),
-                channels.start_all(),
-            ]
-            if forge_orchestrator is not None:
-                services.append(forge_orchestrator.run())
-            await asyncio.gather(*services)
+            await asyncio.gather(agent.run(), channels.start_all())
         except KeyboardInterrupt:
             console.print("\nShutting down...")
         finally:
@@ -637,8 +568,6 @@ def gateway(
             heartbeat.stop()
             cron.stop()
             agent.stop()
-            if forge_orchestrator is not None:
-                await forge_orchestrator.stop()
             await channels.stop_all()
 
     asyncio.run(run())
@@ -679,7 +608,6 @@ def agent(
 
     bus = MessageBus()
     provider = _make_provider(config)
-    forge_orchestrator = _make_forge_orchestrator(config, provider, bus)
     active_skill_runtime = _active_skill_runtime()
 
     # Create cron service for tool usage (no callback needed for CLI unless running)
@@ -706,7 +634,6 @@ def agent(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         embodiment_registry=registry,
-        forge_orchestrator=forge_orchestrator,
         forge_tool_client=(
             active_skill_runtime.client
             if active_skill_runtime is not None
@@ -744,45 +671,12 @@ def agent(
     if message:
         # Single message mode — direct call, no bus needed
         async def run_once():
-            agent_task = None
-            orchestrator_task = None
             try:
-                if forge_orchestrator is not None:
-                    await forge_orchestrator.start()
-                    orchestrator_task = asyncio.create_task(forge_orchestrator.run())
                 with _thinking_ctx():
                     response = await agent_loop.process_direct(message, session_id, on_progress=_cli_progress)
                 _print_agent_response(response, render_markdown=markdown)
-                if forge_orchestrator is not None and forge_orchestrator.store.nonterminal():
-                    agent_task = asyncio.create_task(agent_loop.run())
-                    while forge_orchestrator.store.nonterminal():
-                        try:
-                            outbound = await asyncio.wait_for(
-                                bus.consume_outbound(), timeout=0.25
-                            )
-                            if outbound.content:
-                                _print_agent_response(
-                                    outbound.content, render_markdown=markdown
-                                )
-                        except asyncio.TimeoutError:
-                            pass
-                    try:
-                        outbound = await asyncio.wait_for(bus.consume_outbound(), timeout=5.0)
-                        if outbound.content:
-                            _print_agent_response(outbound.content, render_markdown=markdown)
-                    except asyncio.TimeoutError:
-                        pass
             finally:
                 agent_loop.stop()
-                if forge_orchestrator is not None:
-                    await forge_orchestrator.stop()
-                for task in (agent_task, orchestrator_task):
-                    if task is not None:
-                        task.cancel()
-                await asyncio.gather(
-                    *[task for task in (agent_task, orchestrator_task) if task is not None],
-                    return_exceptions=True,
-                )
                 await agent_loop.close_mcp()
 
         asyncio.run(run_once())
@@ -814,14 +708,7 @@ def agent(
             signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
         async def run_interactive():
-            if forge_orchestrator is not None:
-                await forge_orchestrator.start()
             bus_task = asyncio.create_task(agent_loop.run())
-            orchestrator_task = (
-                asyncio.create_task(forge_orchestrator.run())
-                if forge_orchestrator is not None
-                else None
-            )
             turn_done = asyncio.Event()
             turn_done.set()
             turn_response: list[str] = []
@@ -892,18 +779,10 @@ def agent(
                         break
             finally:
                 agent_loop.stop()
-                if forge_orchestrator is not None:
-                    await forge_orchestrator.stop()
                 outbound_task.cancel()
-                for task in (orchestrator_task,):
-                    if task is not None:
-                        task.cancel()
                 await asyncio.gather(
-                    *[
-                        task
-                        for task in (bus_task, outbound_task, orchestrator_task)
-                        if task is not None
-                    ],
+                    bus_task,
+                    outbound_task,
                     return_exceptions=True,
                 )
                 await agent_loop.close_mcp()

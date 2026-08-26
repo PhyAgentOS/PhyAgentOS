@@ -557,8 +557,8 @@
     },
     {
       "path": "profiles/mujoco/gateway.yaml",
-      "size": 10727,
-      "sha256": "3b6847d582ab1adff679ed69f27d1e0a2b390dba5942912f8a1bd3218770cf9e"
+      "size": 10679,
+      "sha256": "e805bd02ef3fd656e8687642cb039e25be6b1a2988b93e0e33eec70997e5aed2"
     },
     {
       "path": "profiles/mujoco/gripper_controller.yaml",

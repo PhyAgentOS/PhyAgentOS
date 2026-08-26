@@ -1,6 +1,9 @@
-"""Forge Gateway-only execution integration."""
+"""Forge Gateway Tool API integration."""
 
-from PhyAgentOS.forge.client import ForgeGatewayClient, ForgeGatewayError
-from PhyAgentOS.forge.orchestrator import ForgeSessionOrchestrator
+from PhyAgentOS.forge.tool_client import (
+    ForgeToolAPIError,
+    ForgeToolAPITimeoutError,
+    ForgeToolClient,
+)
 
-__all__ = ["ForgeGatewayClient", "ForgeGatewayError", "ForgeSessionOrchestrator"]
+__all__ = ["ForgeToolAPIError", "ForgeToolAPITimeoutError", "ForgeToolClient"]
