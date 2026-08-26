@@ -1,0 +1,54 @@
+# kai0-libero 策略节点配置（同步模式 WS 客户端 + LIBERO 契约）
+# 契约 profile = libero（policy.type=kai0_libero 自动选择，见 inference/contract.py）：
+#   - action 7 维：joint1..joint7 位置序 + 第 7 维夹爪（robosuite 原生域 [-1,1]，
+#     不做米↔毫米换算——与双臂契约不同）
+#   - observation.state 8 维：eef_pos(3) + axis_angle(3) + gripper_qpos(2)
+#     （state_joints 与 benchmark 节点 STATE_JOINTS 逐字一致：joint1..joint7 + gripper）
+#   - 两路相机 alias：image（agentview）/ wrist_image（eye_in_hand）
+#   - 服务端 payload 用 LiberoInputs 平铺键（observation/image 等，官方 openpi-client 同构）
+#
+# smoke（仓库根目录，需服务端已以 pi05_libero 启动）：
+#   uv run kai0 infer-once --config config/inference/kai0_libero.yaml
+# Dora 两节点（第 6 步）：examples/dora_bench_libero/dataflow.yaml
+
+joints:
+  - { name: joint1, mode: position, unit: radians }
+  - { name: joint2, mode: position, unit: radians }
+  - { name: joint3, mode: position, unit: radians }
+  - { name: joint4, mode: position, unit: radians }
+  - { name: joint5, mode: position, unit: radians }
+  - { name: joint6, mode: position, unit: radians }
+  # gripper：robosuite 原生域 [-1,1]（q01/q99 = ±1.0，官方 norm_stats 实测），
+  # 直传 env.step，不做单位换算。
+  - { name: joint7, mode: position, unit: normalized }
+
+state_joints: [joint1, joint2, joint3, joint4, joint5, joint6, joint7, gripper]
+
+policy:
+  type: kai0_libero   # 同步模式 WS 客户端 + LIBERO 契约（registry）
+  policy_id: kai0_libero
+  auto_start: false   # 由 benchmark 发 policy_command start 驱动
+  server_url: ws://127.0.0.1:8000   # kai0 推理服务端（serve_policy --policy.config pi05_libero）
+  instruction: ""     # 占位；逐 episode 由 set_instruction 覆盖
+  timeout_s: 60.0     # 单请求超时（秒）
+  execute_action_steps: 5   # 官方 openpi 口径：chunk 前 5 步执行后重规划（eval_protocol §3 D-2）
+
+# dora 图像输入 id → 契约 alias（contract.LIBERO.camera_aliases；与 benchmark 输出通道对齐）
+image_inputs:
+  image/main: image
+  image/second: wrist_image
+
+# policy_runner SessionToolEndpoint（常驻推理服务生命周期）：
+#   serve = attach-or-launch + 三段就绪门（/healthz 200 → infer-once action_dim=7
+#           → norm_stats sha256 匹配）；stop = 唯一终止路径（owned 时 SIGTERM
+#           进程组 30s 宽限 → SIGKILL；attached 不杀进程）。
+#   权重位于 skill bundle（weights/，~12.4GB π0.5-libero），install 解包到
+#   skill 工作区后由本节点读取；start args 可覆盖 weights_dir / server_url。
+#   mode 为过渡开关：session_endpoint = 嵌入 ToolEndpointHandler 的正式形态；
+#   dora_plain = 纯数据面（无 tool 通道，用于回归对照）。
+session:
+  mode: session_endpoint
+  server_url: ws://127.0.0.1:8000   # 附接探测与推理服务地址
+  weights_dir: ../../weights        # 相对本配置文件：bundle 根 weights/（params/ + assets/）
+  readiness_timeout_s: 600          # /healthz 就绪门超时（三段共用上限）
+  norm_stats_sha256: b3a44bb2810436fb62917decaea58bd4d9110255df527dea21e8fd40c960bd84

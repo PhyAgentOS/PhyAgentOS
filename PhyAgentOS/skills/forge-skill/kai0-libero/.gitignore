@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+weights/
+bundles/
+dist/
+results/
+*.tar.gz
+*.log
+quick_start.env
+skill.yaml.bak
