@@ -1,0 +1,112 @@
+host: 127.0.0.1
+port: 19003
+joint_order: []
+image_input_ids: []
+
+readiness:
+  require_proprio_state: false
+  require_images: false
+
+tools:
+  enabled: true
+  # 10s 租约：实测丢失一条 register 续约（dora 突发挤掉）即 3s 租约过期，
+  # gateway 把活跃 invocation 判 unknown（"pinned provider lease expired or
+  # provider instance restarted; the Action outcome is ambiguous"）。批次工具
+  # 对 provider 失联检测延迟不敏感，10s TTL 可容忍 5~10 次续约丢失。
+  lease_ttl_ms: 10000
+  # invoke deadline = 批次最坏时长上限 + 余量：endpoint 自身 batch watchdog
+  # （21600s）先触发并回终态事件；gateway 侧 7h 确保 deadline 永不先于批次终态
+  # （deadline 触发会把 invocation 永久钉为 unknown，且占用 concurrency 槽位）。
+  # session 不受此限制：gateway 对 session invocation 不设 deadline（常驻服务
+  # 生命周期，stop 是唯一终止路径），此处仅约束单次握手/查询交换的时效。
+  invoke_timeout_ms: 25200000
+  request_input_id: tool_request
+  response_output_id: tool_response
+  specs:
+    - tool_id: kai0_libero.benchmark
+      implementation_id: kai0-libero.benchmark
+      endpoint_id: benchmark.controller
+      operation: run
+      semantics: action
+      description: Run a LIBERO benchmark batch with the kai0 policy and read back results.
+      input_schema:
+        type: object
+        additionalProperties: false
+        required: [suite]
+        properties:
+          suite:
+            enum: [libero_spatial, libero_object, libero_goal, libero_10]
+          task_ids:
+            type: array
+            minItems: 1
+            maxItems: 10
+            items: {type: integer, minimum: 0, maximum: 9}
+          init_state_ids:
+            type: array
+            minItems: 1
+            maxItems: 50
+            items: {type: integer, minimum: 0, maximum: 49}
+          num_runs:
+            type: integer
+            minimum: 1
+            maximum: 5
+          max_steps:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          seed:
+            type: integer
+            minimum: 0
+      output_schema:
+        type: object
+        additionalProperties: false
+        required: [run_id, status, completed_episodes, total_episodes, success_rate, result_file]
+        properties:
+          run_id: {type: string}
+          status: {enum: [succeeded, failed, cancelled, partial]}
+          completed_episodes: {type: integer, minimum: 0}
+          total_episodes: {type: integer, minimum: 1}
+          success_rate: {type: [number, "null"], minimum: 0, maximum: 1}
+          result_file: {type: string}
+          failure_summary: {type: [string, "null"]}
+      readiness: []
+      robot_frame_profile:
+        robot_id: libero
+        base_frame: world
+        tool_frame: ee
+        frames: {}
+        directions: {}
+    - tool_id: kai0_libero.policy
+      implementation_id: kai0-libero.policy
+      endpoint_id: policy.runner
+      operation: serve
+      semantics: session
+      description: >
+        Attach to or launch the persistent kai0 inference service (openpi serve_policy)
+        and hold it ready across batches. start() first probes GET /healthz: a 200
+        attaches to the running server (owned=false, no process started); otherwise the
+        node launches scripts/start_server.sh --ckpt <bundle weights> --policy-config
+        pi05_libero (owned=true) and gates readiness in three stages: /healthz 200 ->
+        infer-once action_dim=7 -> norm_stats sha256 match. The session is unbounded
+        (no deadline); stop() is its only termination path and tears down a launched
+        service (SIGTERM process group, 30s grace, SIGKILL) but never kills an
+        attached one. Sessions are reused across batches.
+      input_schema:
+        type: object
+        additionalProperties: false
+        properties:
+          server_url: {type: string}
+      output_schema:
+        type: object
+        additionalProperties: false
+        required: [status]
+        properties:
+          status: {enum: [succeeded, stopped, failed]}
+      readiness: []
+  providers:
+    - endpoint_id: benchmark.controller
+      input_id: benchmark_tool_in
+      output_id: benchmark_tool_out
+    - endpoint_id: policy.runner
+      input_id: policy_tool_in
+      output_id: policy_tool_out

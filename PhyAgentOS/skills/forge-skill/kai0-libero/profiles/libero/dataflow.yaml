@@ -1,0 +1,67 @@
+# kai0-libero 主 flow（paos-gateway-policy_runner-benchmark 3 节点单流程）：
+#   gateway            — 控制面：Action/Session 语义分发、HTTP invoke/status/result/
+#                        cancel/stop、tool SSE 事件回放
+#   libero_benchmark   — benchmark ActionToolEndpoint（run/cancel/status/result）+
+#                        LIBERO 仿真数据面（批次仅经 start() 触发，进程内执行，
+#                        无子 flow、无子进程 dora）
+#   kai0_policy        — policy_runner SessionToolEndpoint（serve/stop/status/result，
+#                        attach-or-launch + 三段就绪门）+ 推理数据面
+# 通道命名与 gateway.yaml providers 绑定逐字一致。queue_size=32 为 dora 0.4.1
+# 突发丢包缺陷的实测参数（tool_in/tool_out/policy_command 显式加深，禁止回落默认）。
+
+nodes:
+  - id: gateway
+    path: ${FORGE_RUNTIME_BIN}/gateway
+    args: --config gateway.yaml
+    inputs:
+      tick: dora/timer/millis/50
+      benchmark_tool_in:
+        source: libero_benchmark/tool_out
+        queue_size: 32
+      policy_tool_in:
+        source: kai0_policy/tool_out
+        queue_size: 32
+    outputs:
+      - tool_response
+      - benchmark_tool_out
+      - policy_tool_out
+
+  - id: libero_benchmark
+    path: ${FORGE_RUNTIME_BIN}/libero_benchmark
+    env:
+      BENCHMARK_CONFIG: benchmark_config.yaml
+      MUJOCO_GL: egl
+      PYOPENGL_PLATFORM: egl
+    inputs:
+      tick: dora/timer/millis/1000
+      tool_in:
+        source: gateway/benchmark_tool_out
+        queue_size: 32
+      action: kai0_policy/action
+    outputs:
+      - tool_out
+      - proprio_state
+      - image/main
+      - image/second
+      - policy_command
+      - benchmark_status
+      - benchmark_result
+
+  - id: kai0_policy
+    path: ${FORGE_RUNTIME_BIN}/kai0_policy
+    args: --config kai0_libero.yaml
+    inputs:
+      tick: dora/timer/millis/20
+      tool_in:
+        source: gateway/policy_tool_out
+        queue_size: 32
+      policy_command:
+        source: libero_benchmark/policy_command
+        # episode 边界会连发 set_instruction + reset_scene（手册陷阱 4）
+        queue_size: 32
+      proprio_state: libero_benchmark/proprio_state
+      image/main: libero_benchmark/image/main
+      image/second: libero_benchmark/image/second
+    outputs:
+      - tool_out
+      - action

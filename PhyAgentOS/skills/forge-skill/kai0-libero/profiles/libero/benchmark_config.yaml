@@ -1,0 +1,24 @@
+# bench 静态默认（第一层：profile 静态字段；endpoint 按 invoke 参数覆盖第二层）。
+# 字段口径与 eval_protocol 冻结 v1 一致；task_ids/init_state_ids 置空 = 全集。
+suite: libero_spatial
+
+task_ids: ""
+init_state_ids: ""
+num_runs: 1
+
+max_steps: 300           # input_schema 默认 300；spatial 官方口径 220 由调用方显式传
+num_steps_wait: 10
+control_mode: relative   # 不暴露参数，profile 静态注入
+seed: 0
+
+layout_mode: per_episode
+
+camera_height: 256
+camera_width: 256
+
+policy_id: kai0_libero   # 与 kai0_libero.yaml 的 policy.policy_id 逐字一致
+
+send_instruction: true
+
+result_dir: results      # endpoint 在 start() 时解析为 run 专属工作区（相对本文件所在目录）
+record_dir: null
