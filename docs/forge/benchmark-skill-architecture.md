@@ -209,10 +209,10 @@ status_supported / max_concurrency=1):
 
 | 项 | 状态 |
 | --- | --- |
-| forge handler session dispatch(含语义域控制) | 已实现(forge-tool-v0.2.0) |
+| forge handler session dispatch(含语义域控制) | 已实现并发布(forge-tool-v0.2.0 tag 已推 gitlab dev) |
 | gateway session spec 校验、stop 路由、deadline 豁免、stop 簿记 | 已实现(feat/tool-session → 1.1.0) |
-| benchmark ActionToolEndpoint(libero) | 本轮实现 |
-| policy_runner SessionToolEndpoint(kai0_runner) | 本轮实现 |
+| benchmark ActionToolEndpoint(libero) | 已实现(真实二进制待 conda 环境构建) |
+| policy_runner SessionToolEndpoint(kai0_runner) | 已实现(二进制需按 SPECPATH 修复重建,旧 digest 过期) |
 | kai0-libero skill 3 节点迁移(双工具 + 新锁契约) | 本轮实现 |
 | bundle 交付(含权重,本地 registry 闭环) | registry 闭环已验(libero 暂以占位 shim 走通安装契约);权重注入待用户暂存权重后打包 |
 | E2E L0-L1 | 通过(各仓测试全绿;gateway HTTP session 流含 stop/并发释放/deadline 豁免) |
@@ -222,6 +222,22 @@ status_supported / max_concurrency=1):
 | 公开 release 管线(GitHub Release / TOS 上传) | 未来(维护者,手工) |
 | 上游 agent 的 session 桥接工具(PAOS agent 层) | 未来 |
 | 多会话并发 / per-tool 超时覆盖 / VLA 场景 | 未来 |
+
+### 10.1 下一步:测试线与发布收尾(2026-08-27)
+
+forge-tool-v0.2.0 已正式发布;forge 分支治理同步完成(master 合并进 dev,以 master 为准,dev 仅保留本轮 tool 相关内容)。剩余工作按依赖排序:
+
+| # | 工作 | 依赖 | 环境门槛 |
+| --- | --- | --- | --- |
+| 0a | gateway vendored forge_tool 对齐 v0.2.0(dora.py 存在差异);对齐后重建 gateway 1.1.0 二进制、更新 sha256 | — | 无 |
+| 0b | kai0_policy 二进制重建(SPECPATH 修复 317533a 之后,旧 digest 过期)并重取 sha256 | — | 无 |
+| 1 | libero 真实二进制构建(make_node_bundle.sh + 单 entrypoint 断言 + sha256) | conda LIBERO 环境 | 环境门控 |
+| 2 | libero 契约单测(tests/test_contracts.py,conda 环境内) | 1 | 环境门控 |
+| 3 | libero/kai0_runner 锁刷新(rev=forge-tool-v0.2.0 已可解析;uv.lock 固化旧 sha 则重锁) | — | 无 |
+| 4 | skill.yaml 三节点锁回填(artifact_id / entrypoint / sha256 = 正式 Release digest) | 0a / 0b / 1 | 无 |
+| 5 | L2 benchmark action E2E(gateway + libero 二进制 + 恒值 7 维 stub;202→accepted→SSE 进度→七字段终态;cancel→cancelled/partial) | 0a / 1 | conda libero-bench |
+| 6 | L4 打包闭环(权重注入→打包→本地 registry 覆盖→install→dora 3 节点流→结果契约→queue_size=32 租约不丢) | 4 + 权重 12.4GB | 权重下载 |
+| 7 | L3 session 生命周期(A 附接 / B 拉起 / C 跨批复用 / D stop+GPU 释放 / E 无 GPU 快速失败) | 0b / 6 | GPU |
 
 ## 11. 风险与限制
 
