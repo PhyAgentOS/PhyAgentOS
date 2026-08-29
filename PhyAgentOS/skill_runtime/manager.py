@@ -107,6 +107,7 @@ class RuntimeManager:
                 f"Gateway address {manifest.gateway_url} is already in use; "
                 "refusing to adopt an unmanaged runtime"
             )
+        self._run_start_hook(manifest, profile_name)
 
         starting = RuntimeState(
             skill_name=skill_name,
@@ -262,6 +263,32 @@ class RuntimeManager:
             raise RuntimeManagerError("rendered Skill dataflow is missing")
         return path
 
+    def _run_start_hook(self, skill: SkillManifest, profile_name: str) -> None:
+        """skill bundle 内置 start.sh pre-hook（如存在）：大资产下载等特殊启动步骤。
+
+        `paos skill start` 在 prepare/预检之后、dora 流程启动之前执行
+        <bundle>/start.sh <skill-name> <skill-version>。stdio 直通（不捕获输出，
+        继承调用方终端——start.sh 的交互 y/n 确认直接可见）。退出码 0 → 继续
+        内置流程；非 0 → 中止启动（此时尚未落 starting 状态，不污染状态机）。
+        bundle 不含 start.sh 的 skill 直接跳过（no-op）。
+        """
+        hook = skill.bundle_root / "start.sh"
+        if not hook.is_file():
+            return
+        self._log(
+            skill.name, f"running bundle start.sh hook (profile={profile_name})"
+        )
+        result = subprocess.run(
+            ["bash", str(hook), skill.name, skill.version],
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeManagerError(
+                "bundle start.sh hook exited with code "
+                f"{result.returncode}; skill start aborted"
+            )
+        self._log(skill.name, "bundle start.sh hook completed")
+
     def _ensure_dora_up(
         self,
         skill: SkillManifest,
@@ -283,6 +310,8 @@ class RuntimeManager:
                     **profile.environment,
                     "FORGE_RUNTIME_BIN": str(binary_root),
                     "PAOS_SKILL_ROOT": str(skill.bundle_root),
+                    "PAOS_SKILL_NAME": skill.name,
+                    "PAOS_SKILL_VERSION": skill.version,
                 }
                 subprocess.Popen(
                     [dora, "up"],
@@ -316,6 +345,8 @@ class RuntimeManager:
             **profile.environment,
             "FORGE_RUNTIME_BIN": str(binary_root),
             "PAOS_SKILL_ROOT": str(skill.bundle_root),
+            "PAOS_SKILL_NAME": skill.name,
+            "PAOS_SKILL_VERSION": skill.version,
         }
         self.logs_root.mkdir(parents=True, exist_ok=True)
         launch_log = self.logs_root / f"{flow_name}-dora.log"

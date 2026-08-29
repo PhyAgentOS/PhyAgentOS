@@ -211,6 +211,37 @@ def test_local_bundle_install_resolves_nodes_from_registry(tmp_path: Path, monke
         _stop_server(server)
 
 
+def test_environment_digest_includes_profile_files(tmp_path: Path, monkeypatch) -> None:
+    """同版本 profile 文件变化必须触发环境重渲染（渲染副本不得滞留旧内容）。"""
+    skill_archive = tmp_path / "skill.tar.gz"
+    node_archive = tmp_path / "gateway.tar.gz"
+    node_sha256 = _node_archive(node_archive)
+    _skill_bundle(skill_archive, node_sha256)
+    skills, runtime = _isolate(tmp_path, monkeypatch)
+    requests, server = _node_registry(monkeypatch, node_archive)
+    try:
+        _install_skill_from_local_bundle(skill_archive)
+        manifest = SkillCatalog(skills).get("demo")
+        builder = SkillEnvironmentBuilder(runtime)
+
+        first_bin = builder.prepare(manifest, "local")
+        first_rendered = first_bin.parent / "launch" / "profiles/local/dataflow.yaml"
+        assert first_rendered.read_text() == "nodes: []\n"
+
+        # 模拟同版本重装：bundle 内 dataflow 内容变化
+        (manifest.bundle_root / "profiles/local/dataflow.yaml").write_text(
+            "nodes: []\npath: ${PAOS_SKILL_NAME}-${PAOS_SKILL_VERSION}\n",
+            encoding="utf-8",
+        )
+
+        second_bin = builder.prepare(manifest, "local")
+        second_rendered = second_bin.parent / "launch" / "profiles/local/dataflow.yaml"
+        assert second_bin.parent != first_bin.parent  # digest 变化 → 新环境目录
+        assert "path: demo-1.0.0" in second_rendered.read_text()
+    finally:
+        _stop_server(server)
+
+
 def test_local_bundle_install_is_idempotent(tmp_path: Path, monkeypatch) -> None:
     skill_archive = tmp_path / "skill.tar.gz"
     node_archive = tmp_path / "gateway.tar.gz"

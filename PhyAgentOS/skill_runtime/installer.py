@@ -344,6 +344,15 @@ class SkillEnvironmentBuilder:
             },
             "entrypoints": sorted(required),
         }
+        # 环境镜像 = 节点锁 + profile 文件内容。profile 文件（dataflow 与配置）变化
+        # 必须触发重渲染：同版本重装 bundle 时，旧 digest 只覆盖节点锁会导致
+        # 渲染副本（dataflow）滞留旧内容、只有符号链接（其余配置）跟随新 bundle。
+        profile_files: dict[str, str] = {}
+        profile_parent = skill.bundle_root / profile.dataflow.parent
+        for source in sorted(profile_parent.iterdir()):
+            if source.is_file():
+                profile_files[source.name] = sha256_file(source)
+        lock_value["profile_files"] = profile_files
         encoded = json.dumps(
             lock_value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
         ).encode()
@@ -381,6 +390,12 @@ class SkillEnvironmentBuilder:
                 rendered = source_dataflow.read_text(encoding="utf-8").replace(
                     "${FORGE_RUNTIME_BIN}", str((target / "bin").resolve())
                 ).replace("${PAOS_SKILL_ROOT}", str(skill.bundle_root))
+                # dora daemon 不向节点透传父进程环境：dataflow env 段是唯一可靠
+                # 注入通道，节点（如 kai0_policy 推导默认权重路径）依赖这两个变量。
+                rendered = (
+                    rendered.replace("${PAOS_SKILL_NAME}", skill.name)
+                    .replace("${PAOS_SKILL_VERSION}", skill.version)
+                )
                 (launch_profile / profile.dataflow.name).write_text(
                     rendered, encoding="utf-8"
                 )

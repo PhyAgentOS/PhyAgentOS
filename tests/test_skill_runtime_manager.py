@@ -153,6 +153,8 @@ def test_start_uses_named_attached_launcher_for_relative_mujoco_dataflow(
     assert env["FORGE_RUNTIME_BIN"] == str(manager.runtime_root)
     assert (manager.runtime_root / "gateway").is_file()
     assert env["PAOS_SKILL_ROOT"] == str(manager.catalog.root / "move-arm-by-ee")
+    assert env["PAOS_SKILL_NAME"] == "move-arm-by-ee"
+    assert env["PAOS_SKILL_VERSION"] == "1.0.0"
     rendered = (cwd / "dataflow.yaml").read_text()
     assert "${FORGE_RUNTIME_BIN}" not in rendered
     assert f"path: {manager.runtime_root}/gateway" in rendered
@@ -268,3 +270,91 @@ def test_start_rejects_node_that_does_not_match_lock(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeManagerError, match="receipt does not match Skill lock"):
         manager.start("move-arm-by-ee", "mujoco")
+
+
+def test_start_runs_bundle_start_sh_hook_before_dora(tmp_path: Path, monkeypatch) -> None:
+    manager = _manager(tmp_path)
+    marker = tmp_path / "hook-ran.txt"
+    hook = manager.catalog.root / "move-arm-by-ee" / "start.sh"
+    hook.write_text(
+        f"#!/bin/sh\necho \"$1 $2\" > {marker}\nexit 0\n", encoding="utf-8"
+    )
+    hook.chmod(0o755)
+    commands: list[tuple[list[str], Path | None]] = []
+    launched: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
+
+    def fake_run(command, *, cwd=None, env=None, timeout):
+        commands.append((command, cwd))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    snapshots = iter([None, {"ok": True}])
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+    real_popen = subprocess.Popen
+
+    def fake_popen(command, *, cwd=None, env=None, **kwargs):
+        if Path(command[0]).name == "bash":  # start.sh hook 真实执行
+            return real_popen(command, cwd=cwd, env=env, **kwargs)
+        launched.append((command, cwd, env))
+        return FakeProcess()
+
+    monkeypatch.setattr("shutil.which", lambda name: "dora")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(manager, "_run", fake_run)
+    monkeypatch.setattr(manager, "_gateway_snapshot", lambda manifest: next(snapshots))
+    monkeypatch.setattr(manager, "_flow_running", lambda flow_name: True)
+    monkeypatch.setattr(
+        manager,
+        "_tool_context_readiness",
+        lambda manifest: {tool_id: True for tool_id in manifest.required_tools},
+    )
+
+    state = manager.start("move-arm-by-ee", "mujoco")
+
+    assert state.status == "running"
+    assert marker.read_text().strip() == "move-arm-by-ee 1.0.0"
+    start_command, cwd, env = launched[0]
+    assert start_command[1] == "start"
+    assert env is not None
+    assert env["PAOS_SKILL_NAME"] == "move-arm-by-ee"
+    assert env["PAOS_SKILL_VERSION"] == "1.0.0"
+    # hook 必须先于 dora start 执行：marker 在 start 时已存在
+    assert marker.is_file()
+
+
+def test_start_aborts_when_start_sh_hook_fails(tmp_path: Path, monkeypatch) -> None:
+    manager = _manager(tmp_path)
+    hook = manager.catalog.root / "move-arm-by-ee" / "start.sh"
+    hook.write_text("#!/bin/sh\necho 'download declined'\nexit 3\n", encoding="utf-8")
+    hook.chmod(0o755)
+    launched: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+    real_popen = subprocess.Popen
+
+    def fake_popen(command, *, cwd=None, env=None, **kwargs):
+        if Path(command[0]).name == "bash":  # start.sh hook 真实执行
+            return real_popen(command, cwd=cwd, env=env, **kwargs)
+        launched.append((command, cwd, env))
+        return FakeProcess()
+
+    monkeypatch.setattr("shutil.which", lambda name: "dora")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        manager,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(manager, "_gateway_snapshot", lambda manifest: None)
+
+    with pytest.raises(RuntimeManagerError, match="start aborted"):
+        manager.start("move-arm-by-ee", "mujoco")
+
+    assert launched == []  # dora up / dora start 均未触发
+    assert manager.state_store.load("move-arm-by-ee") is None  # 未落 starting 状态
