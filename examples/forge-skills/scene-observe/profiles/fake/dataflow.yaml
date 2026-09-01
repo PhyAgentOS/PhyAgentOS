@@ -1,0 +1,4 @@
+agent:
+  enabled: false
+tools:
+  enabled: true

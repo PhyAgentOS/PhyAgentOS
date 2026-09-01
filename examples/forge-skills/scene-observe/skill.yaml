@@ -1,0 +1,18 @@
+manifest_version: 2
+name: scene-observe
+version: "0.1.0"
+description: Provider-neutral measured scene observation Query.
+skill_document: SKILL.md
+gateway_url: http://127.0.0.1:19020
+required_tools:
+  - scene.observe
+profiles:
+  fake:
+    dataflow: profiles/fake/dataflow.yaml
+    required_binaries: []
+    required_assets: []
+    required_environment: []
+    environment: {}
+artifacts:
+  resolver: registry
+  nodes: {}
