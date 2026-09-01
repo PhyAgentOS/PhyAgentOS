@@ -10,6 +10,15 @@ from typing import Any, Protocol
 
 import httpx
 
+from .understanding import (
+    UNDERSTANDING_ENDPOINT_ID,
+    UNDERSTANDING_OPERATION,
+    UNDERSTANDING_TOOL_ID,
+    UNDERSTANDING_TOOL_SPEC,
+    SceneUnderstandingEndpoint,
+    UnderstandingProvider,
+)
+
 TOOL_ID = "scene.observe"
 ENDPOINT_ID = "scene_observation"
 OPERATION = "observe"
@@ -211,15 +220,29 @@ def validate_snapshot(snapshot: ObservationSnapshot) -> str | None:
 class FakeGatewayTransport(httpx.AsyncBaseTransport):
     """In-memory Gateway transport; all calls are read-only except Query POST."""
 
-    def __init__(self, provider: ObservationProvider, *, now: datetime | None = None) -> None:
+    def __init__(
+        self,
+        provider: ObservationProvider,
+        *,
+        understanding_provider: UnderstandingProvider | None = None,
+        now: datetime | None = None,
+    ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
+        self.understanding_endpoint = (
+            SceneUnderstandingEndpoint(understanding_provider)
+            if understanding_provider is not None
+            else None
+        )
         self.requests: list[httpx.Request] = []
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
         if request.method == "GET" and path == "/tools":
-            return self._ok({"tools": [TOOL_SPEC]})
+            tools = [TOOL_SPEC]
+            if self.understanding_endpoint is not None:
+                tools.append(UNDERSTANDING_TOOL_SPEC)
+            return self._ok({"tools": tools})
         if request.method == "GET" and path == f"/tools/{TOOL_ID}":
             return self._ok(TOOL_SPEC)
         if request.method == "GET" and path == f"/tools/{TOOL_ID}/context":
@@ -231,8 +254,28 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     **TOOL_SPEC["robot_frame_profile"],
                 }
             )
+        if request.method == "GET" and path == f"/tools/{UNDERSTANDING_TOOL_ID}":
+            if self.understanding_endpoint is None:
+                return self._fail(404, "not_found", "Gateway route not found")
+            return self._ok(UNDERSTANDING_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{UNDERSTANDING_TOOL_ID}/context":
+            if self.understanding_endpoint is None:
+                return self._fail(404, "not_found", "Gateway route not found")
+            return self._ok(
+                {
+                    "ready": True,
+                    "binding_error": None,
+                    "motion_authorized": False,
+                    **UNDERSTANDING_TOOL_SPEC["robot_frame_profile"],
+                }
+            )
         if request.method == "POST" and path == f"/tools/{ENDPOINT_ID}/{OPERATION}:invoke":
             return self._invoke(request)
+        if (
+            request.method == "POST"
+            and path == f"/tools/{UNDERSTANDING_ENDPOINT_ID}/{UNDERSTANDING_OPERATION}:invoke"
+        ):
+            return self._invoke_understanding(request)
         return self._fail(404, "not_found", "Gateway route not found")
 
     def _invoke(self, request: httpx.Request) -> httpx.Response:
@@ -242,6 +285,16 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             return self._fail(400, "invalid_json", "request body must be JSON")
         arguments = payload.get("arguments") if isinstance(payload, dict) else None
         return self._ok(self.endpoint.invoke(arguments))
+
+    def _invoke_understanding(self, request: httpx.Request) -> httpx.Response:
+        try:
+            payload = json.loads(request.content or b"{}")
+        except json.JSONDecodeError:
+            return self._fail(400, "invalid_json", "request body must be JSON")
+        arguments = payload.get("arguments") if isinstance(payload, dict) else None
+        if self.understanding_endpoint is None:
+            return self._fail(503, "unavailable", "understanding provider is unavailable")
+        return self._ok(self.understanding_endpoint.invoke(arguments))
 
     @staticmethod
     def _ok(data: dict[str, Any]) -> httpx.Response:

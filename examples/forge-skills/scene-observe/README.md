@@ -1,7 +1,7 @@
 # Scene Observe Forge Skill
 
 This directory is an independently installable Forge Skill source bundle for the
-provider-neutral `scene.observe` Query. It is an example integration and is not part
+provider-neutral `scene.observe` and `scene.understand` Queries. It is an example integration and is not part
 of the `PhyAgentOS` Python distribution.
 
 The implementation deliberately has no simulator, robot SDK, camera driver, or

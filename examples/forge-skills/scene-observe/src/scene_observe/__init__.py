@@ -6,10 +6,18 @@ from .fake_gateway import (
     ObservationSnapshot,
     SceneObservationEndpoint,
 )
+from .understanding import (
+    SceneUnderstandingEndpoint,
+    UnderstandingProvider,
+    UnderstandingSnapshot,
+)
 
 __all__ = [
     "FakeGatewayTransport",
     "ObservationProvider",
     "ObservationSnapshot",
     "SceneObservationEndpoint",
+    "SceneUnderstandingEndpoint",
+    "UnderstandingProvider",
+    "UnderstandingSnapshot",
 ]

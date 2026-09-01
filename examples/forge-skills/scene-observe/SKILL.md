@@ -15,3 +15,9 @@ The Query returns an explicit status, capture timestamp, scene revision, frame i
 calibration reference, freshness measurement, and opaque artifact references. Treat
 `unavailable`, `stale`, and `invalid` as blockers. Do not retry a stale or missing-
 calibration result by weakening `max_age_ms`; obtain a new observation or operator input.
+
+Use `scene.understand` only after a successful `scene.observe` result. Pass the returned
+`observation_ref`, scene revision, frame, calibration reference, freshness, and artifact
+references unchanged. The understanding Query returns entity/relation claims and spatial
+envelopes with confidence and provenance; it does not authorize grasping, planning, or
+motion. Reject stale, unavailable, ambiguous, or invalid results before any future Action.
