@@ -31,6 +31,7 @@ scene.observe
   -> grasp.propose
   -> manipulation.prepare
   -> object.acquire
+  -> object.place
 ```
 
 Pass the returned observation reference, scene revision, frame, calibration reference,
@@ -72,3 +73,19 @@ The bounded Action owns its internal approach/contact/close/lift/hold phases. Us
 the terminal `capability_outcome_summary_v1` for phase attribution only after the
 Gateway result is terminal. It is execution evidence, not a replacement for
 `AgentTask finalize` or the generic verification contract.
+
+Use `object.place` only after `object.acquire` is terminal with `status: succeeded`.
+Pass the same observation, scene, frame, calibration, candidate-set, preparation,
+candidate, and entity references, plus the acquire invocation reference and an
+opaque `destination_ref`, unchanged into the place Action. A destination reference
+does not expose coordinates, simulator fields, or controller parameters; its
+meaning is resolved by the Gateway profile. Transport, descent, release, and
+retreat are internal bounded phases. Reconcile the place invocation through the
+standard status/result/cancel routes and treat cancellation acceptance and
+`unknown` as physically uncertain.
+
+The terminal place summary includes `post_release_evidence`, which reports only
+typed artifact references and their availability. This evidence is required for
+verification of the released object's destination state; a successful Action is
+not by itself a user-level task verdict. Do not retry release blindly or infer
+placement from an unverified acquire result.

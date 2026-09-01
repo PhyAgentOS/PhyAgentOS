@@ -1,5 +1,34 @@
 # Change Log
 
+## v0.6.0 (2026-09-01) - codex
+
+- [policy] [feat] [completed] Added the provider-neutral `object.place` bounded Action.
+  It requires a terminal successful acquire invocation, preserves immutable scene and
+  candidate bindings, keeps transport/descent/release/retreat internal, and reports
+  typed post-release evidence in the redacted `capability_outcome_summary_v1`.
+- [policy] [feat] [完成] 新增 provider-neutral `object.place` bounded Action：要求引用已终态
+  成功的 acquire invocation，保持场景与候选不可变绑定，transport/descent/release/retreat
+  保持 Gateway 内部，并在脱敏的 `capability_outcome_summary_v1` 中返回类型化释放后证据。
+
+### Verification
+
+- Added `contracts/object.place.tool.yaml`, `src/scene_observe/object_place.py`, and
+  `tests/test_object_place.py`; updated Fake Gateway routing, per-tool concurrency,
+  Bundle manifest, package version, README, SKILL.md, and discovery assertions.
+- Admission rejects stale, missing-calibration, malformed, unbound, unavailable, and
+  non-terminal or unsuccessful acquire references before placement invocation identity
+  allocation. Standard status/result and cancel routes preserve pending, terminal,
+  cancellation, and unknown semantics.
+- Public inputs contain only provider-neutral references and an opaque destination;
+  no RoboTwin, simulator, provider-private, coordinate, or internal-phase fields are
+  exposed. PAOS core remains unchanged and all tests remain no-motion fixtures.
+
+### Git Commit
+
+- Commit: pending
+- Branch: `feature/object-place`
+- Time: 2026-09-01 (Asia/Shanghai)
+
 ## v0.5.0 (2026-09-01) - codex
 
 - [policy] [feat] [completed] Added the provider-neutral `object.acquire` bounded Action.

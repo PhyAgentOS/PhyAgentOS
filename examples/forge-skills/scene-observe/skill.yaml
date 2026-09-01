@@ -1,7 +1,7 @@
 manifest_version: 2
 name: scene-observe
-version: "0.5.0"
-description: Provider-neutral perception, preparation, and bounded acquisition contracts.
+version: "0.6.0"
+description: Provider-neutral perception, preparation, acquisition, and placement contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
 required_tools:
@@ -10,6 +10,7 @@ required_tools:
   - grasp.propose
   - manipulation.prepare
   - object.acquire
+  - object.place
 profiles:
   fake:
     dataflow: profiles/fake/dataflow.yaml

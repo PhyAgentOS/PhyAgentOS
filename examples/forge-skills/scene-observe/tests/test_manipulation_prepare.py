@@ -151,6 +151,7 @@ async def test_prepare_is_discovered_after_the_proposal_query():
         "grasp.propose",
         "manipulation.prepare",
         "object.acquire",
+        "object.place",
     ]
     assert spec["data"]["endpoint_id"] == "manipulation_preparation"
     assert spec["data"]["operation"] == "prepare"

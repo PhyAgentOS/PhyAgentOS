@@ -1,0 +1,91 @@
+tool_id: object.place
+implementation_id: object.placement
+endpoint_id: object_placement
+operation: place
+semantics: action
+description: >-
+  Admit one bounded object placement workflow using a completed acquisition and a destination
+  reference; transport, descent, release, and retreat remain internal Gateway phases.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, acquire_invocation_ref, destination_ref]
+  properties:
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, minLength: 1}
+    freshness_ms: {type: integer, minimum: 0}
+    max_age_ms: {type: integer, minimum: 1}
+    candidate_set_ref: {type: string, pattern: '^candidate-set://[^/]+/.+$'}
+    preparation_ref: {type: string, pattern: '^preparation://[^/]+/.+$'}
+    candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
+    entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+    acquire_invocation_ref: {type: string, pattern: '^invocation://object-acquire/[^/]+$'}
+    destination_ref: {type: string, pattern: '^destination://[^\s]+$'}
+output_schema:
+  type: object
+  additionalProperties: false
+  required: [invocation_id, attempt_id, phase]
+  properties:
+    invocation_id: {type: string, pattern: '^invocation://[^/]+/.+$'}
+    attempt_id: {type: string, pattern: '^attempt://[^/]+/.+$'}
+    phase: {enum: [accepted, running, completed, failed, cancelled, stopped, unknown]}
+    cancel_requested: {type: boolean}
+    result:
+      type: object
+      additionalProperties: false
+      required: [status, observation_ref, scene_revision, frame, calibration_ref, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, acquire_invocation_ref, destination_ref, capability_outcome_summary]
+      properties:
+        status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
+        observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+        scene_revision: {type: string, minLength: 1}
+        frame:
+          type: object
+          additionalProperties: false
+          required: [frame_id, unit]
+          properties:
+            frame_id: {type: string, minLength: 1}
+            unit: {const: m}
+        calibration_ref: {type: string, minLength: 1}
+        candidate_set_ref: {type: string, pattern: '^candidate-set://[^/]+/.+$'}
+        preparation_ref: {type: string, pattern: '^preparation://[^/]+/.+$'}
+        candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
+        entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+        acquire_invocation_ref: {type: string, pattern: '^invocation://object-acquire/[^/]+$'}
+        destination_ref: {type: string, pattern: '^destination://[^\s]+$'}
+        capability_outcome_summary:
+          type: object
+          additionalProperties: false
+          required: [version, capability_phase, status, failure_owner, failure_code, world_change_started, outcome_known, evidence_availability, artifact_refs, post_release_evidence, bounded_metric_names]
+          properties:
+            version: {const: capability_outcome_summary_v1}
+            capability_phase: {enum: [transport, descent, release, retreat, none]}
+            status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
+            failure_owner: {enum: [none, input, binding, readiness, planner, execution, settlement, operator, infrastructure, null]}
+            failure_code: {type: [string, 'null']}
+            world_change_started: {type: boolean}
+            outcome_known: {type: boolean}
+            evidence_availability: {enum: [complete, partial, none, unknown]}
+            artifact_refs:
+              type: array
+              items: {type: string, pattern: '^artifact://[^/]+/.+$'}
+            post_release_evidence:
+              type: object
+              additionalProperties: false
+              required: [availability, artifact_refs]
+              properties:
+                availability: {enum: [complete, partial, none, unknown]}
+                artifact_refs:
+                  type: array
+                  items: {type: string, pattern: '^artifact://[^/]+/.+$'}
+            bounded_metric_names:
+              type: array
+              items: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}
+robot_frame_profile:
+  observation_frame: observation
+  unit: m
+  orientation_convention: candidate-bound
+max_concurrency: 1
+cancellation: supported_via_common_cancel_route
+unknown_semantics: terminal_for_accounting_not_physical_stop

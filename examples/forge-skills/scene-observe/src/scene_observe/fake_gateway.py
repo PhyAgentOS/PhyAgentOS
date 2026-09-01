@@ -36,6 +36,17 @@ from .object_acquire import (
     AcquireRejection,
     ObjectAcquireEndpoint,
 )
+from .object_place import (
+    PLACE_TOOL_ID,
+    PLACE_TOOL_SPEC,
+    ObjectPlaceEndpoint,
+    PlaceAdmission,
+    PlaceProvider,
+    PlaceRejection,
+)
+from .object_place import (
+    validate_arguments as validate_place_arguments,
+)
 from .understanding import (
     UNDERSTANDING_ENDPOINT_ID,
     UNDERSTANDING_OPERATION,
@@ -254,6 +265,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         grasp_provider: GraspProposalProvider | None = None,
         preparation_provider: PreparationProvider | None = None,
         acquire_provider: AcquireProvider | None = None,
+        place_provider: PlaceProvider | None = None,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
@@ -273,6 +285,9 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         self.acquire_endpoint = (
             ObjectAcquireEndpoint(acquire_provider) if acquire_provider is not None else None
         )
+        self.place_endpoint = (
+            ObjectPlaceEndpoint(place_provider) if place_provider is not None else None
+        )
         self.invocations: dict[str, dict[str, Any]] = {}
         self.requests: list[httpx.Request] = []
 
@@ -288,6 +303,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                         GRASP_TOOL_SPEC,
                         MANIPULATION_TOOL_SPEC,
                         ACQUIRE_TOOL_SPEC,
+                        PLACE_TOOL_SPEC,
                     ]
                 }
             )
@@ -366,6 +382,25 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     "unknown_semantics": "terminal_for_accounting_not_physical_stop",
                 }
             )
+        if request.method == "GET" and path == f"/tools/{PLACE_TOOL_ID}":
+            return self._ok(PLACE_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{PLACE_TOOL_ID}/context":
+            return self._ok(
+                {
+                    "ready": self.place_endpoint is not None,
+                    "binding_error": (
+                        None
+                        if self.place_endpoint is not None
+                        else "object placement provider is unavailable"
+                    ),
+                    "max_concurrency": 1,
+                    "observation_frame": "observation",
+                    "unit": "m",
+                    "orientation_convention": "candidate-bound",
+                    "cancellation": "supported_via_common_cancel_route",
+                    "unknown_semantics": "terminal_for_accounting_not_physical_stop",
+                }
+            )
         if request.method == "POST" and path == f"/tools/{ENDPOINT_ID}/{OPERATION}:invoke":
             return self._invoke(request)
         if (
@@ -385,6 +420,8 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             return self._invoke_preparation(request)
         if request.method == "POST" and path == f"/tools/{ACQUIRE_TOOL_ID}:invoke":
             return self._admit_acquire(request)
+        if request.method == "POST" and path == f"/tools/{PLACE_TOOL_ID}:invoke":
+            return self._admit_place(request)
         if request.method == "GET" and path.startswith("/invocations/"):
             return self._read_invocation(request)
         if request.method == "POST" and path.startswith("/invocations/") and path.endswith("/cancel"):
@@ -432,7 +469,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
     def _admit_acquire(self, request: httpx.Request) -> httpx.Response:
         if self.acquire_endpoint is None:
             return self._fail(503, "unavailable", "object acquisition provider is unavailable")
-        if any(not item["terminal"] for item in self.invocations.values()):
+        if self._has_active_invocation(ACQUIRE_TOOL_ID):
             return self._fail(409, "concurrency_exhausted", "object acquisition is already active")
         try:
             payload = json.loads(request.content or b"{}")
@@ -446,7 +483,9 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         invocation_id = f"invocation://object-acquire/{uuid4().hex[:16]}"
         attempt_id = f"attempt://object-acquire/{uuid4().hex[:16]}"
         self.invocations[invocation_id] = {
+            "tool_id": ACQUIRE_TOOL_ID,
             "attempt_id": attempt_id,
+            "arguments": dict(arguments),
             "pending_polls": admitted.snapshot.pending_polls,
             "terminal": False,
             "cancel_requested": False,
@@ -459,6 +498,89 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                 "data": {"invocation_id": invocation_id, "attempt_id": attempt_id, "phase": "accepted"},
             },
         )
+
+    def _admit_place(self, request: httpx.Request) -> httpx.Response:
+        if self.place_endpoint is None:
+            return self._fail(503, "unavailable", "object placement provider is unavailable")
+        if self._has_active_invocation(PLACE_TOOL_ID):
+            return self._fail(409, "concurrency_exhausted", "object placement is already active")
+        try:
+            payload = json.loads(request.content or b"{}")
+        except json.JSONDecodeError:
+            return self._fail(400, "invalid_json", "request body must be JSON")
+        arguments = payload.get("arguments") if isinstance(payload, dict) else None
+        validation_error = validate_place_arguments(arguments)
+        if validation_error is not None:
+            status_code = {"missing_calibration": 422, "stale_observation": 409}.get(
+                validation_error, 400
+            )
+            return self._fail(
+                status_code,
+                validation_error,
+                "object.place request failed contract validation",
+            )
+        binding_error = self._validate_acquire_binding(arguments)
+        if binding_error is not None:
+            status_code, code, message = binding_error
+            return self._fail(status_code, code, message)
+        admitted = self.place_endpoint.admit(arguments)
+        if isinstance(admitted, PlaceRejection):
+            return self._fail(admitted.status_code, admitted.code, admitted.message)
+        assert isinstance(admitted, PlaceAdmission)
+        invocation_id = f"invocation://object-place/{uuid4().hex[:16]}"
+        attempt_id = f"attempt://object-place/{uuid4().hex[:16]}"
+        self.invocations[invocation_id] = {
+            "tool_id": PLACE_TOOL_ID,
+            "attempt_id": attempt_id,
+            "arguments": dict(arguments),
+            "pending_polls": admitted.snapshot.pending_polls,
+            "terminal": False,
+            "cancel_requested": False,
+            "result": admitted.terminal_result,
+        }
+        return httpx.Response(
+            202,
+            json={
+                "ok": True,
+                "data": {
+                    "invocation_id": invocation_id,
+                    "attempt_id": attempt_id,
+                    "phase": "accepted",
+                },
+            },
+        )
+
+    def _has_active_invocation(self, tool_id: str) -> bool:
+        return any(
+            not record["terminal"] and record.get("tool_id") == tool_id
+            for record in self.invocations.values()
+        )
+
+    def _validate_acquire_binding(
+        self, arguments: dict[str, Any]
+    ) -> tuple[int, str, str] | None:
+        acquire_ref = arguments["acquire_invocation_ref"]
+        record = self.invocations.get(acquire_ref)
+        if record is None or record.get("tool_id") != ACQUIRE_TOOL_ID:
+            return (404, "acquire_invocation_not_found", "acquire invocation was not found")
+        if not record["terminal"]:
+            return (409, "acquire_not_terminal", "acquire invocation is not terminal")
+        result = record["result"]
+        if not isinstance(result, dict) or result.get("status") != "succeeded":
+            return (409, "acquire_not_succeeded", "acquire invocation did not succeed")
+        for key in (
+            "observation_ref",
+            "scene_revision",
+            "frame_id",
+            "calibration_ref",
+            "candidate_set_ref",
+            "preparation_ref",
+            "candidate_ref",
+            "entity_ref",
+        ):
+            if record["arguments"].get(key) != arguments.get(key):
+                return (409, "invalid_acquire_binding", "place references a different acquire binding")
+        return None
 
     def _read_invocation(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path

@@ -20,6 +20,14 @@ from .object_acquire import (
     AcquireSnapshot,
     ObjectAcquireEndpoint,
 )
+from .object_place import (
+    PLACE_TOOL_SPEC,
+    ObjectPlaceEndpoint,
+    PlaceAdmission,
+    PlaceProvider,
+    PlaceRejection,
+    PlaceSnapshot,
+)
 from .understanding import (
     SceneUnderstandingEndpoint,
     UnderstandingProvider,
@@ -44,4 +52,10 @@ __all__ = [
     "AcquireRejection",
     "AcquireSnapshot",
     "ObjectAcquireEndpoint",
+    "PLACE_TOOL_SPEC",
+    "ObjectPlaceEndpoint",
+    "PlaceAdmission",
+    "PlaceProvider",
+    "PlaceRejection",
+    "PlaceSnapshot",
 ]

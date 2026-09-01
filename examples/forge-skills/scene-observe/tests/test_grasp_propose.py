@@ -172,6 +172,7 @@ async def test_grasp_propose_is_discovered_with_the_perception_queries():
         "grasp.propose",
         "manipulation.prepare",
         "object.acquire",
+        "object.place",
     ]
     assert spec["data"]["endpoint_id"] == "grasp_proposal"
     assert spec["data"]["operation"] == "propose"
@@ -219,8 +220,8 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     package_text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
         encoding="utf-8"
     )
-    assert bundle_manifest["version"] == "0.5.0"
-    assert 'version = "0.5.0"' in package_text
+    assert bundle_manifest["version"] == "0.6.0"
+    assert 'version = "0.6.0"' in package_text
 
 
 @pytest.mark.asyncio
