@@ -1,13 +1,14 @@
 manifest_version: 2
 name: scene-observe
-version: "0.3.0"
-description: Provider-neutral measured scene observation Query.
+version: "0.4.0"
+description: Provider-neutral perception and manipulation preparation Query contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
 required_tools:
   - scene.observe
   - scene.understand
   - grasp.propose
+  - manipulation.prepare
 profiles:
   fake:
     dataflow: profiles/fake/dataflow.yaml

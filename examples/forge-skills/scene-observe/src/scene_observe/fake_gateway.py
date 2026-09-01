@@ -18,6 +18,14 @@ from .grasp_proposal import (
     GraspProposalEndpoint,
     GraspProposalProvider,
 )
+from .manipulation_prepare import (
+    MANIPULATION_TOOL_SPEC,
+    PREPARATION_ENDPOINT_ID,
+    PREPARATION_OPERATION,
+    PREPARATION_TOOL_ID,
+    ManipulationPreparationEndpoint,
+    PreparationProvider,
+)
 from .understanding import (
     UNDERSTANDING_ENDPOINT_ID,
     UNDERSTANDING_OPERATION,
@@ -234,6 +242,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         *,
         understanding_provider: UnderstandingProvider | None = None,
         grasp_provider: GraspProposalProvider | None = None,
+        preparation_provider: PreparationProvider | None = None,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
@@ -245,13 +254,27 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         self.grasp_endpoint = (
             GraspProposalEndpoint(grasp_provider) if grasp_provider is not None else None
         )
+        self.preparation_endpoint = (
+            ManipulationPreparationEndpoint(preparation_provider)
+            if preparation_provider is not None
+            else None
+        )
         self.requests: list[httpx.Request] = []
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
         if request.method == "GET" and path == "/tools":
-            return self._ok({"tools": [TOOL_SPEC, UNDERSTANDING_TOOL_SPEC, GRASP_TOOL_SPEC]})
+            return self._ok(
+                {
+                    "tools": [
+                        TOOL_SPEC,
+                        UNDERSTANDING_TOOL_SPEC,
+                        GRASP_TOOL_SPEC,
+                        MANIPULATION_TOOL_SPEC,
+                    ]
+                }
+            )
         if request.method == "GET" and path == f"/tools/{TOOL_ID}":
             return self._ok(TOOL_SPEC)
         if request.method == "GET" and path == f"/tools/{TOOL_ID}/context":
@@ -293,6 +316,21 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     **GRASP_TOOL_SPEC["robot_frame_profile"],
                 }
             )
+        if request.method == "GET" and path == f"/tools/{PREPARATION_TOOL_ID}":
+            return self._ok(MANIPULATION_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{PREPARATION_TOOL_ID}/context":
+            return self._ok(
+                {
+                    "ready": self.preparation_endpoint is not None,
+                    "binding_error": (
+                        None
+                        if self.preparation_endpoint is not None
+                        else "manipulation preparation provider is unavailable"
+                    ),
+                    "motion_authorized": False,
+                    **MANIPULATION_TOOL_SPEC["robot_frame_profile"],
+                }
+            )
         if request.method == "POST" and path == f"/tools/{ENDPOINT_ID}/{OPERATION}:invoke":
             return self._invoke(request)
         if (
@@ -305,6 +343,11 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             and path == f"/tools/{GRASP_ENDPOINT_ID}/{GRASP_OPERATION}:invoke"
         ):
             return self._invoke_grasp(request)
+        if (
+            request.method == "POST"
+            and path == f"/tools/{PREPARATION_ENDPOINT_ID}/{PREPARATION_OPERATION}:invoke"
+        ):
+            return self._invoke_preparation(request)
         return self._fail(404, "not_found", "Gateway route not found")
 
     def _invoke(self, request: httpx.Request) -> httpx.Response:
@@ -334,6 +377,16 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         if self.grasp_endpoint is None:
             return self._fail(503, "unavailable", "grasp proposal provider is unavailable")
         return self._ok(self.grasp_endpoint.invoke(arguments))
+
+    def _invoke_preparation(self, request: httpx.Request) -> httpx.Response:
+        try:
+            payload = json.loads(request.content or b"{}")
+        except json.JSONDecodeError:
+            return self._fail(400, "invalid_json", "request body must be JSON")
+        arguments = payload.get("arguments") if isinstance(payload, dict) else None
+        if self.preparation_endpoint is None:
+            return self._fail(503, "unavailable", "manipulation preparation provider is unavailable")
+        return self._ok(self.preparation_endpoint.invoke(arguments))
 
     @staticmethod
     def _ok(data: dict[str, Any]) -> httpx.Response:

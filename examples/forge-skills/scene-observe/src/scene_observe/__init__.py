@@ -6,6 +6,12 @@ from .fake_gateway import (
     ObservationSnapshot,
     SceneObservationEndpoint,
 )
+from .manipulation_prepare import (
+    MANIPULATION_TOOL_SPEC,
+    ManipulationPreparationEndpoint,
+    PreparationProvider,
+    PreparationSnapshot,
+)
 from .understanding import (
     SceneUnderstandingEndpoint,
     UnderstandingProvider,
@@ -20,4 +26,8 @@ __all__ = [
     "SceneUnderstandingEndpoint",
     "UnderstandingProvider",
     "UnderstandingSnapshot",
+    "MANIPULATION_TOOL_SPEC",
+    "ManipulationPreparationEndpoint",
+    "PreparationProvider",
+    "PreparationSnapshot",
 ]

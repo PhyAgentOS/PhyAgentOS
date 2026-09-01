@@ -1,5 +1,42 @@
 # Change Log
 
+## v0.4.0 (2026-09-01) - codex
+
+- [sense] [feat] [completed] Added the provider-neutral `manipulation.prepare` Query
+  for non-mutating workspace, kinematic, and collision readiness assessment over a
+  bound `grasp.propose` candidate set. It returns per-candidate pass evidence,
+  explicit empty/stale/unavailable/invalid states, and a deterministic preparation
+  reference while keeping `motion_authorized=false` and exposing no Action or Session.
+- [sense] [feat] [完成] 新增 provider-neutral `manipulation.prepare` Query，对绑定的
+  `grasp.propose` 候选集执行非侵入式 workspace、kinematic、collision 准备评估。
+  它返回逐候选通过证据、明确的 empty/stale/unavailable/invalid 状态和确定性
+  preparation 引用，同时保持 `motion_authorized=false`，不暴露 Action 或 Session。
+
+### Verification
+
+- Added `contracts/manipulation.prepare.tool.yaml`,
+  `src/scene_observe/manipulation_prepare.py`, and
+  `tests/test_manipulation_prepare.py`; updated the Fake Gateway, Bundle manifest,
+  README, SKILL.md, and package version.
+- Inputs are strictly bound to one observation, scene revision, frame, calibration,
+  freshness window, candidate-set reference, and provider-neutral candidates. Stale
+  observations and missing calibration fail closed before the provider runs; empty
+  candidates do not invoke the provider or fabricate preparation.
+- Provider snapshots are checked for candidate/entity binding, exact fields, artifact
+  provenance, and all three checks being `pass` before a candidate is marked prepared.
+  Query output always contains `motion_authorized: false`.
+- Tests exercise the real PAOS `ForgeToolClient` through the Fake Gateway and prove
+  that preparation creates no Action, Session, invocation-status, or motion route.
+- The package initializer now exports the preparation endpoint, provider protocol,
+  snapshot, and ToolSpec; README and manifest descriptions cover all four Query
+  capabilities and their provider-neutral adapter boundary.
+
+### Git Commit
+
+- Commit: `8fb6781`
+- Branch: `feature/manipulation-prepare`
+- Time: 2026-09-01 15:05 (Asia/Shanghai)
+
 ## v0.3.0 (2026-09-01) - codex
 
 - [sense] [feat] [completed] Added the provider-neutral `grasp.propose` Query as the third

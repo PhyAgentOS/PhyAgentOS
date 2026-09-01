@@ -42,3 +42,17 @@ not fabricate or substitute default candidates and do not loosen thresholds or s
 checks to obtain candidates. Any further preparation must go through an independent
 `manipulation.prepare` Query, and motion authorization stays with the Gateway/Runtime
 admission path.
+
+Use `manipulation.prepare` only after a successful `grasp.propose` result. Pass the
+observation reference, scene revision, frame, calibration reference, freshness,
+candidate-set reference, and complete candidate records unchanged. This Query is a
+non-mutating readiness assessment with three explicit checks: `workspace`,
+`kinematic`, and `collision`. Only candidates with all three checks reported as
+`pass` can appear as `qualification: prepared`; rejected candidates are omitted and
+an empty set is returned explicitly as `status: empty`.
+
+Preparation evidence is not an IK guarantee, collision guarantee for a future
+trajectory, or execution admission. Treat `stale`, `unavailable`, and `invalid` as
+blockers. Never call `invoke_action` or start a Session with this Query, and never
+interpret `motion_authorized: false` as permission to bypass the Gateway/Runtime
+admission path.
