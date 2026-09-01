@@ -1,0 +1,76 @@
+tool_id: object.acquire
+implementation_id: object.acquisition
+endpoint_id: object_acquisition
+operation: acquire
+semantics: action
+description: Admit one bounded object acquisition workflow using a prepared grasp reference; approach, contact, close, lift, and hold remain internal Gateway phases.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms, candidate_set_ref, preparation_ref, candidate_ref, entity_ref]
+  properties:
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, minLength: 1}
+    freshness_ms: {type: integer, minimum: 0}
+    max_age_ms: {type: integer, minimum: 1}
+    candidate_set_ref: {type: string, pattern: '^candidate-set://[^/]+/.+$'}
+    preparation_ref: {type: string, pattern: '^preparation://[^/]+/.+$'}
+    candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
+    entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+output_schema:
+  type: object
+  additionalProperties: false
+  required: [invocation_id, attempt_id, phase]
+  properties:
+    invocation_id: {type: string, pattern: '^invocation://[^/]+/.+$'}
+    attempt_id: {type: string, pattern: '^attempt://[^/]+/.+$'}
+    phase: {enum: [accepted, running, completed, failed, cancelled, stopped, unknown]}
+    cancel_requested: {type: boolean}
+    result:
+      type: object
+      additionalProperties: false
+      required: [status, observation_ref, scene_revision, frame, calibration_ref, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, capability_outcome_summary]
+      properties:
+        status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
+        observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+        scene_revision: {type: string, minLength: 1}
+        frame:
+          type: object
+          additionalProperties: false
+          required: [frame_id, unit]
+          properties:
+            frame_id: {type: string, minLength: 1}
+            unit: {const: m}
+        calibration_ref: {type: string, minLength: 1}
+        candidate_set_ref: {type: string, pattern: '^candidate-set://[^/]+/.+$'}
+        preparation_ref: {type: string, pattern: '^preparation://[^/]+/.+$'}
+        candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
+        entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+        capability_outcome_summary:
+          type: object
+          additionalProperties: false
+          required: [artifact_refs, bounded_metric_names, capability_phase, evidence_availability, failure_code, failure_owner, outcome_known, status, version, world_change_started]
+          properties:
+            version: {const: capability_outcome_summary_v1}
+            capability_phase: {enum: [approach, contact, close, lift, hold, none]}
+            status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
+            failure_owner: {enum: [none, input, binding, readiness, planner, execution, settlement, operator, infrastructure, null]}
+            failure_code: {type: [string, 'null']}
+            world_change_started: {type: boolean}
+            outcome_known: {type: boolean}
+            evidence_availability: {enum: [complete, partial, none, unknown]}
+            artifact_refs:
+              type: array
+              items: {type: string, pattern: '^artifact://[^/]+/.+$'}
+            bounded_metric_names:
+              type: array
+              items: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}
+robot_frame_profile:
+  observation_frame: observation
+  unit: m
+  orientation_convention: candidate-bound
+max_concurrency: 1
+cancellation: supported_via_common_cancel_route
+unknown_semantics: terminal_for_accounting_not_physical_stop

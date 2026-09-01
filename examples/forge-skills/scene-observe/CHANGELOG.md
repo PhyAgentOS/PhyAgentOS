@@ -1,5 +1,27 @@
 # Change Log
 
+## v0.5.0 (2026-09-01) - codex
+
+- [policy] [feat] [completed] Added the provider-neutral `object.acquire` bounded Action.
+  It consumes a fresh preparation/candidate binding through standard Action admission,
+  keeps approach/contact/close/lift/hold internal, and exposes a redacted,
+  versioned `capability_outcome_summary_v1` only in terminal results.
+- [policy] [feat] [完成] 新增 provider-neutral `object.acquire` bounded Action，通过标准
+  Action admission 消费新鲜的 preparation/candidate 绑定；approach/contact/close/lift/hold
+  保持 Gateway 内部阶段，仅在终态返回脱敏、版本化的 `capability_outcome_summary_v1`。
+
+### Verification
+
+- Added `contracts/object.acquire.tool.yaml`, `src/scene_observe/object_acquire.py`,
+  and Action lifecycle coverage in `tests/test_object_acquire.py`; updated Fake Gateway,
+  manifest, package version, README, SKILL.md, and discovery assertions.
+- Admission rejects stale, missing-calibration, malformed, unbound, unavailable, and
+  over-concurrency requests before invocation identity allocation. Standard status/result
+  and cancel routes preserve pending, terminal, cancellation, and unknown semantics.
+- No RoboTwin, simulator, provider-private, coordinate, or direct Agent-to-backend fields
+  are included in the public contract; PAOS core remains unchanged.
+
+
 ## v0.4.0 (2026-09-01) - codex
 
 - [sense] [feat] [completed] Added the provider-neutral `manipulation.prepare` Query

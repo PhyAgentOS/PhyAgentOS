@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
+from urllib.parse import unquote
+from uuid import uuid4
 
 import httpx
 
@@ -25,6 +27,14 @@ from .manipulation_prepare import (
     PREPARATION_TOOL_ID,
     ManipulationPreparationEndpoint,
     PreparationProvider,
+)
+from .object_acquire import (
+    ACQUIRE_TOOL_ID,
+    ACQUIRE_TOOL_SPEC,
+    AcquireAdmission,
+    AcquireProvider,
+    AcquireRejection,
+    ObjectAcquireEndpoint,
 )
 from .understanding import (
     UNDERSTANDING_ENDPOINT_ID,
@@ -234,7 +244,7 @@ def validate_snapshot(snapshot: ObservationSnapshot) -> str | None:
 
 
 class FakeGatewayTransport(httpx.AsyncBaseTransport):
-    """In-memory Gateway transport; all calls are read-only except Query POST."""
+    """In-memory Gateway with Query and bounded Action conformance routes."""
 
     def __init__(
         self,
@@ -243,6 +253,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         understanding_provider: UnderstandingProvider | None = None,
         grasp_provider: GraspProposalProvider | None = None,
         preparation_provider: PreparationProvider | None = None,
+        acquire_provider: AcquireProvider | None = None,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
@@ -259,6 +270,10 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             if preparation_provider is not None
             else None
         )
+        self.acquire_endpoint = (
+            ObjectAcquireEndpoint(acquire_provider) if acquire_provider is not None else None
+        )
+        self.invocations: dict[str, dict[str, Any]] = {}
         self.requests: list[httpx.Request] = []
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
@@ -272,6 +287,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                         UNDERSTANDING_TOOL_SPEC,
                         GRASP_TOOL_SPEC,
                         MANIPULATION_TOOL_SPEC,
+                        ACQUIRE_TOOL_SPEC,
                     ]
                 }
             )
@@ -331,6 +347,25 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     **MANIPULATION_TOOL_SPEC["robot_frame_profile"],
                 }
             )
+        if request.method == "GET" and path == f"/tools/{ACQUIRE_TOOL_ID}":
+            return self._ok(ACQUIRE_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{ACQUIRE_TOOL_ID}/context":
+            return self._ok(
+                {
+                    "ready": self.acquire_endpoint is not None,
+                    "binding_error": (
+                        None
+                        if self.acquire_endpoint is not None
+                        else "object acquisition provider is unavailable"
+                    ),
+                    "max_concurrency": 1,
+                    "observation_frame": "observation",
+                    "unit": "m",
+                    "orientation_convention": "candidate-bound",
+                    "cancellation": "supported_via_common_cancel_route",
+                    "unknown_semantics": "terminal_for_accounting_not_physical_stop",
+                }
+            )
         if request.method == "POST" and path == f"/tools/{ENDPOINT_ID}/{OPERATION}:invoke":
             return self._invoke(request)
         if (
@@ -348,6 +383,12 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             and path == f"/tools/{PREPARATION_ENDPOINT_ID}/{PREPARATION_OPERATION}:invoke"
         ):
             return self._invoke_preparation(request)
+        if request.method == "POST" and path == f"/tools/{ACQUIRE_TOOL_ID}:invoke":
+            return self._admit_acquire(request)
+        if request.method == "GET" and path.startswith("/invocations/"):
+            return self._read_invocation(request)
+        if request.method == "POST" and path.startswith("/invocations/") and path.endswith("/cancel"):
+            return self._cancel_invocation(request)
         return self._fail(404, "not_found", "Gateway route not found")
 
     def _invoke(self, request: httpx.Request) -> httpx.Response:
@@ -387,6 +428,97 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         if self.preparation_endpoint is None:
             return self._fail(503, "unavailable", "manipulation preparation provider is unavailable")
         return self._ok(self.preparation_endpoint.invoke(arguments))
+
+    def _admit_acquire(self, request: httpx.Request) -> httpx.Response:
+        if self.acquire_endpoint is None:
+            return self._fail(503, "unavailable", "object acquisition provider is unavailable")
+        if any(not item["terminal"] for item in self.invocations.values()):
+            return self._fail(409, "concurrency_exhausted", "object acquisition is already active")
+        try:
+            payload = json.loads(request.content or b"{}")
+        except json.JSONDecodeError:
+            return self._fail(400, "invalid_json", "request body must be JSON")
+        arguments = payload.get("arguments") if isinstance(payload, dict) else None
+        admitted = self.acquire_endpoint.admit(arguments)
+        if isinstance(admitted, AcquireRejection):
+            return self._fail(admitted.status_code, admitted.code, admitted.message)
+        assert isinstance(admitted, AcquireAdmission)
+        invocation_id = f"invocation://object-acquire/{uuid4().hex[:16]}"
+        attempt_id = f"attempt://object-acquire/{uuid4().hex[:16]}"
+        self.invocations[invocation_id] = {
+            "attempt_id": attempt_id,
+            "pending_polls": admitted.snapshot.pending_polls,
+            "terminal": False,
+            "cancel_requested": False,
+            "result": admitted.terminal_result,
+        }
+        return httpx.Response(
+            202,
+            json={
+                "ok": True,
+                "data": {"invocation_id": invocation_id, "attempt_id": attempt_id, "phase": "accepted"},
+            },
+        )
+
+    def _read_invocation(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        prefix = "/invocations/"
+        suffix = "/result"
+        is_result = path.endswith(suffix)
+        invocation_id = unquote(path[len(prefix): -len(suffix) if is_result else None])
+        if not invocation_id:
+            return self._fail(404, "not_found", "Gateway route not found")
+        record = self.invocations.get(invocation_id)
+        if record is None:
+            return self._fail(404, "not_found", "invocation was not found")
+        if record["cancel_requested"]:
+            record["terminal"] = True
+            result = dict(record["result"])
+            result["status"] = "cancelled"
+            result["capability_outcome_summary"] = {
+                **result["capability_outcome_summary"],
+                "capability_phase": "none",
+                "status": "cancelled",
+                "failure_owner": "operator",
+                "failure_code": "cancelled_by_operator",
+                "outcome_known": True,
+            }
+            record["result"] = result
+        elif record["pending_polls"] > 0:
+            record["pending_polls"] -= 1
+            return httpx.Response(
+                202 if is_result else 200,
+                json={
+                    "ok": True,
+                    "data": {
+                        "invocation_id": invocation_id,
+                        "attempt_id": record["attempt_id"],
+                        "phase": "running",
+                    },
+                },
+            )
+        else:
+            record["terminal"] = True
+        result = record["result"]
+        return self._ok(
+            {
+                "invocation_id": invocation_id,
+                "attempt_id": record["attempt_id"],
+                "phase": "completed" if result["status"] == "succeeded" else result["status"],
+                "result": result,
+            }
+        )
+
+    def _cancel_invocation(self, request: httpx.Request) -> httpx.Response:
+        prefix = "/invocations/"
+        suffix = "/cancel"
+        invocation_id = unquote(request.url.path[len(prefix): -len(suffix)])
+        record = self.invocations.get(invocation_id)
+        if record is None:
+            return self._fail(404, "not_found", "invocation was not found")
+        if not record["terminal"]:
+            record["cancel_requested"] = True
+        return httpx.Response(202, json={"ok": True, "data": {"invocation_id": invocation_id, "cancel_requested": True}})
 
     @staticmethod
     def _ok(data: dict[str, Any]) -> httpx.Response:

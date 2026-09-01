@@ -29,6 +29,8 @@ workflow order:
 scene.observe
   -> scene.understand
   -> grasp.propose
+  -> manipulation.prepare
+  -> object.acquire
 ```
 
 Pass the returned observation reference, scene revision, frame, calibration reference,
@@ -56,3 +58,17 @@ trajectory, or execution admission. Treat `stale`, `unavailable`, and `invalid` 
 blockers. Never call `invoke_action` or start a Session with this Query, and never
 interpret `motion_authorized: false` as permission to bypass the Gateway/Runtime
 admission path.
+
+Use `object.acquire` only after `manipulation.prepare` returned a selected prepared
+candidate and the current Tool context is ready. Create one AgentTask binding and
+pass the observation, scene, frame, calibration, candidate-set, preparation,
+candidate, and entity references unchanged. Start it through
+`forge_tool_start_action`, then reconcile the returned `invocation_id` with the
+standard status/result routes. Admission is not completion; pending, cancellation
+acceptance, timeout, and `unknown` do not prove a physical stop and must not be
+blindly retried.
+
+The bounded Action owns its internal approach/contact/close/lift/hold phases. Use
+the terminal `capability_outcome_summary_v1` for phase attribution only after the
+Gateway result is terminal. It is execution evidence, not a replacement for
+`AgentTask finalize` or the generic verification contract.

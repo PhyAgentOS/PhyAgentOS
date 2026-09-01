@@ -12,6 +12,14 @@ from .manipulation_prepare import (
     PreparationProvider,
     PreparationSnapshot,
 )
+from .object_acquire import (
+    ACQUIRE_TOOL_SPEC,
+    AcquireAdmission,
+    AcquireProvider,
+    AcquireRejection,
+    AcquireSnapshot,
+    ObjectAcquireEndpoint,
+)
 from .understanding import (
     SceneUnderstandingEndpoint,
     UnderstandingProvider,
@@ -30,4 +38,10 @@ __all__ = [
     "ManipulationPreparationEndpoint",
     "PreparationProvider",
     "PreparationSnapshot",
+    "ACQUIRE_TOOL_SPEC",
+    "AcquireAdmission",
+    "AcquireProvider",
+    "AcquireRejection",
+    "AcquireSnapshot",
+    "ObjectAcquireEndpoint",
 ]
