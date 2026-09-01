@@ -21,10 +21,13 @@ input_schema:
 output_schema:
   type: object
   additionalProperties: false
-  required: [status, captured_at, scene_revision, frame, calibration_ref, freshness_ms, artifacts]
+  required: [status, observation_ref, captured_at, scene_revision, frame, calibration_ref, freshness_ms, artifacts]
   properties:
     status:
       enum: [available, unavailable, stale, invalid]
+    observation_ref:
+      type: string
+      pattern: '^observation://[^/]+/[^/]+$'
     captured_at:
       type: string
       format: date-time

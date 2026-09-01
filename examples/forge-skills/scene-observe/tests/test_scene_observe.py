@@ -68,6 +68,7 @@ async def test_query_discovery_context_and_success():
     assert spec["data"]["endpoint_id"] == "scene_observation"
     assert context["data"]["motion_authorized"] is False
     assert result["data"]["status"] == "available"
+    assert result["data"]["observation_ref"] == "observation://scene-7/camera_front"
     assert result["data"]["freshness_ms"] == 500
     assert result["data"]["artifacts"][0]["ref"].startswith("artifact://")
     assert [request.url.path for request in transport.requests] == [

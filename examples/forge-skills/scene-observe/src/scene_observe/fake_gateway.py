@@ -14,6 +14,7 @@ TOOL_ID = "scene.observe"
 ENDPOINT_ID = "scene_observation"
 OPERATION = "observe"
 _ARTIFACT_REF = re.compile(r"^artifact://[^/]+/[^/]+$")
+_OBSERVATION_REF = re.compile(r"^observation://[^/]+/[^/]+$")
 
 
 class ObservationProvider(Protocol):
@@ -28,6 +29,7 @@ class ObservationSnapshot:
     calibration_ref: str | None
     artifacts: tuple[dict[str, str], ...] = field(default_factory=tuple)
     sensor_available: bool = True
+    observation_ref: str | None = None
 
 
 class SceneObservationEndpoint:
@@ -53,6 +55,8 @@ class SceneObservationEndpoint:
         age_ms = max(0, int((self.now - snapshot.captured_at).total_seconds() * 1000))
         result = {
             "status": "stale" if age_ms > max_age_ms else "available",
+            "observation_ref": snapshot.observation_ref
+            or f"observation://{snapshot.scene_revision}/{snapshot.frame_id}",
             "captured_at": snapshot.captured_at.astimezone(timezone.utc)
             .isoformat()
             .replace("+00:00", "Z"),
@@ -94,10 +98,14 @@ TOOL_SPEC: dict[str, Any] = {
         "additionalProperties": False,
         "required": [
             "status", "captured_at", "scene_revision", "frame",
-            "calibration_ref", "freshness_ms", "artifacts",
+            "observation_ref", "calibration_ref", "freshness_ms", "artifacts",
         ],
         "properties": {
             "status": {"enum": ["available", "unavailable", "stale", "invalid"]},
+            "observation_ref": {
+                "type": "string",
+                "pattern": r"^observation://[^/]+/[^/]+$",
+            },
             "captured_at": {"type": "string", "format": "date-time"},
             "scene_revision": {"type": "string", "minLength": 1},
             "frame": {
@@ -143,6 +151,7 @@ def _error(code: str, message: str) -> dict[str, Any]:
     return {
         "status": "invalid" if code.startswith("invalid") else "unavailable",
         "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "observation_ref": "observation://unknown/unknown",
         "scene_revision": "unknown",
         "frame": {"frame_id": "unknown", "unit": "m"},
         "calibration_ref": None,
@@ -180,6 +189,11 @@ def validate_snapshot(snapshot: ObservationSnapshot) -> str | None:
         return "invalid_timestamp"
     if not snapshot.scene_revision.strip():
         return "missing_scene_revision"
+    observation_ref = snapshot.observation_ref or (
+        f"observation://{snapshot.scene_revision}/{snapshot.frame_id}"
+    )
+    if _OBSERVATION_REF.fullmatch(observation_ref) is None:
+        return "invalid_observation_ref"
     for artifact in snapshot.artifacts:
         if not isinstance(artifact, dict):
             return "invalid_artifact_ref"
