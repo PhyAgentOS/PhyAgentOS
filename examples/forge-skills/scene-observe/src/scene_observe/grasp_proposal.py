@@ -426,6 +426,12 @@ def validate_snapshot(
     frame_id: str,
     requested_entity_refs: set[str],
 ) -> str | None:
+    if not isinstance(snapshot, GraspProposalSnapshot):
+        return "invalid_snapshot"
+    if not isinstance(snapshot.candidates, (tuple, list)):
+        return "invalid_snapshot"
+    if not isinstance(snapshot.ambiguities, (tuple, list)):
+        return "invalid_snapshot"
     seen_candidate_refs: set[str] = set()
     for candidate in snapshot.candidates:
         candidate_error = _validate_candidate(
@@ -510,8 +516,34 @@ class GraspProposalEndpoint:
                 "funnel": {"decoded": 0, "canonicalized": 0, "deduplicated": 0, "retained": 0},
                 "ambiguities": [],
             }
-        snapshot = self.provider.propose(dict(arguments))
-        if snapshot is None or not snapshot.provider_available:
+        try:
+            snapshot = self.provider.propose(dict(arguments))
+        except Exception:
+            # Provider failures are unavailable, never an implicit Gateway 500 or success.
+            return _error(
+                "grasp_proposal_provider_error",
+                "grasp proposal provider failed",
+                observation_ref=observation_ref,
+            )
+        if snapshot is None:
+            return _error(
+                "grasp_proposal_unavailable",
+                "grasp proposal provider is unavailable",
+                observation_ref=observation_ref,
+            )
+        if not isinstance(snapshot, GraspProposalSnapshot):
+            return _error(
+                "invalid_snapshot",
+                "grasp proposal provider returned an invalid snapshot",
+                observation_ref=observation_ref,
+            )
+        if not isinstance(snapshot.provider_available, bool):
+            return _error(
+                "invalid_snapshot",
+                "grasp proposal provider returned an invalid availability flag",
+                observation_ref=observation_ref,
+            )
+        if not snapshot.provider_available:
             return _error(
                 "grasp_proposal_unavailable",
                 "grasp proposal provider is unavailable",

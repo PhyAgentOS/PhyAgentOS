@@ -140,6 +140,11 @@ class NoCall:
         raise AssertionError("provider must not be called")
 
 
+class RaisingProvider:
+    def propose(self, request):
+        raise RuntimeError("provider backend failure")
+
+
 def _observation_stub():
     return type("Observation", (), {"observe": lambda self, sensor_ref: None})()
 
@@ -203,6 +208,17 @@ def test_tool_spec_is_strict_and_provider_neutral():
 def test_contract_yaml_matches_the_published_tool_spec():
     contract_path = Path(__file__).resolve().parents[1] / "contracts" / "grasp.propose.tool.yaml"
     assert yaml.safe_load(contract_path.read_text(encoding="utf-8")) == GRASP_TOOL_SPEC
+
+
+def test_bundle_and_package_versions_match_the_feature_revision():
+    bundle_manifest = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "skill.yaml").read_text(encoding="utf-8")
+    )
+    package_text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
+        encoding="utf-8"
+    )
+    assert bundle_manifest["version"] == "0.3.0"
+    assert 'version = "0.3.0"' in package_text
 
 
 @pytest.mark.asyncio
@@ -297,6 +313,32 @@ async def test_unavailable_provider_fails_closed_without_fabricated_candidates()
     data = result["data"]
     assert data["status"] == "unavailable"
     assert data["error"]["code"] == "grasp_proposal_unavailable"
+    assert data["candidates"] == []
+
+
+@pytest.mark.asyncio
+async def test_provider_exception_fails_closed_without_gateway_error():
+    _, _, result, _ = await query(RaisingProvider(), request_payload())
+    data = result["data"]
+    assert data["status"] == "unavailable"
+    assert data["error"]["code"] == "grasp_proposal_provider_error"
+    assert data["candidates"] == []
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        GraspProposalSnapshot(candidates=None),
+        GraspProposalSnapshot(ambiguities=None),
+        {"provider_available": True},
+    ],
+)
+@pytest.mark.asyncio
+async def test_malformed_snapshot_fails_closed_with_invalid_snapshot(snapshot):
+    _, _, result, _ = await query(Provider(snapshot), request_payload())
+    data = result["data"]
+    assert data["status"] == "invalid"
+    assert data["error"]["code"] == "invalid_snapshot"
     assert data["candidates"] == []
 
 
