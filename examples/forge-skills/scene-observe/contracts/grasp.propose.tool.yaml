@@ -1,0 +1,122 @@
+tool_id: grasp.propose
+implementation_id: grasp.proposal
+endpoint_id: grasp_proposal
+operation: propose
+semantics: query
+description: Propose provider-neutral grasp candidates from one verified scene understanding result without planning, IK, collision checking, or motion.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms, targets]
+  properties:
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, minLength: 1}
+    freshness_ms: {type: integer, minimum: 0}
+    max_age_ms: {type: integer, minimum: 1}
+    targets:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [entity_ref, category, confidence, spatial_envelope]
+        properties:
+          entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+          category: {type: string, minLength: 1}
+          confidence: {type: number, minimum: 0, maximum: 1}
+          spatial_envelope:
+            type: object
+            additionalProperties: false
+            required: [frame_id, unit, min_xyz_m, max_xyz_m, confidence, provenance]
+            properties:
+              frame_id: {type: string, minLength: 1}
+              unit: {const: m}
+              min_xyz_m: {type: array, minItems: 3, maxItems: 3, items: {type: number}}
+              max_xyz_m: {type: array, minItems: 3, maxItems: 3, items: {type: number}}
+              confidence: {type: number, minimum: 0, maximum: 1}
+              provenance:
+                type: array
+                items: {type: string, pattern: '^artifact://[^/]+/.+$'}
+output_schema:
+  type: object
+  additionalProperties: false
+  required: [status, candidate_set_ref, observation_ref, scene_revision, frame, calibration_ref, candidates, funnel, ambiguities]
+  properties:
+    status:
+      enum: [available, empty, unavailable, stale, invalid]
+    candidate_set_ref: {type: string, pattern: '^candidate-set://[^/]+/.+$'}
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame:
+      type: object
+      additionalProperties: false
+      required: [frame_id, unit]
+      properties:
+        frame_id: {type: string, minLength: 1}
+        unit: {const: m}
+    calibration_ref: {type: [string, 'null']}
+    candidates:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [candidate_ref, entity_ref, grasp_frame, approach_direction, score, confidence, provenance, qualification]
+        properties:
+          candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
+          entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+          grasp_frame:
+            type: object
+            additionalProperties: false
+            required: [frame_id, unit, position_m, orientation_xyzw]
+            properties:
+              frame_id: {type: string, minLength: 1}
+              unit: {const: m}
+              position_m: {type: array, minItems: 3, maxItems: 3, items: {type: number}}
+              orientation_xyzw: {type: array, minItems: 4, maxItems: 4, items: {type: number}}
+          approach_direction:
+            type: object
+            additionalProperties: false
+            required: [frame_id, unit, vector]
+            properties:
+              frame_id: {type: string, minLength: 1}
+              unit: {const: unitless}
+              vector: {type: array, minItems: 3, maxItems: 3, items: {type: number}}
+          score: {type: number, minimum: 0, maximum: 1}
+          confidence: {type: number, minimum: 0, maximum: 1}
+          provenance:
+            type: array
+            minItems: 1
+            items: {type: string, pattern: '^artifact://[^/]+/.+$'}
+          qualification: {enum: [proposed, low_confidence, ambiguous]}
+    funnel:
+      type: object
+      additionalProperties: false
+      required: [decoded, canonicalized, deduplicated, retained]
+      properties:
+        decoded: {type: integer, minimum: 0}
+        canonicalized: {type: integer, minimum: 0}
+        deduplicated: {type: integer, minimum: 0}
+        retained: {type: integer, minimum: 0}
+    ambiguities:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [code, message, entity_refs]
+        properties:
+          code: {type: string, minLength: 1}
+          message: {type: string, minLength: 1}
+          entity_refs:
+            type: array
+            items: {type: string, pattern: '^entity://[^/]+$'}
+    error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: {type: string, minLength: 1}
+        message: {type: string, minLength: 1}
+robot_frame_profile:
+  observation_frame: observation
+  unit: m

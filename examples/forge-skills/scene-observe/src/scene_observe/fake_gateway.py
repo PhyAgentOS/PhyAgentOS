@@ -10,6 +10,14 @@ from typing import Any, Protocol
 
 import httpx
 
+from .grasp_proposal import (
+    GRASP_ENDPOINT_ID,
+    GRASP_OPERATION,
+    GRASP_TOOL_ID,
+    GRASP_TOOL_SPEC,
+    GraspProposalEndpoint,
+    GraspProposalProvider,
+)
 from .understanding import (
     UNDERSTANDING_ENDPOINT_ID,
     UNDERSTANDING_OPERATION,
@@ -225,6 +233,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         provider: ObservationProvider,
         *,
         understanding_provider: UnderstandingProvider | None = None,
+        grasp_provider: GraspProposalProvider | None = None,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
@@ -233,13 +242,16 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             if understanding_provider is not None
             else None
         )
+        self.grasp_endpoint = (
+            GraspProposalEndpoint(grasp_provider) if grasp_provider is not None else None
+        )
         self.requests: list[httpx.Request] = []
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
         if request.method == "GET" and path == "/tools":
-            return self._ok({"tools": [TOOL_SPEC, UNDERSTANDING_TOOL_SPEC]})
+            return self._ok({"tools": [TOOL_SPEC, UNDERSTANDING_TOOL_SPEC, GRASP_TOOL_SPEC]})
         if request.method == "GET" and path == f"/tools/{TOOL_ID}":
             return self._ok(TOOL_SPEC)
         if request.method == "GET" and path == f"/tools/{TOOL_ID}/context":
@@ -266,6 +278,21 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     **UNDERSTANDING_TOOL_SPEC["robot_frame_profile"],
                 }
             )
+        if request.method == "GET" and path == f"/tools/{GRASP_TOOL_ID}":
+            return self._ok(GRASP_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{GRASP_TOOL_ID}/context":
+            return self._ok(
+                {
+                    "ready": self.grasp_endpoint is not None,
+                    "binding_error": (
+                        None
+                        if self.grasp_endpoint is not None
+                        else "grasp proposal provider is unavailable"
+                    ),
+                    "motion_authorized": False,
+                    **GRASP_TOOL_SPEC["robot_frame_profile"],
+                }
+            )
         if request.method == "POST" and path == f"/tools/{ENDPOINT_ID}/{OPERATION}:invoke":
             return self._invoke(request)
         if (
@@ -273,6 +300,11 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             and path == f"/tools/{UNDERSTANDING_ENDPOINT_ID}/{UNDERSTANDING_OPERATION}:invoke"
         ):
             return self._invoke_understanding(request)
+        if (
+            request.method == "POST"
+            and path == f"/tools/{GRASP_ENDPOINT_ID}/{GRASP_OPERATION}:invoke"
+        ):
+            return self._invoke_grasp(request)
         return self._fail(404, "not_found", "Gateway route not found")
 
     def _invoke(self, request: httpx.Request) -> httpx.Response:
@@ -292,6 +324,16 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         if self.understanding_endpoint is None:
             return self._fail(503, "unavailable", "understanding provider is unavailable")
         return self._ok(self.understanding_endpoint.invoke(arguments))
+
+    def _invoke_grasp(self, request: httpx.Request) -> httpx.Response:
+        try:
+            payload = json.loads(request.content or b"{}")
+        except json.JSONDecodeError:
+            return self._fail(400, "invalid_json", "request body must be JSON")
+        arguments = payload.get("arguments") if isinstance(payload, dict) else None
+        if self.grasp_endpoint is None:
+            return self._fail(503, "unavailable", "grasp proposal provider is unavailable")
+        return self._ok(self.grasp_endpoint.invoke(arguments))
 
     @staticmethod
     def _ok(data: dict[str, Any]) -> httpx.Response:

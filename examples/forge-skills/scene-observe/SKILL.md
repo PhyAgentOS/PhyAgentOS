@@ -21,3 +21,24 @@ Use `scene.understand` only after a successful `scene.observe` result. Pass the 
 references unchanged. The understanding Query returns entity/relation claims and spatial
 envelopes with confidence and provenance; it does not authorize grasping, planning, or
 motion. Reject stale, unavailable, ambiguous, or invalid results before any future Action.
+
+Use `grasp.propose` only after a successful `scene.understand` result, in the fixed
+workflow order:
+
+```text
+scene.observe
+  -> scene.understand
+  -> grasp.propose
+```
+
+Pass the returned observation reference, scene revision, frame, calibration reference,
+freshness, and target entity claims with their spatial envelopes unchanged. Never skip the
+freshness, calibration, frame, or provenance checks. The proposal Query returns
+provider-neutral grasp candidates with candidate identity, frame/calibration binding,
+provenance, confidence, score, and bounded funnel evidence. Candidates are proposals only:
+they are not IK-verified, not collision-free, and not action-admitted, and they must not be
+sent directly to an Action. An `empty` result means no candidates exist for the targets; do
+not fabricate or substitute default candidates and do not loosen thresholds or skip safety
+checks to obtain candidates. Any further preparation must go through an independent
+`manipulation.prepare` Query, and motion authorization stays with the Gateway/Runtime
+admission path.

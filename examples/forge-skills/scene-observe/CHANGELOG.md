@@ -1,5 +1,36 @@
 # Change Log
 
+## v0.3.0 (2026-09-01) - codex
+
+- [sense] [feat] [completed] Added the provider-neutral `grasp.propose` Query as the third
+  capability on a separate branch. It converts one verified scene understanding result into
+  a generic grasp candidate set with candidate identity, frame/calibration binding,
+  provenance, confidence/score, bounded funnel evidence, and explicit empty-candidate
+  semantics while staying synchronous, read-only, and free of IK, planning, collision
+  checking, Actions, Sessions, and motion authorization.
+- [sense] [feat] [完成] 在独立分支上新增 provider-neutral `grasp.propose` Query 作为第三个能力。
+  它把一个已验证的 scene understanding 结果转换为带候选身份、frame/calibration 绑定、
+  provenance、置信度/评分、有界漏斗证据和明确空候选语义的通用抓取候选集；保持同步只读，
+  不包含 IK、规划、碰撞检测、Action、Session 或运动授权。
+
+### Verification
+
+- Added `contracts/grasp.propose.tool.yaml`, `src/scene_observe/grasp_proposal.py`, and
+  `tests/test_grasp_propose.py`; updated the Fake Gateway routes, Bundle manifest, and
+  workflow guidance.
+- Input requires the named observation reference, scene revision, frame, calibration,
+  freshness, `max_age_ms`, and observation-bound targets. Stale and missing-calibration
+  inputs fail closed before the provider runs; an empty target list returns `status=empty`
+  without fabricated candidates.
+- Output preserves `candidate_set_ref`, per-candidate identity/frame/provenance, reconciled
+  funnel counts, and ambiguity evidence. Qualification is limited to `proposed`,
+  `low_confidence`, and `ambiguous`; no field expresses IK success, collision clearance,
+  reachability, or action admission, and `motion_authorized` stays `false`.
+- The Fake Gateway advertises all three Query specs, reflects grasp-provider availability
+  in the `grasp.propose` context, and fails closed when the provider is not configured.
+- Tests use PAOS's real `ForgeToolClient.invoke_query_tool("grasp.propose", ...)` through the
+  documented Gateway routes and prove no Action, Session, invocation, or motion route exists.
+
 ## v0.1.0 (2026-09-01) - codex
 
 - [sense] [feat] Provider-neutral `scene.observe` Query contract, endpoint interface,

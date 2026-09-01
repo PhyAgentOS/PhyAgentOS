@@ -7,6 +7,7 @@ gateway_url: http://127.0.0.1:19020
 required_tools:
   - scene.observe
   - scene.understand
+  - grasp.propose
 profiles:
   fake:
     dataflow: profiles/fake/dataflow.yaml
