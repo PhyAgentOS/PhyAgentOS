@@ -239,10 +239,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         self.requests.append(request)
         path = request.url.path
         if request.method == "GET" and path == "/tools":
-            tools = [TOOL_SPEC]
-            if self.understanding_endpoint is not None:
-                tools.append(UNDERSTANDING_TOOL_SPEC)
-            return self._ok({"tools": tools})
+            return self._ok({"tools": [TOOL_SPEC, UNDERSTANDING_TOOL_SPEC]})
         if request.method == "GET" and path == f"/tools/{TOOL_ID}":
             return self._ok(TOOL_SPEC)
         if request.method == "GET" and path == f"/tools/{TOOL_ID}/context":
@@ -255,16 +252,16 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                 }
             )
         if request.method == "GET" and path == f"/tools/{UNDERSTANDING_TOOL_ID}":
-            if self.understanding_endpoint is None:
-                return self._fail(404, "not_found", "Gateway route not found")
             return self._ok(UNDERSTANDING_TOOL_SPEC)
         if request.method == "GET" and path == f"/tools/{UNDERSTANDING_TOOL_ID}/context":
-            if self.understanding_endpoint is None:
-                return self._fail(404, "not_found", "Gateway route not found")
             return self._ok(
                 {
-                    "ready": True,
-                    "binding_error": None,
+                    "ready": self.understanding_endpoint is not None,
+                    "binding_error": (
+                        None
+                        if self.understanding_endpoint is not None
+                        else "understanding provider is unavailable"
+                    ),
                     "motion_authorized": False,
                     **UNDERSTANDING_TOOL_SPEC["robot_frame_profile"],
                 }

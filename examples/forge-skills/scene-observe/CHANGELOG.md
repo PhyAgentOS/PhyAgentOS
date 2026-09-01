@@ -41,5 +41,7 @@
   and confidence while keeping `motion_authorized=false`.
 - `pytest`: 13 passed; `ruff check`: passed; `compileall`: passed; Bundle archive
   validation passed (SHA-256 `d1766c1965e6b6dd664d4a5b08d79719e3826855e7b99a0f8d71e2373f912f20`, 12839 bytes).
+- Fake Gateway advertises both Query specs while reflecting understanding-provider
+  availability in the `scene.understand` context; unavailable providers remain fail-closed.
 - [sense] [feat] Provider-neutral `scene.observe` Query contract, endpoint interface,
   no-motion Fake Gateway transport, and PAOS ForgeToolClient conformance tests.
