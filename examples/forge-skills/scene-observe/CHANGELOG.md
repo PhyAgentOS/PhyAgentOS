@@ -21,6 +21,12 @@
 - No RoboTwin, simulator, provider-private, coordinate, or direct Agent-to-backend fields
   are included in the public contract; PAOS core remains unchanged.
 
+### Git Commit
+
+- Commit: `292457e`
+- Branch: `feature/object-acquire`
+- Time: 2026-09-01 (Asia/Shanghai)
+
 
 ## v0.4.0 (2026-09-01) - codex
 
