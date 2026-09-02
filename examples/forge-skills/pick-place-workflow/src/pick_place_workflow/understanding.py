@@ -1,256 +1,33 @@
-"""Provider-neutral scene understanding Query endpoint."""
+"""Compatibility exports for the PAOS-owned scene-understanding runtime.
 
-from __future__ import annotations
+The public implementation lives under ``PhyAgentOS.forge.capability_runtime``;
+this module keeps the existing example Skill imports stable without making the
+Skill package the owner of generic capability semantics.
+"""
 
-import math
-import re
-from dataclasses import dataclass, field
-from typing import Any, Protocol
+from PhyAgentOS.forge.capability_runtime.understanding import TOOL_SPEC as UNDERSTANDING_TOOL_SPEC
+from PhyAgentOS.forge.capability_runtime.understanding import (
+    SceneUnderstandingEndpoint,
+    SceneUnderstandingProvider,
+    UnderstandingSnapshot,
+    validate_arguments,
+    validate_snapshot,
+)
 
 UNDERSTANDING_TOOL_ID = "scene.understand"
 UNDERSTANDING_ENDPOINT_ID = "scene_understanding"
 UNDERSTANDING_OPERATION = "understand"
-_OBSERVATION_REF = re.compile(r"^observation://[^/]+/[^/]+$")
-_ARTIFACT_REF = re.compile(r"^artifact://[^/]+/.+$")
-_ENTITY_REF = re.compile(r"^entity://[^/]+$")
-_RELATION_REF = re.compile(r"^relation://[^/]+$")
-
-
-class UnderstandingProvider(Protocol):
-    def understand(self, request: dict[str, Any]) -> "UnderstandingSnapshot | None": ...
-
-
-@dataclass(frozen=True)
-class UnderstandingSnapshot:
-    entities: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    relations: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    spatial_envelopes: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    ambiguities: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    provider_available: bool = True
-
-
-UNDERSTANDING_TOOL_SPEC: dict[str, Any] = {
-    "tool_id": UNDERSTANDING_TOOL_ID,
-    "implementation_id": "scene.understanding",
-    "endpoint_id": UNDERSTANDING_ENDPOINT_ID,
-    "operation": UNDERSTANDING_OPERATION,
-    "semantics": "query",
-    "description": "Derive provider-neutral entity and relation claims from one named observation.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": [
-            "observation_ref", "scene_revision", "frame_id", "calibration_ref",
-            "freshness_ms", "max_age_ms", "artifacts",
-        ],
-        "properties": {
-            "observation_ref": {"type": "string", "pattern": r"^observation://[^/]+/[^/]+$"},
-            "scene_revision": {"type": "string", "minLength": 1},
-            "frame_id": {"type": "string", "minLength": 1},
-            "calibration_ref": {"type": "string", "minLength": 1},
-            "freshness_ms": {"type": "integer", "minimum": 0},
-            "max_age_ms": {"type": "integer", "minimum": 1},
-            "artifacts": {
-                "type": "array",
-                "minItems": 1,
-                "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
-            },
-        },
-    },
-    "output_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": [
-            "status", "observation_ref", "scene_revision", "frame",
-            "calibration_ref", "entities", "relations", "spatial_envelopes", "ambiguities",
-        ],
-        "properties": {
-            "status": {"enum": ["available", "unavailable", "stale", "invalid"]},
-            "observation_ref": {"type": "string", "pattern": r"^observation://[^/]+/[^/]+$"},
-            "scene_revision": {"type": "string", "minLength": 1},
-            "frame": {"type": "object"},
-            "calibration_ref": {"type": ["string", "null"]},
-            "entities": {"type": "array"},
-            "relations": {"type": "array"},
-            "spatial_envelopes": {"type": "array"},
-            "ambiguities": {"type": "array"},
-            "error": {"type": "object"},
-        },
-    },
-    "robot_frame_profile": {"observation_frame": "observation", "unit": "m"},
-}
-
-
-def _error(code: str, message: str, *, observation_ref: str = "observation://unknown/unknown") -> dict[str, Any]:
-    return {
-        "status": "invalid" if code.startswith("invalid") else "unavailable",
-        "observation_ref": observation_ref,
-        "scene_revision": "unknown",
-        "frame": {"frame_id": "unknown", "unit": "m"},
-        "calibration_ref": None,
-        "entities": [],
-        "relations": [],
-        "spatial_envelopes": [],
-        "ambiguities": [],
-        "error": {"code": code, "message": message},
-    }
-
-
-def validate_arguments(arguments: Any) -> dict[str, Any] | None:
-    if not isinstance(arguments, dict):
-        return _error("invalid_arguments", "arguments must be an object")
-    allowed = {
-        "observation_ref", "scene_revision", "frame_id", "calibration_ref",
-        "freshness_ms", "max_age_ms", "artifacts",
-    }
-    if set(arguments) - allowed:
-        return _error("invalid_arguments", "unknown scene.understand argument")
-    observation_ref = arguments.get("observation_ref")
-    if not isinstance(observation_ref, str) or _OBSERVATION_REF.fullmatch(observation_ref) is None:
-        return _error("invalid_observation_ref", "observation_ref must use observation:// scheme")
-    if not isinstance(arguments.get("scene_revision"), str) or not arguments["scene_revision"].strip():
-        return _error("invalid_scene_revision", "scene_revision must be a non-empty string", observation_ref=observation_ref)
-    if not isinstance(arguments.get("frame_id"), str) or not arguments["frame_id"].strip():
-        return _error("invalid_frame", "frame_id must be a non-empty string", observation_ref=observation_ref)
-    if not isinstance(arguments.get("calibration_ref"), str) or not arguments["calibration_ref"].strip():
-        return _error("missing_calibration", "calibration_ref is required", observation_ref=observation_ref)
-    if any(
-        isinstance(arguments.get(name), bool)
-        or not isinstance(arguments.get(name), int)
-        or arguments[name] < (0 if name == "freshness_ms" else 1)
-        for name in ("freshness_ms", "max_age_ms")
-    ):
-        return _error("invalid_freshness", "freshness_ms must be non-negative and max_age_ms positive", observation_ref=observation_ref)
-    artifacts = arguments.get("artifacts")
-    if not isinstance(artifacts, list) or not artifacts or any(
-        not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in artifacts
-    ):
-        return _error("invalid_artifact_ref", "artifacts must contain valid artifact references", observation_ref=observation_ref)
-    return None
-
-
-def _finite_confidence(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 1
-
-
-def validate_snapshot(snapshot: UnderstandingSnapshot) -> str | None:
-    for entity in snapshot.entities:
-        if (
-            not isinstance(entity, dict)
-            or set(entity) != {"entity_ref", "category", "confidence", "provenance"}
-            or not isinstance(entity.get("entity_ref"), str)
-            or _ENTITY_REF.fullmatch(entity["entity_ref"]) is None
-            or not isinstance(entity.get("category"), str)
-            or not entity["category"].strip()
-            or not _finite_confidence(entity.get("confidence"))
-            or not isinstance(entity.get("provenance"), list)
-            or any(not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in entity["provenance"])
-        ):
-            return "invalid_entity_claim"
-    for relation in snapshot.relations:
-        if (
-            not isinstance(relation, dict)
-            or set(relation) != {"relation_ref", "subject_ref", "predicate", "object_ref", "confidence", "provenance"}
-            or not isinstance(relation.get("relation_ref"), str)
-            or _RELATION_REF.fullmatch(relation["relation_ref"]) is None
-            or not isinstance(relation.get("subject_ref"), str)
-            or _ENTITY_REF.fullmatch(relation["subject_ref"]) is None
-            or not isinstance(relation.get("object_ref"), str)
-            or _ENTITY_REF.fullmatch(relation["object_ref"]) is None
-            or not isinstance(relation.get("predicate"), str)
-            or not relation["predicate"].strip()
-            or not _finite_confidence(relation.get("confidence"))
-            or not isinstance(relation.get("provenance"), list)
-            or any(not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in relation["provenance"])
-        ):
-            return "invalid_relation"
-    for envelope in snapshot.spatial_envelopes:
-        if (
-            not isinstance(envelope, dict)
-            or set(envelope) != {"entity_ref", "frame_id", "unit", "min_xyz_m", "max_xyz_m", "confidence", "provenance"}
-            or not isinstance(envelope.get("entity_ref"), str)
-            or _ENTITY_REF.fullmatch(envelope["entity_ref"]) is None
-            or not isinstance(envelope.get("frame_id"), str)
-            or not envelope["frame_id"].strip()
-            or envelope.get("unit") != "m"
-            or not isinstance(envelope.get("min_xyz_m"), list)
-            or not isinstance(envelope.get("max_xyz_m"), list)
-            or len(envelope["min_xyz_m"]) != 3
-            or len(envelope["max_xyz_m"]) != 3
-            or any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) for value in envelope["min_xyz_m"] + envelope["max_xyz_m"])
-            or any(low > high for low, high in zip(envelope["min_xyz_m"], envelope["max_xyz_m"], strict=True))
-            or not _finite_confidence(envelope.get("confidence"))
-            or not isinstance(envelope.get("provenance"), list)
-            or any(not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in envelope["provenance"])
-        ):
-            return "invalid_spatial_envelope"
-    for ambiguity in snapshot.ambiguities:
-        if (
-            not isinstance(ambiguity, dict)
-            or set(ambiguity) != {"code", "message", "entity_refs"}
-            or not isinstance(ambiguity.get("code"), str)
-            or not ambiguity["code"].strip()
-            or not isinstance(ambiguity.get("message"), str)
-            or not ambiguity["message"].strip()
-            or not isinstance(ambiguity.get("entity_refs"), list)
-            or any(not isinstance(ref, str) or _ENTITY_REF.fullmatch(ref) is None for ref in ambiguity["entity_refs"])
-        ):
-            return "invalid_ambiguity"
-    return None
-
-
-class SceneUnderstandingEndpoint:
-    """Read-only provider adapter; never emits an actuator command."""
-
-    def __init__(self, provider: UnderstandingProvider) -> None:
-        self.provider = provider
-
-    def invoke(self, arguments: Any) -> dict[str, Any]:
-        error = validate_arguments(arguments)
-        if error is not None:
-            return error
-        assert isinstance(arguments, dict)
-        observation_ref = arguments["observation_ref"]
-        if arguments["freshness_ms"] > arguments["max_age_ms"]:
-            return {
-                **_error("stale_observation", "observation exceeds max_age_ms", observation_ref=observation_ref),
-                "status": "stale",
-                "scene_revision": arguments["scene_revision"],
-                "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
-                "calibration_ref": arguments["calibration_ref"],
-            }
-        try:
-            snapshot = self.provider.understand(arguments)
-        except Exception:
-            return _error(
-                "understanding_provider_error",
-                "scene understanding provider failed",
-                observation_ref=observation_ref,
-            )
-        if snapshot is None or not snapshot.provider_available:
-            return _error("understanding_unavailable", "scene understanding provider is unavailable", observation_ref=observation_ref)
-        snapshot_error = validate_snapshot(snapshot)
-        if snapshot_error:
-            return _error(snapshot_error, "understanding provider result failed contract validation", observation_ref=observation_ref)
-        return {
-            "status": "available",
-            "observation_ref": observation_ref,
-            "scene_revision": arguments["scene_revision"],
-            "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
-            "calibration_ref": arguments["calibration_ref"],
-            "entities": [dict(item) for item in snapshot.entities],
-            "relations": [dict(item) for item in snapshot.relations],
-            "spatial_envelopes": [dict(item) for item in snapshot.spatial_envelopes],
-            "ambiguities": [dict(item) for item in snapshot.ambiguities],
-        }
-
+UnderstandingProvider = SceneUnderstandingProvider
 
 __all__ = [
-    "UNDERSTANDING_TOOL_ID",
     "UNDERSTANDING_ENDPOINT_ID",
     "UNDERSTANDING_OPERATION",
+    "UNDERSTANDING_TOOL_ID",
     "UNDERSTANDING_TOOL_SPEC",
+    "SceneUnderstandingEndpoint",
+    "SceneUnderstandingProvider",
     "UnderstandingProvider",
     "UnderstandingSnapshot",
-    "SceneUnderstandingEndpoint",
+    "validate_arguments",
+    "validate_snapshot",
 ]

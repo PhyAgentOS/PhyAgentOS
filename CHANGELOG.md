@@ -2,6 +2,27 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.7] - 2026-09-02
+
+Moved the provider-neutral `scene.understand` contract into the PAOS-owned
+generic capability runtime. ToolSpec validation, observation/artifact binding,
+scene-graph snapshot validation, stale rejection, provider error projection,
+and Query result projection now live under
+`PhyAgentOS.forge.capability_runtime.understanding`. The Skill module is only a
+compatibility export; no Hephaestus, RoboTwin, SAPIEN, Torch, YOLO, Dora, or
+motion dependency was added.
+
+将 provider-neutral `scene.understand` 契约迁移到 PAOS 自有的 generic capability runtime。ToolSpec 校验、
+observation/artifact 绑定、场景图 snapshot 校验、stale 拒绝、provider 错误投影和 Query 结果投影均由
+`PhyAgentOS.forge.capability_runtime.understanding` 持有；Skill 模块仅保留兼容导出。未加入 Hephaestus、
+RoboTwin、SAPIEN、Torch、YOLO、Dora 或运动依赖。
+
+### Validation
+
+- `248 passed in 2.64s` for adapter/workflow tests.
+- Ruff, compileall, and `git diff --check` passed.
+- Existing Skill imports remain compatible while resolving to the PAOS-owned implementation.
+
 ## [v2.8.6] - 2026-09-02
 
 Added the independent RoboTwin adapter seam for the existing provider-neutral

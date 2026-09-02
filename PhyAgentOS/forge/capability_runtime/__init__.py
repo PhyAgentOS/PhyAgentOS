@@ -20,6 +20,11 @@ from .runtime import (
     ToolContractError,
     UnknownToolError,
 )
+from .understanding import TOOL_SPEC as SCENE_UNDERSTANDING_TOOL_SPEC
+from .understanding import (
+    SceneUnderstandingEndpoint,
+    UnderstandingSnapshot,
+)
 
 __all__ = [
     "ActionAdmission",
@@ -36,6 +41,9 @@ __all__ = [
     "QueryEndpoint",
     "ReadinessEvaluator",
     "SceneUnderstandingProvider",
+    "SceneUnderstandingEndpoint",
+    "SCENE_UNDERSTANDING_TOOL_SPEC",
+    "UnderstandingSnapshot",
     "ToolContractError",
     "UnknownToolError",
 ]
