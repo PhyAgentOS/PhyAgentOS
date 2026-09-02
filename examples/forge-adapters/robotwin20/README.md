@@ -98,7 +98,9 @@ export HEPHAESTUS_RELAY_API_KEY='(set outside the repository)'
 ```
 
 Construct `OpenAIResponsesSceneUnderstandingInference` with an injected
-artifact resolver and wrap it with `RoboTwinSceneUnderstandingProvider`. The
+`FilesystemArtifactResolver('/external/artifacts')` (or another resolver
+implementing the same port) and wrap it with
+`RoboTwinSceneUnderstandingProvider`. The
 default configuration follows the existing Hephaestus relay format
 (`gpt-5.6-sol`, Responses API, `https://api.shuaiapi.com/v1`) but is owned by
 this adapter and can be overridden through `OpenAIResponsesConfig`. The API

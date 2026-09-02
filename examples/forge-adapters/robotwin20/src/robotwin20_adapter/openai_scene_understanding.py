@@ -12,6 +12,7 @@ import base64
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 from urllib.parse import urlparse
 
@@ -32,6 +33,44 @@ class ArtifactResolver(Protocol):
     """Resolve opaque artifact references without exposing filesystem paths to PAOS."""
 
     def resolve(self, artifact_ref: str) -> ArtifactPayload | None: ...
+
+
+class FilesystemArtifactResolver:
+    """Resolve external ``artifact://`` references under one owned root.
+
+    The resolver is intentionally adapter-side.  It accepts only the opaque
+    URI emitted by the observation provider, maps known image leaves to the
+    runtime's persisted file names, and rejects traversal or non-image files.
+    PAOS receives only the URI and resulting model claims.
+    """
+
+    _IMAGE_LEAVES = {"rgb": "rgb.png", "color": "color.png", "image": "image.png"}
+
+    def __init__(self, artifact_root: str | os.PathLike[str]) -> None:
+        root = Path(artifact_root)
+        if not root.is_absolute():
+            raise ValueError("artifact_root must be an absolute directory")
+        self.root = root.resolve()
+
+    def resolve(self, artifact_ref: str) -> ArtifactPayload | None:
+        parsed = urlparse(artifact_ref) if isinstance(artifact_ref, str) else None
+        if parsed is None or parsed.scheme != "artifact" or not parsed.netloc:
+            return None
+        parts = (parsed.netloc, *parsed.path.strip("/").split("/"))
+        if len(parts) < 3 or any(not part or part in {".", ".."} for part in parts):
+            return None
+        leaf = parts[-1]
+        filename = self._IMAGE_LEAVES.get(leaf)
+        if filename is None:
+            return None
+        candidate = (self.root.joinpath(*parts[:-1]) / filename).resolve()
+        if self.root not in candidate.parents or not candidate.is_file():
+            return None
+        try:
+            data = candidate.read_bytes()
+        except OSError as exc:
+            raise OpenAIResponsesInferenceError("observation artifact read failed") from exc
+        return ArtifactPayload(data, "image/png")
 
 
 class ResponsesClient(Protocol):
@@ -314,6 +353,7 @@ class OpenAIResponsesSceneUnderstandingInference:
 __all__ = [
     "ArtifactPayload",
     "ArtifactResolver",
+    "FilesystemArtifactResolver",
     "OpenAIResponsesConfig",
     "OpenAIResponsesInferenceError",
     "OpenAIResponsesSceneUnderstandingInference",

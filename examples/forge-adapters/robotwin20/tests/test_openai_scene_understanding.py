@@ -4,9 +4,12 @@ import base64
 import json
 
 import pytest
+from PhyAgentOS.forge.tool_client import ForgeToolClient
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
 
 from robotwin20_adapter import (
     ArtifactPayload,
+    FilesystemArtifactResolver,
     OpenAIResponsesConfig,
     OpenAIResponsesInferenceError,
     OpenAIResponsesSceneUnderstandingInference,
@@ -99,6 +102,25 @@ def test_provider_composes_with_generic_scene_understanding_endpoint(monkeypatch
     assert snapshot["entities"][0]["provenance"] == REQUEST["artifacts"]
 
 
+@pytest.mark.asyncio
+async def test_openai_provider_crosses_forge_tool_client_and_fake_gateway(monkeypatch):
+    monkeypatch.setenv("HEPHAESTUS_RELAY_API_KEY", "test-key")
+    client = Client()
+    provider = RoboTwinSceneUnderstandingProvider(
+        OpenAIResponsesSceneUnderstandingInference(Resolver(), client_factory=lambda **kwargs: client)
+    )
+    observation_provider = type("Observation", (), {"observe": lambda self, sensor_ref: None})()
+    transport = FakeGatewayTransport(observation_provider, understanding_provider=provider)
+    async with ForgeToolClient("http://fake", transport=transport) as forge_client:
+        response = await forge_client.invoke_query_tool("scene.understand", REQUEST)
+
+    assert response["data"]["status"] == "available"
+    assert [request.url.path for request in transport.requests] == [
+        "/tools/scene.understand",
+        "/tools/scene_understanding/understand:invoke",
+    ]
+
+
 def test_missing_key_fails_closed_before_client_creation(monkeypatch):
     monkeypatch.delenv("HEPHAESTUS_RELAY_API_KEY", raising=False)
     called = False
@@ -122,6 +144,21 @@ def test_non_image_or_missing_artifact_fails_closed(monkeypatch):
     )
     with pytest.raises(OpenAIResponsesInferenceError, match="no image artifact"):
         inference.infer(REQUEST)
+
+
+def test_filesystem_resolver_maps_external_rgb_artifact_and_rejects_escape(tmp_path):
+    capture_dir = tmp_path / "desktop-tidy-real" / "capture"
+    capture_dir.mkdir(parents=True)
+    image_path = capture_dir / "rgb.png"
+    image_path.write_bytes(b"rgb-bytes")
+    resolver = FilesystemArtifactResolver(tmp_path)
+
+    payload = resolver.resolve("artifact://desktop-tidy-real/capture/rgb")
+    assert payload is not None
+    assert payload.data == b"rgb-bytes"
+    assert payload.media_type == "image/png"
+    assert resolver.resolve("artifact://desktop-tidy-real/../escape/rgb") is None
+    assert resolver.resolve("artifact://desktop-tidy-real/capture/depth") is None
 
 
 def test_provider_specific_response_fields_fail_closed(monkeypatch):

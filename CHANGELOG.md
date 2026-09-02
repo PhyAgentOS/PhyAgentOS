@@ -2,6 +2,27 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.12] - 2026-09-03
+
+Added an adapter-side `FilesystemArtifactResolver` for external RoboTwin
+observation artifacts. It safely maps opaque RGB artifact references to files
+under an explicitly external absolute root, rejects traversal/non-image refs,
+and enables the GPT scene-understanding provider to consume real runtime
+captures without exposing paths or assets to PAOS.
+
+为外部 RoboTwin observation artifact 增加 adapter 侧 `FilesystemArtifactResolver`。它只在显式外部绝对根目录
+下安全解析 opaque RGB artifact 引用，拒绝路径穿越和非图像引用，使 GPT 场景理解 provider 能读取真实 runtime
+capture，同时不向 PAOS 暴露路径或资产。
+
+### Validation
+
+- `260 passed in 2.62s` for the adapter/workflow suites.
+- Ruff, compileall, and `git diff --check` passed.
+- Complete `ForgeToolClient -> Fake Gateway -> generic endpoint -> RoboTwin provider -> GPT client` route
+  is covered by a fake Responses client test.
+- No live API call was attempted because `HEPHAESTUS_RELAY_API_KEY` remains absent; no real model result is claimed.
+- `.codegraph/` and `.cursor/` remain untracked and were not staged.
+
 ## [v2.8.11] - 2026-09-02
 
 Added the clean-room, adapter-owned GPT-5.6-sol Responses provider for
