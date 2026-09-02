@@ -2,6 +2,17 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.5.0] - 2026-09-02
+
+Skill candidate support is now partitioned by bounded capability failure-owner scope. Successful
+episodes with different scopes create independent candidates and cannot share promotion counts.
+
+### Changed
+
+- Added `capability_failure_owners` to `SkillCandidate`.
+- Included owner scope in candidate identity and support matching while preserving legacy empty-scope
+  compatibility and existing promotion thresholds.
+
 ## [v1.4.0] - 2026-09-02
 
 Active Lesson counterexamples now require an exact capability failure-owner scope match. Mismatched
