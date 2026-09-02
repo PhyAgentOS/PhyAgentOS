@@ -13,6 +13,7 @@ from PhyAgentOS.agent.experience.attribution import (
     assess_evolution_attribution,
     validate_assessment_attribution,
     validate_cluster_owner_scope,
+    validate_counterexample_scope,
 )
 from PhyAgentOS.agent.experience.contracts import (
     ExperienceAssessment,
@@ -158,7 +159,7 @@ class SkillEvolutionManager:
 
         if episode.outcome.successful:
             for lesson_id in assessment.contradicted_lesson_ids:
-                lesson = self._add_counterexample(lesson_id, episode.episode_id)
+                lesson = self._add_counterexample(lesson_id, episode)
                 if lesson and lesson.skill_name:
                     touched_skills.add(lesson.skill_name)
 
@@ -390,6 +391,7 @@ class SkillEvolutionManager:
             supporting_episode_ids=episode_ids,
             supersedes_lesson_ids=draft.supersedes_lesson_ids,
             cluster_id=cluster.cluster_id,
+            capability_failure_owners=list(cluster.capability_failure_owners),
             observation_count=max(1, len(episode_ids)),
         )
         self._validate_supersede_targets(lesson)
@@ -423,7 +425,20 @@ class SkillEvolutionManager:
                 touched.add(previous.skill_name)
         return touched
 
-    def _add_counterexample(self, lesson_id: str, episode_id: str) -> ScopedLesson | None:
+    def _add_counterexample(
+        self, lesson_id: str, episode: TaskEpisode
+    ) -> ScopedLesson | None:
+        lesson = self.store.get_lesson(lesson_id)
+        if lesson is None:
+            return None
+        scope = validate_counterexample_scope(lesson, episode)
+        if not scope.allowed:
+            self.store.record_event_once(
+                "lesson_counterexample_scope_blocked", lesson_id, scope.event_payload
+            )
+            return lesson
+        episode_id = episode.episode_id
+
         def mutate(lesson: ScopedLesson) -> None:
             lesson.counterexample_episode_ids = list(
                 dict.fromkeys(lesson.counterexample_episode_ids + [episode_id])

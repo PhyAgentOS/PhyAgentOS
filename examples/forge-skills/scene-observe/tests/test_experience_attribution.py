@@ -6,6 +6,7 @@ from PhyAgentOS.agent.experience.attribution import (
     build_analyzer_attribution_context,
     validate_assessment_attribution,
     validate_cluster_owner_scope,
+    validate_counterexample_scope,
 )
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeSummary,
@@ -14,6 +15,7 @@ from PhyAgentOS.agent.experience.contracts import (
     FailureObservationProposal,
     LessonCluster,
     LessonEligibility,
+    ScopedLesson,
     TaskEpisode,
     TaskOutcomeEnvelope,
 )
@@ -175,6 +177,56 @@ def test_cluster_owner_scope_rejects_mixed_scoped_and_legacy_observations():
     )
     assert rejected.allowed is False
     assert rejected.event_payload["unscoped_observation_count"] == 1
+
+
+def _lesson(owner_scope):
+    return ScopedLesson(
+        lesson_id="lesson-1",
+        workflow_key="pick-place",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        failure_mode="state check omitted",
+        recommendation="recheck state",
+        capability_failure_owners=owner_scope,
+    )
+
+
+def test_counterexample_requires_exact_owner_scope_or_both_legacy_empty():
+    matching = validate_counterexample_scope(
+        _lesson(["planner"]),
+        _episode(CapabilityOutcomeSummary(failure_owner_counts={"planner": 1})),
+    )
+    assert matching.allowed is True
+    mismatch = validate_counterexample_scope(
+        _lesson(["planner"]),
+        _episode(CapabilityOutcomeSummary(failure_owner_counts={"execution": 1})),
+    )
+    assert mismatch.allowed is False
+    legacy = validate_counterexample_scope(_lesson([]), _episode(CapabilityOutcomeSummary()))
+    assert legacy.allowed is True
+
+
+def test_counterexample_scope_mismatch_does_not_retire_lesson():
+    lesson = _lesson(["planner"])
+    events = []
+
+    class Store:
+        def get_lesson(self, _):
+            return lesson
+
+        def record_event_once(self, event_type, subject_id, payload):
+            events.append((event_type, subject_id, payload))
+            return True
+
+        def update_lesson(self, *args, **kwargs):
+            raise AssertionError("scope mismatch must not update Lesson")
+
+    manager = SkillEvolutionManager(workspace=".", store=Store())
+    episode = _episode(CapabilityOutcomeSummary(failure_owner_counts={"execution": 1}))
+    assert manager._add_counterexample("lesson-1", episode) is lesson
+    assert lesson.counterexample_episode_ids == []
+    assert lesson.status == "active"
+    assert events[0][0] == "lesson_counterexample_scope_blocked"
 
 
 def test_infrastructure_and_evidence_only_claims_must_use_bounded_lesson_reason():

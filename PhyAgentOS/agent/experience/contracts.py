@@ -401,6 +401,7 @@ class ScopedLesson(ExperienceModel):
     supersedes_lesson_ids: list[str] = Field(default_factory=list)
     superseded_by_lesson_id: str | None = None
     cluster_id: str | None = None
+    capability_failure_owners: list[str] = Field(default_factory=list)
     supporting_episode_ids: list[str] = Field(default_factory=list)
     observation_count: int = Field(default=1, ge=1)
     created_at: datetime = Field(default_factory=utc_now)

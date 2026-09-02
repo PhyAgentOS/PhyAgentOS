@@ -79,6 +79,10 @@ Each normalized failure observation and LessonCluster records its bounded capabi
 scope. A matched cluster with a different non-empty owner scope is rejected, so independent tasks
 cannot merge infrastructure, planner, and execution failures into one reusable Lesson pattern.
 
+Active Lesson counterexamples use the same scope. A successful episode counts toward retirement only
+when its owner scope exactly matches the Lesson (or both are legacy-unscoped); mismatches record a
+bounded diagnostic and leave counterexample support and cluster status unchanged.
+
 The outcome policy is:
 
 | Outcome | Experience behavior |

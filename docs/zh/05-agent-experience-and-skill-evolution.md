@@ -78,6 +78,10 @@ assessment 才会被 evolution 拒绝。
 如果匹配到的 cluster 已有不同的非空 owner 作用域，系统会拒绝合并，避免把 infrastructure、
 planner 和 execution 失败混成一个可复用 Lesson pattern。
 
+Active Lesson 的 counterexample 使用相同作用域。成功 episode 只有在 owner scope 与 Lesson
+完全一致（或双方都是 legacy 空 scope）时才计入退休门槛；不一致时只记录有界诊断，不增加
+counterexample 支持，也不改变 cluster 状态。
+
 Outcome 策略：
 
 | 结果 | 经验行为 |

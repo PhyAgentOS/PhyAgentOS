@@ -9,6 +9,7 @@ from PhyAgentOS.agent.experience.contracts import (
     ExperienceAssessment,
     FailureObservation,
     LessonCluster,
+    ScopedLesson,
     TaskEpisode,
 )
 
@@ -149,10 +150,32 @@ def validate_cluster_owner_scope(
     )
 
 
+def validate_counterexample_scope(
+    lesson: ScopedLesson, episode: TaskEpisode
+) -> EvolutionAttributionDecision:
+    """Only count success as counterevidence within the same capability scope."""
+    lesson_scope = tuple(sorted(lesson.capability_failure_owners))
+    episode_scope = tuple(
+        sorted(episode.outcome.capability_outcome_summary.failure_owner_counts)
+    )
+    if lesson_scope != episode_scope:
+        return EvolutionAttributionDecision(
+            False,
+            "lesson_counterexample_scope_conflict",
+            {
+                "reason": "lesson_counterexample_scope_conflict",
+                "lesson_scope": list(lesson_scope),
+                "episode_scope": list(episode_scope),
+            },
+        )
+    return EvolutionAttributionDecision(True, "ready", {})
+
+
 __all__ = [
     "EvolutionAttributionDecision",
     "assess_evolution_attribution",
     "build_analyzer_attribution_context",
     "validate_assessment_attribution",
     "validate_cluster_owner_scope",
+    "validate_counterexample_scope",
 ]
