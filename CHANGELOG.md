@@ -2,6 +2,20 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.4.0] - 2026-09-02
+
+Added ExperienceCoordinator recovery-episode integration coverage.
+
+### Added
+
+- Added tests confirming one recovered AgentTask becomes one processed TaskEpisode with preserved
+  `replan_required → success` lineage delivered to the analyzer.
+- Added assertions that capability facts alone do not create Skill candidates or Lesson clusters.
+
+### Security
+
+- Recovery episode tests execute no real Action, Session, Dora, hardware, or motion route.
+
 ## [v2.3.0] - 2026-09-02
 
 Added generic AgentTask verification and recovery coverage.
