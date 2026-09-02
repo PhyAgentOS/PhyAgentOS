@@ -217,6 +217,7 @@ recorded separately with exact artifact digests and environment.
 ## Related documentation
 
 - [v1.0 Feature Reference Cards](FEATURE_REFERENCE_CARDS.md)
+- [RoboTwin adapter refactor diagnosis](ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md)
 - [Framework Introduction](../en/01-framework-introduction.md)
 - [Configuration Reference](../en/04-forge-configuration-reference.md)
 - [Integration Development Guide](../user_development_guide/README_en.md)

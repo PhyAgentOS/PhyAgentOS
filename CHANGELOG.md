@@ -2,6 +2,24 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.6.1] - 2026-09-02
+
+Saved and reviewed the RoboTwin adapter refactor diagnosis, separating reusable capability runtime semantics
+from environment-specific adapters.
+
+### Added
+
+- Added `docs/forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md` with ownership boundaries, six-Tool migration seams,
+  clean-room reimplementation rules, profile strategy, and acceptance gates.
+
+### Changed
+
+- Added diagnosis links to the Forge contract and documentation index.
+
+### Security
+
+- Documentation-only change; no Hephaestus, PAOS runtime, Gateway implementation, simulator, hardware, or motion path changed.
+
 ## [v2.6.0] - 2026-09-02
 
 Clarified the v1.0 PAOS boundary for simulator integration and corrected the RoboTwin execution order.

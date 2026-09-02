@@ -25,6 +25,7 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [通信架构](user_development_guide/COMMUNICATION.md)：Agent 消息、Forge HTTP/WebSocket、system event、SQLite 与 Artifact 边界。
 - [Forge Tool API 接入契约](forge/README_zh.md)：Query/Action/Session、不可变 Skill binding、ToolInvocation、AgentTask、证据、验证、恢复和 Skill Runtime 契约。
 - [v1.0 功能引用卡](forge/FEATURE_REFERENCE_CARDS.md)：把规范章节、扩展点、代码模块、测试证据和 PR 追踪绑定到同一张功能卡。
+- [RoboTwin Adapter 重构诊断](forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md)：记录 capability runtime、provider port 与环境适配器的可复用边界及六个 Tool 的迁移顺序。
 
 ### 推荐阅读路径
 
@@ -57,6 +58,7 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [Communication Architecture](user_development_guide/COMMUNICATION_en.md): Agent messages, Forge HTTP/WebSocket, system events, SQLite, and artifact boundaries.
 - [Forge Tool API Integration Contract](forge/README.md): Query/Action/Session, immutable Skill binding, ToolInvocation, AgentTask, evidence, verification, recovery, and Skill Runtime contracts.
 - [v1.0 Feature Reference Cards](forge/FEATURE_REFERENCE_CARDS.md): connect normative sections, extension points, code modules, test evidence, and PR traceability for each feature.
+- [RoboTwin Adapter Refactor Diagnosis](forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md): records the reusable boundary between capability runtime, provider ports, and environment adapters, plus the migration order for the six Tools.
 
 ### Suggested reading paths
 
