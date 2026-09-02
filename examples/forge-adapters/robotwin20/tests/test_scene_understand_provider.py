@@ -3,10 +3,14 @@ from __future__ import annotations
 import sys
 
 import pytest
+from PhyAgentOS.forge.capability_runtime.understanding import UnderstandingSnapshot
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
 
-from robotwin20_adapter import RoboTwinSceneUnderstandingProvider
+from robotwin20_adapter import (
+    RoboTwinSceneUnderstandingProvider,
+    RoboTwinUnderstandingSnapshot,
+)
 
 OBSERVE_INPUT = {
     "observation_ref": "observation://scene-7/camera_front",
@@ -93,3 +97,7 @@ async def test_provider_specific_fields_fail_closed_through_tool_api():
 def test_paos_import_boundary_remains_clean():
     forbidden = {"robotwin", "sapien", "torch", "ultralytics", "dora"}
     assert not any(name.split(".", 1)[0].lower() in forbidden for name in sys.modules)
+
+
+def test_adapter_reuses_paos_snapshot_type():
+    assert RoboTwinUnderstandingSnapshot is UnderstandingSnapshot

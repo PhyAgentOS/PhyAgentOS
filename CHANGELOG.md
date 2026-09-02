@@ -2,6 +2,24 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.10] - 2026-09-02
+
+Removed the duplicate provider-neutral `RoboTwinUnderstandingSnapshot` from
+the adapter. The compatibility name now aliases PAOS's
+`UnderstandingSnapshot`, so the adapter only translates inference inputs and
+outputs while PAOS remains the sole owner of the public scene-understanding
+snapshot contract.
+
+移除 adapter 中重复的 provider-neutral `RoboTwinUnderstandingSnapshot`。兼容名称现在指向 PAOS 的
+`UnderstandingSnapshot`，adapter 只负责 inference 输入/输出转换，PAOS 继续作为 scene-understand snapshot
+公共契约的唯一所有者。
+
+### Validation
+
+- `251 passed` for the adapter/workflow suites.
+- Ruff, compileall, and `git diff --check` passed.
+- Provider-specific output remains fail-closed and the ForgeToolClient/Fake Gateway path is unchanged.
+
 ## [v2.8.9] - 2026-09-02
 
 Moved the provider-neutral `manipulation.prepare` Query implementation into

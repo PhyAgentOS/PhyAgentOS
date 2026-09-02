@@ -8,8 +8,9 @@ behind ``inference``; this package deliberately does not import that model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
+
+from PhyAgentOS.forge.capability_runtime.understanding import UnderstandingSnapshot
 
 
 class SceneUnderstandingInference(Protocol):
@@ -18,15 +19,9 @@ class SceneUnderstandingInference(Protocol):
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None: ...
 
 
-@dataclass(frozen=True)
-class RoboTwinUnderstandingSnapshot:
-    """Provider-neutral claims projected from measured observation artifacts."""
-
-    entities: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    relations: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    spatial_envelopes: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    ambiguities: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    provider_available: bool = True
+# Compatibility name for callers that imported the adapter's former snapshot;
+# the public provider-neutral type is owned by PAOS generic runtime.
+RoboTwinUnderstandingSnapshot = UnderstandingSnapshot
 
 
 class RoboTwinSceneUnderstandingProvider:
@@ -57,7 +52,7 @@ class RoboTwinSceneUnderstandingProvider:
             raise TypeError("scene understanding inference must expose infer(request) or be callable")
         self.inference = inference
 
-    def understand(self, request: Mapping[str, Any]) -> RoboTwinUnderstandingSnapshot | None:
+    def understand(self, request: Mapping[str, Any]) -> UnderstandingSnapshot | None:
         if not isinstance(request, Mapping):
             return None
         projected = {key: request[key] for key in self._REQUEST_KEYS if key in request}
@@ -73,7 +68,7 @@ class RoboTwinSceneUnderstandingProvider:
                 "scene understanding inference returned provider-specific fields: "
                 + ", ".join(sorted(unknown))
             )
-        return RoboTwinUnderstandingSnapshot(
+        return UnderstandingSnapshot(
             entities=_tuple_of_mappings(raw.get("entities", ()), "entities"),
             relations=_tuple_of_mappings(raw.get("relations", ()), "relations"),
             spatial_envelopes=_tuple_of_mappings(
