@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from PhyAgentOS.agent.experience.contracts import TaskEpisode
 from PhyAgentOS.agent.experience.source import AgentTaskOutcomeSource
 from PhyAgentOS.forge.task import AgentTaskRecord, PlanRevision, ToolExecutionRecord
 from PhyAgentOS.verification.contracts import TaskVerificationContract
@@ -111,3 +112,18 @@ def test_provider_private_tool_id_is_not_persisted_in_capability_fact():
     outcome = AgentTaskOutcomeSource(SimpleNamespace(get_task=lambda _: task)).build("task-1")
     assert outcome.capability_outcomes[0].capability == "bounded_action"
     assert "robotwin" not in outcome.capability_outcomes[0].model_dump_json().lower()
+
+
+def test_task_episode_round_trip_preserves_capability_facts():
+    outcome = AgentTaskOutcomeSource(
+        SimpleNamespace(get_task=lambda _: _task([_record(_summary())]))
+    ).build("task-1")
+    episode = TaskEpisode(
+        episode_id="episode-1",
+        root_task_id="task-1",
+        task_summary="pick and place",
+        goal=outcome.goal,
+        outcome=outcome,
+    )
+    restored = TaskEpisode.model_validate_json(episode.model_dump_json())
+    assert restored.outcome.capability_outcomes[0].capability_phase == "retreat"
