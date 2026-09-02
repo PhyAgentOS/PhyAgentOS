@@ -2,6 +2,22 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.3.0] - 2026-09-02
+
+Added generic AgentTask verification and recovery coverage.
+
+### Added
+
+- Added deterministic verifier tests for `replan_required`, append-only PlanRevision recovery, and
+  final success on the same AgentTask.
+- Verified recovered TaskEpisode lineage preserves both the replan-required and successful
+  revisions.
+
+### Security
+
+- Recovery tests execute only Fake Gateway Queries and do not create motion, Session, or Dora
+  execution.
+
 ## [v2.2.0] - 2026-09-02
 
 Added governed execution record coverage after immutable Skill binding.
