@@ -2,6 +2,48 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.4] - 2026-09-02
+
+Fixed the external RoboTwin runtime working-directory boundary in
+`examples/forge-adapters/robotwin20/runtime/robotwin_backend.py:L88-L101,L119-L120,L179-L184,L208-L209,L223-L224`.
+Official imports, `setup_demo`, `get_obs`, and `close_env` now run under the
+runtime checkout and restore the caller's cwd. This removes the real smoke
+failure caused by RoboTwin's relative `assets/objects/objaverse/list.json`
+lookup when launched from the PAOS root. Added the regression test at
+`tests/test_robotwin_backend_contract.py:L55-L65`.
+
+修复独立 RoboTwin runtime 的工作目录边界：官方导入、场景初始化、观测读取和关闭均在外部 runtime checkout
+上下文中执行并恢复调用方 cwd，消除从 PAOS 根目录启动时的相对资产路径错误。新增 cwd 回归测试；不改变
+PAOS 依赖、ToolSpec 或动作权限。
+
+## [v2.8.3] - 2026-09-02
+
+Added the runtime-only `RoboTwinSensorBackend` at
+`examples/forge-adapters/robotwin20/runtime/robotwin_backend.py:L1-L338` and
+ contract tests at `tests/test_robotwin_backend_contract.py:L1-L77`. The backend
+uses the official task's rendered RGB/depth and joint/end-effector state,
+persists calibration and typed external artifacts, and injects through the
+provider-neutral `RoboTwin20Adapter`. It rejects simulator truth channels and
+never calls action/evaluator APIs. A real `beat_block_hammer/demo_clean` seed-0
+capture produced 240x320 RGB/depth artifacts; SAPIEN OIDN CUDA warnings remain a
+known runtime risk.
+
+新增 runtime-only `RoboTwinSensorBackend`，通过 provider-neutral `RoboTwin20Adapter` 暴露真实 RGB/depth/state
+artifact 与 calibration；不导出 actor/segmentation truth，不调用动作或 evaluator。真实 seed-0 capture 已验证，
+但 OIDN CUDA warning 仍是运行时风险。
+
+## [v2.8.2] - 2026-09-02
+
+Added the standard-library fail-closed preflight at
+`examples/forge-adapters/robotwin20/src/robotwin20_adapter/preflight.py:L1-L284`,
+its tests at `tests/test_preflight.py:L1-L75`, and the `robotwin20-preflight`
+entry point in `pyproject.toml:L1-L13`. The user-provided external RoboTwin20
+environment passed all 16 checks (`ready=true`), including assets, CUDA
+`sm_120`, SAPIEN, Vulkan, and task import, without modifying PAOS dependencies.
+
+新增只使用标准库的 fail-closed preflight 与测试及 console entry point。用户提供的隔离 RoboTwin20 环境 16 项
+检查全部通过（`ready=true`），包含官方 assets、CUDA `sm_120`、SAPIEN、Vulkan 与 task import；PAOS 依赖未被污染。
+
 ## [v2.8.1] - 2026-09-02
 
 Verified the isolated `RoboTwin20` conda environment and checked out the official RoboTwin 2.0 source with

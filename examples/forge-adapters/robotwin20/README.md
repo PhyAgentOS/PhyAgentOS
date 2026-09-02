@@ -25,3 +25,48 @@ paos-robotwin20-adapter/       # this package, installed in adapter env
 robotwin20-runtime/            # RoboTwin/SAPIEN/Torch/YOLO dependencies
 robotwin-assets/               # external assets, mounted by profile
 ```
+
+Run the fail-closed runtime preflight before implementing or starting a
+provider backend:
+
+```bash
+PYTHONPATH=examples/forge-adapters/robotwin20/src \
+python -m robotwin20_adapter.preflight \
+  --runtime-root /home/yanxu/robotwin20-runtime/RoboTwin \
+  --runtime-python /home/yanxu/miniconda3/envs/RoboTwin20/bin/python
+```
+
+The check validates the external source layout, all three official asset
+families, embodiment configuration, full runtime modules, editable XPolicyLab
+installation, a real Torch CUDA kernel, Vulkan device discovery, SAPIEN scene
+creation, and task-class import. It deliberately does not call `setup_demo`,
+`play_once`, `check_success`, or any robot/action method. A nonzero exit means
+the RoboTwin provider must remain unavailable.
+
+After preflight passes, run the runtime-only sensor backend from the RoboTwin20
+environment. Its artifact root must be external to PAOS and Hephaestus:
+
+```bash
+cd /home/yanxu/PhyAgentOS-forge
+PYTHONPATH=examples/forge-adapters/robotwin20/src \
+/home/yanxu/miniconda3/envs/RoboTwin20/bin/python \
+examples/forge-adapters/robotwin20/runtime/robotwin_backend.py \
+  --runtime-root /home/yanxu/robotwin20-runtime/RoboTwin \
+  --artifact-root /home/yanxu/robotwin20-runtime/artifacts \
+  --forbidden-root /home/yanxu/PhyAgentOS-forge \
+  --sensor-ref camera/head \
+  --seed 0
+```
+
+This initializes one simulation scene and captures RGB, depth, calibration, and
+joint/end-effector state artifacts. It does not call `play_once`,
+`check_success`, segmentation APIs, actor/entity APIs, or any action route.
+
+The first verified capture used `beat_block_hammer/demo_clean`, seed `0`, and
+produced a `240x320` RGB PNG, a `240x320` float32 depth NPY, calibration JSON,
+and state JSON under `/home/yanxu/robotwin20-runtime/artifacts`. The injected
+PAOS adapter returned the three public kinds `rgb`, `depth`, and `state` with a
+stable scene revision. On the RTX 5060 Ti host, SAPIEN emitted OIDN CUDA
+denoiser warnings during this smoke run, but the sensor artifacts were
+successfully persisted; this remains a runtime risk and is not treated as a
+perception-quality claim.

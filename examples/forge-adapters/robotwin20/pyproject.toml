@@ -1,9 +1,12 @@
 [project]
 name = "paos-robotwin20-adapter"
-version = "0.1.0"
+version = "0.2.0"
 description = "PAOS EnvironmentAdapter seam for RoboTwin20 sensor-backed observations."
 requires-python = ">=3.11"
 dependencies = []
+
+[project.scripts]
+robotwin20-preflight = "robotwin20_adapter.preflight:main"
 
 [build-system]
 requires = ["hatchling"]
