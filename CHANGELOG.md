@@ -2,6 +2,20 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.6.0] - 2026-09-02
+
+Added a full no-motion AgentTask workflow integration fixture for the provider-neutral
+scene-observe Bundle.
+
+### Added
+
+- Added an end-to-end test using `AgentTaskCoordinator -> ForgeToolClient -> FakeGatewayTransport`
+  across observe, understand, propose, prepare, acquire, and place.
+- Verified one task/revision, terminal Query/Action records, capability outcome projection, and
+  synchronous `ExperienceCoordinator` `TaskEpisode` persistence.
+- Covered non-terminal finalization rejection, unknown-action resend blocking, and cancellation
+  reconciliation without introducing a second execution protocol or RoboTwin dependency.
+
 ## [v1.5.0] - 2026-09-02
 
 Skill candidate support is now partitioned by bounded capability failure-owner scope. Successful
