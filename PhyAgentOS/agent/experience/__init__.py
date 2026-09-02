@@ -3,6 +3,7 @@
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeErrorFact,
     CapabilityOutcomeFact,
+    CapabilityOutcomeSummary,
     ExperienceAssessment,
     FailureObservation,
     FailureObservationProposal,
@@ -25,6 +26,7 @@ __all__ = [
     "ExperienceAssessment",
     "CapabilityOutcomeFact",
     "CapabilityOutcomeErrorFact",
+    "CapabilityOutcomeSummary",
     "FailureObservation",
     "FailureObservationProposal",
     "ForgeTaskOutcomeSource",

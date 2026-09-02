@@ -68,6 +68,8 @@ def test_agent_task_outcome_contains_redacted_capability_fact_without_artifacts_
     assert "artifact://opaque/trajectory" not in serialized
     assert "failure_code" not in serialized
     assert outcome.final_verdict is None
+    assert outcome.capability_outcome_summary.status_counts == {"succeeded": 1}
+    assert outcome.capability_outcome_summary.world_change_started_count == 1
 
 
 def test_unknown_and_failed_facts_preserve_execution_state_without_becoming_learning_authority():
@@ -92,6 +94,15 @@ def test_unknown_and_failed_facts_preserve_execution_state_without_becoming_lear
         "planner",
     ]
     assert not outcome.learnable
+    assert outcome.capability_outcome_summary.status_counts == {
+        "failed": 1,
+        "unknown": 1,
+    }
+    assert outcome.capability_outcome_summary.failure_owner_counts == {
+        "execution": 1,
+        "planner": 1,
+    }
+    assert outcome.capability_outcome_summary.outcome_unknown_count == 1
 
 
 def test_invalid_projection_is_diagnostic_and_does_not_create_fact():
@@ -101,6 +112,10 @@ def test_invalid_projection_is_diagnostic_and_does_not_create_fact():
     outcome = AgentTaskOutcomeSource(SimpleNamespace(get_task=lambda _: task)).build("task-1")
     assert outcome.capability_outcomes == []
     assert [item.code for item in outcome.capability_outcome_errors] == [
+        "invalid_capability_phase"
+    ]
+    assert outcome.capability_outcome_summary.projection_error_count == 1
+    assert outcome.capability_outcome_summary.projection_error_codes == [
         "invalid_capability_phase"
     ]
     assert outcome.final_verdict is None
@@ -127,3 +142,4 @@ def test_task_episode_round_trip_preserves_capability_facts():
     )
     restored = TaskEpisode.model_validate_json(episode.model_dump_json())
     assert restored.outcome.capability_outcomes[0].capability_phase == "retreat"
+    assert restored.outcome.capability_outcome_summary.status_counts == {"succeeded": 1}

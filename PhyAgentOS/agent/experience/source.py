@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Protocol
 
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeErrorFact,
     CapabilityOutcomeFact,
+    CapabilityOutcomeSummary,
     LineageOutcome,
     TaskOutcomeEnvelope,
 )
@@ -203,6 +205,35 @@ class AgentTaskOutcomeSource:
             )
             for item in capability_projection.errors
         ]
+        capability_outcome_summary = CapabilityOutcomeSummary(
+            status_counts=dict(
+                sorted(Counter(item.status for item in capability_outcomes).items())
+            ),
+            failure_owner_counts=dict(
+                sorted(
+                    Counter(
+                        item.failure_owner
+                        for item in capability_outcomes
+                        if item.failure_owner not in {None, "none"}
+                    ).items()
+                )
+            ),
+            evidence_availability_counts=dict(
+                sorted(
+                    Counter(item.evidence_availability for item in capability_outcomes).items()
+                )
+            ),
+            world_change_started_count=sum(
+                item.world_change_started for item in capability_outcomes
+            ),
+            outcome_unknown_count=sum(
+                not item.outcome_known for item in capability_outcomes
+            ),
+            projection_error_count=len(capability_outcome_errors),
+            projection_error_codes=sorted(
+                {item.code for item in capability_outcome_errors}
+            ),
+        )
         return TaskOutcomeEnvelope(
             task_id=task.task_id,
             root_task_id=task.task_id,
@@ -225,5 +256,6 @@ class AgentTaskOutcomeSource:
             ],
             capability_outcomes=capability_outcomes,
             capability_outcome_errors=capability_outcome_errors,
+            capability_outcome_summary=capability_outcome_summary,
             completed_at=task.terminal_at or task.updated_at,
         )

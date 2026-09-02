@@ -96,6 +96,46 @@ class CapabilityOutcomeErrorFact(ExperienceModel):
     code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
 
 
+class CapabilityOutcomeSummary(ExperienceModel):
+    """Deterministic counts for reflection; never a task verdict."""
+
+    version: Literal["capability_fact_summary_v1"] = "capability_fact_summary_v1"
+    status_counts: dict[
+        Literal["succeeded", "failed", "cancelled", "stopped", "unknown"], int
+    ] = Field(default_factory=dict)
+    failure_owner_counts: dict[str, int] = Field(default_factory=dict)
+    evidence_availability_counts: dict[
+        Literal["complete", "partial", "none", "unknown"], int
+    ] = Field(default_factory=dict)
+    world_change_started_count: int = Field(default=0, ge=0)
+    outcome_unknown_count: int = Field(default=0, ge=0)
+    projection_error_count: int = Field(default=0, ge=0)
+    projection_error_codes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "CapabilityOutcomeSummary":
+        for values in (
+            self.status_counts,
+            self.failure_owner_counts,
+            self.evidence_availability_counts,
+        ):
+            if any(value < 0 for value in values.values()):
+                raise ValueError("capability summary counts must be non-negative")
+        if len(set(self.projection_error_codes)) != len(self.projection_error_codes):
+            raise ValueError("capability summary error codes must be unique")
+        if any(
+            not isinstance(code, str)
+            or not code
+            or not code[0].islower()
+            or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789_" for char in code)
+            for code in self.projection_error_codes
+        ):
+            raise ValueError("capability summary error codes must be bounded names")
+        if self.projection_error_count < len(self.projection_error_codes):
+            raise ValueError("projection error count cannot be below unique error codes")
+        return self
+
+
 class TaskOutcomeEnvelope(ExperienceModel):
     version: Literal["task_outcome_envelope_v1"] = "task_outcome_envelope_v1"
     task_id: str
@@ -115,6 +155,9 @@ class TaskOutcomeEnvelope(ExperienceModel):
     tool_invocation_refs: list[str] = Field(default_factory=list)
     capability_outcomes: list[CapabilityOutcomeFact] = Field(default_factory=list)
     capability_outcome_errors: list[CapabilityOutcomeErrorFact] = Field(default_factory=list)
+    capability_outcome_summary: CapabilityOutcomeSummary = Field(
+        default_factory=CapabilityOutcomeSummary
+    )
     completed_at: datetime = Field(default_factory=utc_now)
 
     @property
