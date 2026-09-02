@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.1] - 2026-09-02
+
+Verified the isolated `RoboTwin20` conda environment and checked out the official RoboTwin 2.0 source with
+its pinned `XPolicyLab` submodule under `/home/yanxu/robotwin20-runtime/RoboTwin`. Confirmed the official asset
+source is the Hugging Face dataset `TianxingChen/RoboTwin2.0`; only `embodiments.zip` was downloaded and verified.
+The large `background_texture.zip` and `objects.zip` archives remain for the user to download. No PAOS dependency,
+wheel content, ToolSpec, Hephaestus source, or tracked simulator asset was changed.
+
+已核对隔离 `RoboTwin20` conda 环境，并将官方 RoboTwin 2.0 源码及固定的 `XPolicyLab` 子模块 checkout 到
+`/home/yanxu/robotwin20-runtime/RoboTwin`。确认官方资产来源为 Hugging Face 数据集
+`TianxingChen/RoboTwin2.0`；本次仅下载并校验 `embodiments.zip`，大型 `background_texture.zip` 与
+`objects.zip` 留待用户自行下载。未修改 PAOS 依赖、wheel 内容、ToolSpec、Hephaestus 源码或已跟踪仿真资产。
+
+### Validation
+
+- `RoboTwin20` Python `3.10.21`; SAPIEN/Torch/TorchVision/OpenCV/Gymnasium/Open3D present.
+- `embodiments.zip`: `219859313` bytes, SHA-256 `6b87d7d55e106d8ff25917e0538eb1e177fc549280e8a742a8cec3cb9f953fc6`.
+- Official sizes: `background_texture.zip` `10970687027` bytes; `objects.zip` `3737778549` bytes.
+- `.codegraph/` and `.cursor/` remain untracked and were not staged.
+
 ## [v2.8.0] - 2026-09-02
 
 Implemented the first RoboTwin 2.0 adapter slice: an environment-owned lifecycle seam and sensor-only observation
