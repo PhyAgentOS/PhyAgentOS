@@ -9,6 +9,11 @@ from .adapter import (
     SensorArtifact,
     SensorCapture,
 )
+from .understanding import (
+    RoboTwinSceneUnderstandingProvider,
+    RoboTwinUnderstandingSnapshot,
+    SceneUnderstandingInference,
+)
 
 __all__ = [
     "AdapterConfigurationError",
@@ -18,4 +23,7 @@ __all__ = [
     "RoboTwinSensorBackend",
     "SensorArtifact",
     "SensorCapture",
+    "RoboTwinSceneUnderstandingProvider",
+    "RoboTwinUnderstandingSnapshot",
+    "SceneUnderstandingInference",
 ]

@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.6] - 2026-09-02
+
+Added the independent RoboTwin adapter seam for the existing provider-neutral
+`scene.understand` Query. `RoboTwinSceneUnderstandingProvider` accepts an
+injected inference service, forwards only `scene.observe` identity/artifact
+references, and rejects provider-specific fields. The generic endpoint now
+projects provider failures as explicit `understanding_provider_error` results.
+No detector/VLM/YOLO or simulator truth is included.
+
+按 v1.0 扩展原则，在现有 provider-neutral `scene.understand` Query 后增加独立 RoboTwin adapter seam。
+`RoboTwinSceneUnderstandingProvider` 只转发 `scene.observe` 身份与 artifact 引用，拒绝 provider 专有字段；
+通用 endpoint 将 provider 异常投影为明确的 `understanding_provider_error` 结果。不包含检测器、VLM、YOLO
+或仿真真值。
+
+### Validation
+
+- `248 passed in 2.65s` for adapter/workflow tests.
+- Ruff, compileall, and `git diff --check` passed.
+- No Action/Session/motion route or simulator/model import was added.
+
 ## [v2.8.5] - 2026-09-02
 
 Unified Fake Gateway and RoboTwin `scene.observe` results behind the existing

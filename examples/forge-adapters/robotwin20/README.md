@@ -82,6 +82,13 @@ freshness, and typed artifact references. Runtime warnings may be emitted by
 third-party renderers; the JSON object is the provider payload, not simulator
 truth.
 
+The next `scene.understand` seam is exposed as
+`RoboTwinSceneUnderstandingProvider`. It accepts an injected inference service
+and forwards only the observation identity plus artifact references. The
+adapter does not ship a detector/VLM and rejects provider-specific result
+fields; the generic `scene.understand` endpoint owns the public ToolSpec
+projection and fail-closed error semantics.
+
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
 `check_success`, segmentation APIs, actor/entity APIs, or any action route.

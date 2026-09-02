@@ -219,7 +219,14 @@ class SceneUnderstandingEndpoint:
                 "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
                 "calibration_ref": arguments["calibration_ref"],
             }
-        snapshot = self.provider.understand(arguments)
+        try:
+            snapshot = self.provider.understand(arguments)
+        except Exception:
+            return _error(
+                "understanding_provider_error",
+                "scene understanding provider failed",
+                observation_ref=observation_ref,
+            )
         if snapshot is None or not snapshot.provider_available:
             return _error("understanding_unavailable", "scene understanding provider is unavailable", observation_ref=observation_ref)
         snapshot_error = validate_snapshot(snapshot)
