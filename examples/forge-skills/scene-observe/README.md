@@ -37,6 +37,12 @@ retreat remain Gateway-internal. Its terminal summary adds typed
 `post_release_evidence` for downstream verification, without exposing
 coordinates, simulator parameters, or controller details.
 
+Long-horizon orchestration remains an AgentTask concern. The bundle exposes a
+replayable reducer for the fixed six-step pick-and-place sequence; it stores only
+step status and opaque references, delegates all execution to the existing
+ForgeToolClient/AgentTask path, and uses append-only revisions for recovery. It
+does not add a Gateway route, Session, cross-Tool lease, or motion authorization.
+
 ## Validation
 
 ```bash

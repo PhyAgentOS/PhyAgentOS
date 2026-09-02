@@ -89,3 +89,18 @@ typed artifact references and their availability. This evidence is required for
 verification of the released object's destination state; a successful Action is
 not by itself a user-level task verdict. Do not retry release blindly or infer
 placement from an unverified acquire result.
+
+For a long-horizon pick-and-place task, keep one AgentTask and one append-only
+workflow revision across the complete sequence:
+
+```text
+observe -> understand -> propose -> prepare -> acquire -> place
+```
+
+The workflow reducer is a replayable projection over existing Tool records. It
+accepts only terminal Tool results and opaque references, rejects skipped steps or
+cross-scene bindings, and exposes the next declared Tool without invoking a
+Gateway. `failed`, `cancelled`, and `unknown` stop automatic progression. Reconcile
+an unknown invocation by its existing ID; for a recoverable failure append a new
+PlanRevision on the same AgentTask and resume at the blocked step. Never create a
+second execution protocol or infer task success from a single Action summary.

@@ -1,5 +1,34 @@
 # Change Log
 
+## v0.7.0 (2026-09-02) - codex
+
+- [policy] [feat] [completed] Added a replayable long-horizon pick-and-place workflow
+  reducer over the existing Forge Tool API. It enforces the six-step order, preserves
+  opaque references and terminal state, blocks skipped/unknown/failed transitions, and
+  resumes only through an append-only revision without adding a Gateway route.
+- [policy] [feat] [完成] 新增基于现有 Forge Tool API 的可重放长程 pick-and-place workflow
+  reducer。它固定六阶段顺序，保存 opaque 引用与终态，阻断跳步/unknown/失败迁移，
+  仅通过追加 revision 恢复，不新增 Gateway 路由。
+
+### Verification
+
+- Added `src/scene_observe/long_horizon.py` and `tests/test_long_horizon.py`; exported
+  the reducer and workflow state types and updated the manifest, package version,
+  README, SKILL.md, and discovery version assertions.
+- The reducer delegates all execution to the existing AgentTask/ForgeToolClient path,
+  accepts only terminal statuses and opaque references, validates observation,
+  candidate-set, preparation, acquire, and place bindings, and serializes a redacted
+  projection with no coordinates or provider/simulator fields.
+- `pytest`: 169 passed; `ruff check`, `compileall`, and `git diff --check` passed before
+  this metadata-only version bump. PAOS core remains unchanged and no new motion route
+  or second execution protocol was introduced.
+
+### Git Commit
+
+- Commit: pending (bundle SHA-256 `f285ee78ee7dbf3374f3a1e86b025ad6860a4fb065ca4fc62f9542bda1eb0357`, 46,093 bytes)
+- Branch: `feature/long-horizon-workflow`
+- Time: 2026-09-02 (Asia/Shanghai)
+
 ## v0.6.0 (2026-09-01) - codex
 
 - [policy] [feat] [completed] Added the provider-neutral `object.place` bounded Action.

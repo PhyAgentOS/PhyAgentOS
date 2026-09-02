@@ -6,6 +6,15 @@ from .fake_gateway import (
     ObservationSnapshot,
     SceneObservationEndpoint,
 )
+from .long_horizon import (
+    WORKFLOW_ID,
+    WORKFLOW_VERSION,
+    LongHorizonWorkflow,
+    WorkflowBindingError,
+    WorkflowState,
+    WorkflowStep,
+    WorkflowTransitionError,
+)
 from .manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     ManipulationPreparationEndpoint,
@@ -58,4 +67,11 @@ __all__ = [
     "PlaceProvider",
     "PlaceRejection",
     "PlaceSnapshot",
+    "WORKFLOW_ID",
+    "WORKFLOW_VERSION",
+    "LongHorizonWorkflow",
+    "WorkflowBindingError",
+    "WorkflowState",
+    "WorkflowStep",
+    "WorkflowTransitionError",
 ]
