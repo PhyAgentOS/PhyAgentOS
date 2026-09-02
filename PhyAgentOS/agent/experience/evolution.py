@@ -12,6 +12,7 @@ import yaml
 from PhyAgentOS.agent.experience.attribution import (
     assess_evolution_attribution,
     validate_assessment_attribution,
+    validate_cluster_owner_scope,
 )
 from PhyAgentOS.agent.experience.contracts import (
     ExperienceAssessment,
@@ -334,6 +335,11 @@ class SkillEvolutionManager:
         validation: LessonAbstractionValidation,
     ) -> ScopedLesson:
         self.validate_cluster_draft(cluster, draft)
+        scope = validate_cluster_owner_scope(
+            cluster, self.store.list_observations(cluster.cluster_id)
+        )
+        if not scope.allowed:
+            raise SkillEvolutionError(scope.reason)
         if (
             not validation.reusable
             or validation.contains_specific_answer

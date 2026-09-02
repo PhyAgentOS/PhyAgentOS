@@ -13,6 +13,7 @@ from loguru import logger
 
 from PhyAgentOS.agent.experience.activation import SkillActivationManager
 from PhyAgentOS.agent.experience.analyzer import ExperienceAnalyzer
+from PhyAgentOS.agent.experience.attribution import validate_cluster_owner_scope
 from PhyAgentOS.agent.experience.contracts import (
     ScopedLesson,
     SkillActivation,
@@ -320,6 +321,16 @@ class ExperienceCoordinator:
                 return
             observations = self.store.list_observations(cluster_id)
             if len(cluster.supporting_root_task_ids) < self.evolution.min_lesson_episodes:
+                self.store.finish_cluster_job(cluster_id)
+                return
+            scope = validate_cluster_owner_scope(cluster, observations)
+            if not scope.allowed:
+                self.evolution.block_cluster(cluster, [scope.reason])
+                self.store.record_event_once(
+                    "lesson_cluster_attribution_blocked",
+                    cluster_id,
+                    scope.event_payload,
+                )
                 self.store.finish_cluster_job(cluster_id)
                 return
             draft = cluster.draft

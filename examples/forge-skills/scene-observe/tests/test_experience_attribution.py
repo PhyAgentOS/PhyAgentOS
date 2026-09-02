@@ -5,10 +5,12 @@ from PhyAgentOS.agent.experience.attribution import (
     assess_evolution_attribution,
     build_analyzer_attribution_context,
     validate_assessment_attribution,
+    validate_cluster_owner_scope,
 )
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeSummary,
     ExperienceAssessment,
+    FailureObservation,
     FailureObservationProposal,
     LessonCluster,
     LessonEligibility,
@@ -120,6 +122,59 @@ def test_new_observation_records_owner_scope_and_mismatched_cluster_is_rejected(
         assert str(exc) == "matched Lesson cluster has a different capability failure scope"
     else:
         raise AssertionError("owner-scope mismatch was accepted")
+
+
+def _observation(owner_scope):
+    return FailureObservation(
+        observation_id="observation-1",
+        episode_id="episode-1",
+        root_task_id="task-1",
+        workflow_key="pick-place",
+        cluster_id="cluster-1",
+        pattern_key="check-before-action",
+        pattern_summary="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        recovery_principle="recheck state",
+        capability_failure_owners=owner_scope,
+    )
+
+
+def test_cluster_owner_scope_allows_same_scope_and_rejects_mixed_scope():
+    cluster = LessonCluster(
+        cluster_id="cluster-1",
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        canonical_pattern="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+    )
+    allowed = validate_cluster_owner_scope(
+        cluster, [_observation(["planner"]), _observation(["planner"])]
+    )
+    assert allowed.allowed is True
+    assert allowed.event_payload["owner_scope"] == ["planner"]
+    rejected = validate_cluster_owner_scope(
+        cluster, [_observation(["planner"]), _observation(["execution"])]
+    )
+    assert rejected.allowed is False
+    assert rejected.reason == "lesson_cluster_capability_scope_conflict"
+
+
+def test_cluster_owner_scope_rejects_mixed_scoped_and_legacy_observations():
+    cluster = LessonCluster(
+        cluster_id="cluster-1",
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        canonical_pattern="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+    )
+    rejected = validate_cluster_owner_scope(
+        cluster, [_observation(["execution"]), _observation([])]
+    )
+    assert rejected.allowed is False
+    assert rejected.event_payload["unscoped_observation_count"] == 1
 
 
 def test_infrastructure_and_evidence_only_claims_must_use_bounded_lesson_reason():

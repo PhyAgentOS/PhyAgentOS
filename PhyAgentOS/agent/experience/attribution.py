@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeSummary,
     ExperienceAssessment,
+    FailureObservation,
+    LessonCluster,
     TaskEpisode,
 )
 
@@ -119,9 +121,38 @@ def validate_assessment_attribution(
     )
 
 
+def validate_cluster_owner_scope(
+    cluster: LessonCluster, observations: list[FailureObservation]
+) -> EvolutionAttributionDecision:
+    """Ensure capability owner scope is consistent before Lesson synthesis."""
+    scopes = [tuple(sorted(item.capability_failure_owners)) for item in observations]
+    non_empty = {scope for scope in scopes if scope}
+    mixed_empty = bool(non_empty) and any(not scope for scope in scopes)
+    if len(non_empty) > 1 or mixed_empty:
+        return EvolutionAttributionDecision(
+            False,
+            "lesson_cluster_capability_scope_conflict",
+            {
+                "reason": "lesson_cluster_capability_scope_conflict",
+                "cluster_id": cluster.cluster_id,
+                "owner_scopes": [list(scope) for scope in sorted(non_empty)],
+                "unscoped_observation_count": sum(not scope for scope in scopes),
+            },
+        )
+    return EvolutionAttributionDecision(
+        True,
+        "ready",
+        {
+            "owner_scope": list(next(iter(non_empty))) if non_empty else [],
+            "observation_count": len(observations),
+        },
+    )
+
+
 __all__ = [
     "EvolutionAttributionDecision",
     "assess_evolution_attribution",
     "build_analyzer_attribution_context",
     "validate_assessment_attribution",
+    "validate_cluster_owner_scope",
 ]
