@@ -412,6 +412,7 @@ class SkillCandidate(ExperienceModel):
     version: Literal["skill_candidate_v1"] = "skill_candidate_v1"
     candidate_id: str
     proposal: SkillWorkflowProposal
+    capability_failure_owners: list[str] = Field(default_factory=list)
     supporting_episode_ids: list[str] = Field(default_factory=list)
     status: Literal[
         "collecting", "blocked", "promoted", "rejected"

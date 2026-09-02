@@ -474,14 +474,19 @@ class SkillEvolutionManager:
         self._bind_matching_unbound_lessons(
             proposal.skill_name, proposal.workflow_key
         )
+        capability_scope = sorted(
+            episode.outcome.capability_outcome_summary.failure_owner_counts
+        )
+        scope_key = ",".join(capability_scope) or "legacy"
         base = hashlib.sha256(
-            f"{proposal.skill_name}\n{proposal.workflow_key}".encode("utf-8")
+            f"{proposal.skill_name}\n{proposal.workflow_key}\n{scope_key}".encode("utf-8")
         ).hexdigest()[:20]
         related = [
             item
             for item in self.store.list_candidates()
             if item.proposal.skill_name == proposal.skill_name
             and item.proposal.workflow_key == proposal.workflow_key
+            and sorted(item.capability_failure_owners) == capability_scope
         ]
         collecting = next(
             (item for item in related if item.status in {"collecting", "blocked"}), None
@@ -491,11 +496,13 @@ class SkillEvolutionManager:
             collecting = SkillCandidate(
                 candidate_id=f"candidate_{base}_r{revision}",
                 proposal=proposal,
+                capability_failure_owners=capability_scope,
                 supporting_episode_ids=[episode.episode_id],
                 target_revision=revision,
             )
         else:
             collecting.proposal = proposal
+            collecting.capability_failure_owners = capability_scope
             collecting.supporting_episode_ids = list(
                 dict.fromkeys(collecting.supporting_episode_ids + [episode.episode_id])
             )

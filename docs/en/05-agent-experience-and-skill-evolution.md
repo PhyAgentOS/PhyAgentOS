@@ -83,6 +83,10 @@ Active Lesson counterexamples use the same scope. A successful episode counts to
 when its owner scope exactly matches the Lesson (or both are legacy-unscoped); mismatches record a
 bounded diagnostic and leave counterexample support and cluster status unchanged.
 
+Skill candidates use the same bounded scope partition. Support episodes with different owner scopes
+are stored in independent candidates and never share promotion counts; legacy-unscoped episodes only
+share support with other legacy-unscoped episodes.
+
 The outcome policy is:
 
 | Outcome | Experience behavior |

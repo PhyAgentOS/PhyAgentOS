@@ -16,6 +16,7 @@ from PhyAgentOS.agent.experience.contracts import (
     LessonCluster,
     LessonEligibility,
     ScopedLesson,
+    SkillWorkflowProposal,
     TaskEpisode,
     TaskOutcomeEnvelope,
 )
@@ -227,6 +228,53 @@ def test_counterexample_scope_mismatch_does_not_retire_lesson():
     assert lesson.counterexample_episode_ids == []
     assert lesson.status == "active"
     assert events[0][0] == "lesson_counterexample_scope_blocked"
+
+
+def test_skill_candidate_support_is_partitioned_by_capability_owner_scope():
+    candidates = []
+
+    class Store:
+        def list_candidates(self):
+            return list(candidates)
+
+        def list_lessons(self, *, status):
+            return []
+
+        def upsert_candidate(self, candidate):
+            existing = next(
+                (item for item in candidates if item.candidate_id == candidate.candidate_id),
+                None,
+            )
+            if existing is None:
+                candidates.append(candidate)
+            else:
+                candidates[candidates.index(existing)] = candidate
+            return candidate
+
+    manager = SkillEvolutionManager(workspace=".", store=Store())
+    manager._bind_matching_unbound_lessons = lambda *args: None
+    proposal = SkillWorkflowProposal(
+        operation="update",
+        skill_name="scene-observe",
+        workflow_key="pick-place",
+        description="bounded workflow",
+        steps=["observe"],
+        verification_checkpoints=["verify"],
+        applicability_boundaries=["known scene"],
+    )
+    planner_episode = _episode(
+        CapabilityOutcomeSummary(failure_owner_counts={"planner": 1})
+    )
+    execution_episode = _episode(
+        CapabilityOutcomeSummary(failure_owner_counts={"execution": 1})
+    )
+    first = manager._support_candidate(planner_episode, proposal, [])
+    second = manager._support_candidate(execution_episode, proposal, [])
+    assert first.candidate_id != second.candidate_id
+    assert first.supporting_episode_ids == ["episode-1"]
+    assert second.supporting_episode_ids == ["episode-1"]
+    assert first.capability_failure_owners == ["planner"]
+    assert second.capability_failure_owners == ["execution"]
 
 
 def test_infrastructure_and_evidence_only_claims_must_use_bounded_lesson_reason():

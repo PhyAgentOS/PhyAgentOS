@@ -82,6 +82,9 @@ Active Lesson 的 counterexample 使用相同作用域。成功 episode 只有�
 完全一致（或双方都是 legacy 空 scope）时才计入退休门槛；不一致时只记录有界诊断，不增加
 counterexample 支持，也不改变 cluster 状态。
 
+Skill candidate 使用相同的有界作用域分桶。不同 owner scope 的支持 episode 会保存到独立
+candidate，不能共享 promotion 计数；legacy 空 scope 只能与其他 legacy 空 scope 合并。
+
 Outcome 策略：
 
 | 结果 | 经验行为 |
