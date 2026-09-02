@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 TOOL_ID = "scene.understand"
 ENDPOINT_ID = "scene_understanding"
@@ -22,7 +22,7 @@ _RELATION_REF = re.compile(r"^relation://[^/]+$")
 
 
 class SceneUnderstandingProvider(Protocol):
-    def understand(self, request: dict[str, Any]) -> "UnderstandingSnapshot | None": ...
+    def understand(self, request: dict[str, Any]) -> "UnderstandingSnapshot | Mapping[str, Any] | None": ...
 
 
 @dataclass(frozen=True)
@@ -131,7 +131,56 @@ def _finite_confidence(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 1
 
 
-def validate_snapshot(snapshot: UnderstandingSnapshot) -> str | None:
+def normalize_snapshot(snapshot: Any) -> UnderstandingSnapshot | None:
+    if isinstance(snapshot, UnderstandingSnapshot):
+        return snapshot
+    if not isinstance(snapshot, Mapping):
+        return None
+    allowed = {"entities", "relations", "spatial_envelopes", "ambiguities", "provider_available"}
+    if set(snapshot) - allowed:
+        return None
+    values = {
+        key: snapshot.get(key, ())
+        for key in ("entities", "relations", "spatial_envelopes", "ambiguities")
+    }
+    if any(
+        not isinstance(value, (list, tuple))
+        or any(not isinstance(item, Mapping) for item in value)
+        for value in values.values()
+    ):
+        return None
+    provider_available = snapshot.get("provider_available", True)
+    if not isinstance(provider_available, bool):
+        return None
+    return UnderstandingSnapshot(
+        entities=tuple(dict(item) for item in values["entities"]),
+        relations=tuple(dict(item) for item in values["relations"]),
+        spatial_envelopes=tuple(dict(item) for item in values["spatial_envelopes"]),
+        ambiguities=tuple(dict(item) for item in values["ambiguities"]),
+        provider_available=provider_available,
+    )
+
+
+def _provenance_is_bound(value: Any, allowed_artifacts: set[str] | None) -> bool:
+    if not isinstance(value, list):
+        return False
+    return all(
+        isinstance(ref, str)
+        and _ARTIFACT_REF.fullmatch(ref) is not None
+        and (allowed_artifacts is None or ref in allowed_artifacts)
+        for ref in value
+    )
+
+
+def validate_snapshot(
+    snapshot: UnderstandingSnapshot | Mapping[str, Any],
+    *,
+    artifact_refs: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> str | None:
+    snapshot = normalize_snapshot(snapshot)
+    if snapshot is None:
+        return "invalid_snapshot"
+    allowed_artifacts = set(artifact_refs) if artifact_refs is not None else None
     for entity in snapshot.entities:
         if (
             not isinstance(entity, dict)
@@ -141,8 +190,7 @@ def validate_snapshot(snapshot: UnderstandingSnapshot) -> str | None:
             or not isinstance(entity.get("category"), str)
             or not entity["category"].strip()
             or not _finite_confidence(entity.get("confidence"))
-            or not isinstance(entity.get("provenance"), list)
-            or any(not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in entity["provenance"])
+            or not _provenance_is_bound(entity.get("provenance"), allowed_artifacts)
         ):
             return "invalid_entity_claim"
     entity_refs = {item.get("entity_ref") for item in snapshot.entities if isinstance(item, dict)}
@@ -157,8 +205,7 @@ def validate_snapshot(snapshot: UnderstandingSnapshot) -> str | None:
             or not isinstance(relation.get("predicate"), str)
             or not relation["predicate"].strip()
             or not _finite_confidence(relation.get("confidence"))
-            or not isinstance(relation.get("provenance"), list)
-            or any(not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in relation["provenance"])
+            or not _provenance_is_bound(relation.get("provenance"), allowed_artifacts)
         ):
             return "invalid_relation"
     for envelope in snapshot.spatial_envelopes:
@@ -175,8 +222,7 @@ def validate_snapshot(snapshot: UnderstandingSnapshot) -> str | None:
             or any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) for value in envelope["min_xyz_m"] + envelope["max_xyz_m"])
             or any(low > high for low, high in zip(envelope["min_xyz_m"], envelope["max_xyz_m"], strict=True))
             or not _finite_confidence(envelope.get("confidence"))
-            or not isinstance(envelope.get("provenance"), list)
-            or any(not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in envelope["provenance"])
+            or not _provenance_is_bound(envelope.get("provenance"), allowed_artifacts)
         ):
             return "invalid_spatial_envelope"
     for ambiguity in snapshot.ambiguities:
@@ -215,9 +261,10 @@ class SceneUnderstandingEndpoint:
             snapshot = self.provider.understand(arguments)
         except Exception:
             return _error("understanding_provider_error", "scene understanding provider failed", observation_ref=observation_ref)
-        if snapshot is None or not snapshot.provider_available:
+        normalized = normalize_snapshot(snapshot)
+        if normalized is None or not normalized.provider_available:
             return _error("understanding_unavailable", "scene understanding provider is unavailable", observation_ref=observation_ref)
-        snapshot_error = validate_snapshot(snapshot)
+        snapshot_error = validate_snapshot(normalized, artifact_refs=arguments["artifacts"])
         if snapshot_error:
             return _error(snapshot_error, "understanding provider result failed contract validation", observation_ref=observation_ref)
         return {
@@ -225,14 +272,15 @@ class SceneUnderstandingEndpoint:
             "scene_revision": arguments["scene_revision"],
             "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
             "calibration_ref": arguments["calibration_ref"],
-            "entities": [dict(item) for item in snapshot.entities],
-            "relations": [dict(item) for item in snapshot.relations],
-            "spatial_envelopes": [dict(item) for item in snapshot.spatial_envelopes],
-            "ambiguities": [dict(item) for item in snapshot.ambiguities],
+            "entities": [dict(item) for item in normalized.entities],
+            "relations": [dict(item) for item in normalized.relations],
+            "spatial_envelopes": [dict(item) for item in normalized.spatial_envelopes],
+            "ambiguities": [dict(item) for item in normalized.ambiguities],
         }
 
 
 __all__ = [
     "ENDPOINT_ID", "OPERATION", "SceneUnderstandingEndpoint", "SceneUnderstandingProvider",
-    "TOOL_ID", "TOOL_SPEC", "UnderstandingSnapshot", "validate_arguments", "validate_snapshot",
+    "TOOL_ID", "TOOL_SPEC", "UnderstandingSnapshot", "normalize_snapshot", "validate_arguments",
+    "validate_snapshot",
 ]

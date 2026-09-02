@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping, Protocol
 
-from PhyAgentOS.forge.capability_runtime.understanding import UnderstandingSnapshot
-
 
 class SceneUnderstandingInference(Protocol):
     """Injected model/service seam; implementation remains outside PAOS."""
@@ -19,9 +17,10 @@ class SceneUnderstandingInference(Protocol):
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None: ...
 
 
-# Compatibility name for callers that imported the adapter's former snapshot;
-# the public provider-neutral type is owned by PAOS generic runtime.
-RoboTwinUnderstandingSnapshot = UnderstandingSnapshot
+# Compatibility marker for callers that imported the former adapter snapshot.
+# The provider now returns a plain mapping so the Python 3.10 runtime remains
+# independent of the PAOS interpreter; PAOS normalizes it at the Gateway edge.
+RoboTwinUnderstandingSnapshot = dict
 
 
 class RoboTwinSceneUnderstandingProvider:
@@ -52,7 +51,7 @@ class RoboTwinSceneUnderstandingProvider:
             raise TypeError("scene understanding inference must expose infer(request) or be callable")
         self.inference = inference
 
-    def understand(self, request: Mapping[str, Any]) -> UnderstandingSnapshot | None:
+    def understand(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         if not isinstance(request, Mapping):
             return None
         projected = {key: request[key] for key in self._REQUEST_KEYS if key in request}
@@ -68,15 +67,15 @@ class RoboTwinSceneUnderstandingProvider:
                 "scene understanding inference returned provider-specific fields: "
                 + ", ".join(sorted(unknown))
             )
-        return UnderstandingSnapshot(
-            entities=_tuple_of_mappings(raw.get("entities", ()), "entities"),
-            relations=_tuple_of_mappings(raw.get("relations", ()), "relations"),
-            spatial_envelopes=_tuple_of_mappings(
+        return {
+            "entities": _tuple_of_mappings(raw.get("entities", ()), "entities"),
+            "relations": _tuple_of_mappings(raw.get("relations", ()), "relations"),
+            "spatial_envelopes": _tuple_of_mappings(
                 raw.get("spatial_envelopes", ()), "spatial_envelopes"
             ),
-            ambiguities=_tuple_of_mappings(raw.get("ambiguities", ()), "ambiguities"),
-            provider_available=raw.get("provider_available", True),
-        )
+            "ambiguities": _tuple_of_mappings(raw.get("ambiguities", ()), "ambiguities"),
+            "provider_available": raw.get("provider_available", True),
+        }
 
 
 def _tuple_of_mappings(value: Any, field_name: str) -> tuple[dict[str, Any], ...]:

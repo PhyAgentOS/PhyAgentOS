@@ -5,6 +5,9 @@ description = "PAOS EnvironmentAdapter seam for RoboTwin20 sensor-backed observa
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+openai = ["openai>=1.0,<4"]
+
 [project.scripts]
 robotwin20-preflight = "robotwin20_adapter.preflight:main"
 

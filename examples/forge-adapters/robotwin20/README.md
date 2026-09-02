@@ -89,6 +89,25 @@ adapter does not ship a detector/VLM and rejects provider-specific result
 fields; the generic `scene.understand` endpoint owns the public ToolSpec
 projection and fail-closed error semantics.
 
+For a real GPT-backed inference deployment, install the optional provider
+dependency in the adapter/provider environment only:
+
+```bash
+python -m pip install -e 'examples/forge-adapters/robotwin20[openai]'
+export HEPHAESTUS_RELAY_API_KEY='(set outside the repository)'
+```
+
+Construct `OpenAIResponsesSceneUnderstandingInference` with an injected
+artifact resolver and wrap it with `RoboTwinSceneUnderstandingProvider`. The
+default configuration follows the existing Hephaestus relay format
+(`gpt-5.6-sol`, Responses API, `https://api.shuaiapi.com/v1`) but is owned by
+this adapter and can be overridden through `OpenAIResponsesConfig`. The API
+key is read at invocation time and is never persisted or sent through PAOS.
+The provider emits only `entities`, `relations`, `spatial_envelopes`, and
+`ambiguities`; PAOS performs the final contract validation, including binding
+each claim's provenance to an artifact in the requested observation, and
+projects the result through the same Gateway endpoint used by the Fake path.
+
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
 `check_success`, segmentation APIs, actor/entity APIs, or any action route.

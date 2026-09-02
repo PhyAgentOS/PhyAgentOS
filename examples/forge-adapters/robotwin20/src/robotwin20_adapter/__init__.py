@@ -9,6 +9,14 @@ from .adapter import (
     SensorArtifact,
     SensorCapture,
 )
+from .openai_scene_understanding import (
+    SCENE_UNDERSTANDING_JSON_SCHEMA,
+    ArtifactPayload,
+    ArtifactResolver,
+    OpenAIResponsesConfig,
+    OpenAIResponsesInferenceError,
+    OpenAIResponsesSceneUnderstandingInference,
+)
 from .understanding import (
     RoboTwinSceneUnderstandingProvider,
     RoboTwinUnderstandingSnapshot,
@@ -26,4 +34,10 @@ __all__ = [
     "RoboTwinSceneUnderstandingProvider",
     "RoboTwinUnderstandingSnapshot",
     "SceneUnderstandingInference",
+    "ArtifactPayload",
+    "ArtifactResolver",
+    "OpenAIResponsesConfig",
+    "OpenAIResponsesInferenceError",
+    "OpenAIResponsesSceneUnderstandingInference",
+    "SCENE_UNDERSTANDING_JSON_SCHEMA",
 ]

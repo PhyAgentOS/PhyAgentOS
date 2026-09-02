@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 
 import pytest
-from PhyAgentOS.forge.capability_runtime.understanding import UnderstandingSnapshot
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
 
@@ -94,10 +93,33 @@ async def test_provider_specific_fields_fail_closed_through_tool_api():
     assert result["error"]["code"] == "understanding_provider_error"
 
 
+@pytest.mark.asyncio
+async def test_claim_provenance_must_bind_to_requested_observation_artifacts():
+    class UnboundInference:
+        def infer(self, request):
+            return {
+                "entities": [
+                    {
+                        "entity_ref": "entity://red_block",
+                        "category": "block",
+                        "confidence": 0.94,
+                        "provenance": ["artifact://different-observation/rgb"],
+                    }
+                ],
+                "relations": [],
+                "spatial_envelopes": [],
+                "ambiguities": [],
+            }
+
+    result = await invoke(RoboTwinSceneUnderstandingProvider(UnboundInference()))
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_entity_claim"
+
+
 def test_paos_import_boundary_remains_clean():
-    forbidden = {"robotwin", "sapien", "torch", "ultralytics", "dora"}
+    forbidden = {"robotwin", "sapien", "torch", "ultralytics", "dora", "openai"}
     assert not any(name.split(".", 1)[0].lower() in forbidden for name in sys.modules)
 
 
-def test_adapter_reuses_paos_snapshot_type():
-    assert RoboTwinUnderstandingSnapshot is UnderstandingSnapshot
+def test_adapter_returns_runtime_independent_mapping_type():
+    assert RoboTwinUnderstandingSnapshot is dict

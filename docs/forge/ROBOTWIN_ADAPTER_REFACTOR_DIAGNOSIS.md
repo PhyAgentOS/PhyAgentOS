@@ -265,8 +265,13 @@ robotwin_grasp_propose
 - v1.0 所要求的独立 generic capability runtime 基础实现：ToolEndpoint 注册、发现/context、Query 分发、
   bounded Action invocation bookkeeping 和 provider-port 协议；该实现不依赖仿真器、YOLO、机器人 SDK、Dora
   或硬件，且不执行物理运动；
-- 当前没有 YOLO/Ultralytics 检测器、真实相机感知、抓取模型或机器人执行器接入；`grasp.propose` 仍是
-  provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成；
+- 当前没有 YOLO/Ultralytics 检测器、抓取模型或机器人执行器接入；`grasp.propose` 仍是
+  provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成。真实场景理解的
+  adapter-side GPT Responses provider 已按 clean-room 方式实现：它只读取外部 observation artifact，
+  输出闭合的 entities/relations/spatial_envelopes/ambiguities schema，并由 PAOS Gateway 做最终校验；
+  provider 默认沿用 Hephaestus 已验证的 `gpt-5.6-sol`、Responses API 和 relay base URL，但不导入
+  Hephaestus。当前环境未提供 `HEPHAESTUS_RELAY_API_KEY`，因此尚未取得真实模型返回，只能证明 fake
+  client、provider seam 和 fail-closed 缺凭据路径通过；
 - 独立 `examples/forge-adapters/robotwin20` adapter/runtime：环境 reset/snapshot seam、注入式
   `RoboTwinSensorBackend`、camera/depth/state artifact 校验、`RoboTwinObservationProvider` 和
   provider-neutral `scene.observe` snapshot；外部 RoboTwin20 Python 3.10 runtime 已完成一次无动作
@@ -282,14 +287,15 @@ robotwin_grasp_propose
   provider conformance 已完成，但尚未启动生产 HTTP Gateway）；
 - 真实 Gateway/ToolEndpoint HTTP server；
 - RoboTwin 对应 Dora flow、locked Node 和 profile；
-- `scene.understand`、`grasp.propose`、`manipulation.prepare`、`object.acquire`、`object.place` 的真实
-  provider 接入与六能力 PAOS 端到端验证。
+- `scene.understand` provider 的真实凭据调用、`grasp.propose`、`manipulation.prepare`、`object.acquire`、
+  `object.place` 的真实 provider 接入与六能力 PAOS 端到端验证。
 
 因此不能声称“六个 RoboTwin Skill 已接入”，也不能把 RoboTwin 的 ground truth 称为真实感知。准确表述是：
 
-> PAOS 公共能力契约、`pick-place-workflow` 编排、generic capability runtime 基础和 RoboTwin
-> `scene.observe` runtime/provider conformance 已完成；Hephaestus 的真实能力只能作为 clean-room
-> 重构的需求/行为参考；Gateway HTTP/Dora wiring 以及其余五项能力仍需按本文顺序独立实现。
+> PAOS 公共能力契约、`pick-place-workflow` 编排、generic capability runtime 基础、RoboTwin
+> `scene.observe` runtime/provider conformance，以及 adapter-side `scene.understand` GPT provider
+> 已完成；Hephaestus 的真实能力只作为 clean-room 重构的需求/行为参考。当前尚缺真实凭据调用、Gateway
+> HTTP/Dora wiring 以及其余五项能力，必须继续按本文顺序独立实现。
 
 ## 12. English summary
 
