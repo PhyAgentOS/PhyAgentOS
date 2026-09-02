@@ -6,6 +6,7 @@ from PhyAgentOS.agent.experience.attribution import (
     build_analyzer_attribution_context,
     validate_assessment_attribution,
     validate_cluster_owner_scope,
+    validate_counterexample_scope,
 )
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeErrorFact,
@@ -55,4 +56,5 @@ __all__ = [
     "build_analyzer_attribution_context",
     "validate_assessment_attribution",
     "validate_cluster_owner_scope",
+    "validate_counterexample_scope",
 ]
