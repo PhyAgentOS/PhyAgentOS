@@ -2,6 +2,24 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v0.9.0] - 2026-09-02
+
+Capability outcome facts now flow from verified AgentTask execution records into the experience
+and Skill-evolution input without changing task verdict authority or Forge execution boundaries.
+
+### Added
+
+- Added versioned `CapabilityOutcomeFact` and bounded `CapabilityOutcomeErrorFact` records to
+  `TaskOutcomeEnvelope`.
+- Added AgentTask outcome-source projection with provider-private Tool ID filtering and tests for
+  redaction, unknown/failed states, malformed summaries, and diagnostic errors.
+
+### Changed
+
+- Experience analysis now receives only provider-neutral phase/status/owner/world-change/evidence
+  facts. Artifact URIs and failure codes remain excluded, and facts/errors cannot authorize
+  verdicts, learnability, or Skill/Lesson promotion.
+
 ## [v0.8.0] - 2026-09-02
 
 Added a generic verification-layer projection for versioned Forge capability outcomes. The
