@@ -2,6 +2,18 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.5.1] - 2026-09-02
+
+Backfilled the v2.5.0 verification-context commit and root index record.
+
+### Changed
+
+- Recorded commit `d6f6a74` and synchronized the bilingual monthly log with the root index.
+
+### Security
+
+- Documentation-only change; no runtime, Gateway, simulator, hardware, or motion path changed.
+
 ## [v2.5.0] - 2026-09-02
 
 Added bound AgentTask verification-context integration coverage.
