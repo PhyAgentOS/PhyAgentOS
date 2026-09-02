@@ -2,6 +2,17 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.2.0] - 2026-09-02
+
+Lesson clusters now retain a bounded capability failure-owner scope. Cross-episode observations
+with different explicit root-cause owners cannot merge into one reusable Lesson pattern.
+
+### Changed
+
+- Added owner-scope persistence to `FailureObservation` and `LessonCluster`.
+- Cluster matching rejects mismatched non-empty capability owner scopes while preserving the
+  existing Skill/workflow scope and unique root-task support rules.
+
 ## [v0.9.0] - 2026-09-02
 
 Capability outcome facts now flow from verified AgentTask execution records into the experience
