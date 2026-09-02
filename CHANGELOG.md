@@ -2,6 +2,18 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.5.3] - 2026-09-02
+
+Added a reusable v1.0 feature-reference-card method for planning and reviewing PAOS extensions.
+
+### Added
+
+- Added `docs/forge/FEATURE_REFERENCE_CARDS.md`, linking normative documentation, selected extension points, ownership, failure semantics, implementation modules, tests, and PR traceability.
+
+### Security
+
+- Documentation-only change; no Gateway, Runtime, simulator, hardware, or motion path changed.
+
 ## [v2.5.1] - 2026-09-02
 
 Backfilled the v2.5.0 verification-context commit and root index record.
