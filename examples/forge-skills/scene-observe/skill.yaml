@@ -19,5 +19,5 @@ profiles:
     required_environment: []
     environment: {}
 artifacts:
-  resolver: registry
+  resolver: local
   nodes: {}

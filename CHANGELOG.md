@@ -2,6 +2,22 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.7.0] - 2026-09-02
+
+Added manifest-v2 Bundle installation and healthy Runtime discovery coverage for the
+provider-neutral scene-observe Skill.
+
+### Added
+
+- Added isolated archive install/reload tests through `SkillInstaller` and `SkillCatalog`.
+- Added fail-closed discovery tests for a single running runtime with all Tool contexts ready and
+  for non-ready runtime states.
+
+### Changed
+
+- Marked the no-binary fake profile as `artifacts.resolver: local`; registry resolution remains
+  reserved for Bundles with explicit Node locks.
+
 ## [v1.6.0] - 2026-09-02
 
 Added a full no-motion AgentTask workflow integration fixture for the provider-neutral
