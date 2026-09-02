@@ -2,6 +2,20 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.1.0] - 2026-09-02
+
+Added activation-to-AgentTask immutable binding integration coverage for the scene-observe Skill.
+
+### Added
+
+- Added tests connecting `SkillActivationManager`, `ForgeSkillBindingResolver`, and
+  `AgentTaskCoordinator` through one primary Skill activation and frozen binding.
+- Added fail-closed coverage for Runtime identity drift before governed Query access.
+
+### Security
+
+- The integration performs no Action, Session, Dora, hardware, or motion execution.
+
 ## [v2.0.0] - 2026-09-02
 
 Added immutable Forge Skill binding coverage for the provider-neutral scene-observe Bundle.
