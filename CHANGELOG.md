@@ -2,6 +2,22 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.8.0] - 2026-09-02
+
+Added HTTP health-contract coverage for the RuntimeManager's Gateway and required Tool context
+checks.
+
+### Added
+
+- Added a localhost-only HTTP fixture exercising real `RuntimeManager.status()` `/tools` and
+  required `/context` reads.
+- Added fail-closed verification that a missing or unavailable Tool context persists Runtime state
+  as `failed` and prevents active-runtime publication.
+
+### Security
+
+- The test starts no Dora flow, hardware process, simulator, or motion route.
+
 ## [v1.7.0] - 2026-09-02
 
 Added manifest-v2 Bundle installation and healthy Runtime discovery coverage for the
