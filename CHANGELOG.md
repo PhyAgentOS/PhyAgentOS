@@ -2,6 +2,18 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.3.0] - 2026-09-02
+
+Lesson activation now validates cross-episode capability failure-owner scope. Same-owner
+observations may aggregate, while different-owner or scoped/legacy mixtures remain blocked before
+synthesis and activation.
+
+### Changed
+
+- Added bounded owner-scope validation to LessonCluster synthesis and direct activation paths.
+- Added idempotent `lesson_cluster_attribution_blocked` diagnostics without changing task verdicts,
+  Tool API behavior, or Skill promotion thresholds.
+
 ## [v1.2.0] - 2026-09-02
 
 Lesson clusters now retain a bounded capability failure-owner scope. Cross-episode observations
