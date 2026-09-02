@@ -1,7 +1,16 @@
-from PhyAgentOS.agent.experience.attribution import assess_evolution_attribution
+from types import SimpleNamespace
+
+from PhyAgentOS.agent.experience.analyzer import ModelExperienceAnalyzer
+from PhyAgentOS.agent.experience.attribution import (
+    assess_evolution_attribution,
+    build_analyzer_attribution_context,
+    validate_assessment_attribution,
+)
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeSummary,
     ExperienceAssessment,
+    FailureObservationProposal,
+    LessonEligibility,
     TaskEpisode,
     TaskOutcomeEnvelope,
 )
@@ -56,6 +65,61 @@ def test_projection_errors_take_precedence_over_unsettled_status():
     assert decision.reason == "capability_projection_error"
 
 
+def test_attribution_context_maps_owner_classes_without_authorizing_success():
+    summary = CapabilityOutcomeSummary(
+        status_counts={"failed": 1},
+        failure_owner_counts={"planner": 1},
+        evidence_availability_counts={"partial": 1},
+    )
+    context = build_analyzer_attribution_context(_episode(summary))
+    assert context["requires_semantic_attribution_owners"] == ["planner"]
+    assert context["required_lesson_reason"] is None
+    assert context["task_success_authorized"] is False
+
+
+def test_infrastructure_and_evidence_only_claims_must_use_bounded_lesson_reason():
+    related = FailureObservationProposal(
+        eligibility=LessonEligibility(
+            decision="related",
+            reason="workflow_related",
+            confidence=0.9,
+            rationale="workflow issue",
+        ),
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        pattern_summary="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        recovery_principle="recheck state",
+    )
+    infrastructure = _episode(
+        CapabilityOutcomeSummary(
+            status_counts={"failed": 1},
+            failure_owner_counts={"infrastructure": 1},
+        )
+    )
+    assessment = ExperienceAssessment(
+        outcome="failure",
+        reusable=False,
+        confidence=0.5,
+        rationale="failure",
+        failure_observations=[related],
+    )
+    decision = validate_assessment_attribution(infrastructure, assessment)
+    assert decision.allowed is False
+    assert decision.reason == "external_or_infrastructure_misattributed"
+
+    evidence_only = _episode(
+        CapabilityOutcomeSummary(
+            status_counts={"failed": 1},
+            evidence_availability_counts={"unknown": 1},
+        )
+    )
+    decision = validate_assessment_attribution(evidence_only, assessment)
+    assert decision.allowed is False
+    assert decision.reason == "evidence_limit_misattributed"
+
+
 def test_evolution_manager_blocks_writes_and_records_event():
     events = []
     seen = set()
@@ -85,3 +149,30 @@ def test_evolution_manager_blocks_writes_and_records_event():
     assert len(events) == 1
     assert events[0][0] == "capability_attribution_blocked"
     assert events[0][2]["status_counts"] == {"stopped": 1}
+
+
+async def test_analyzer_receives_attribution_context_as_untrusted_input():
+    captured = {}
+
+    class Provider:
+        async def chat_with_retry(self, **kwargs):
+            captured["messages"] = kwargs["messages"]
+            return SimpleNamespace(
+                finish_reason="stop",
+                content=(
+                    '{"version":"experience_assessment_v1","outcome":"ignored",'
+                    '"reusable":false,"confidence":0.1,"rationale":"diagnostic",'
+                    '"skill_candidate":null,"failure_observations":[],'
+                    '"contradicted_lesson_ids":[],"conflicts":[]}'
+                ),
+            )
+
+    summary = CapabilityOutcomeSummary(
+        status_counts={"failed": 1},
+        failure_owner_counts={"planner": 1},
+    )
+    await ModelExperienceAnalyzer(provider=Provider(), model="test").assess(
+        _episode(summary), candidates=[], lessons=[], clusters=[], skill_catalog=[]
+    )
+    assert "capability_attribution_context" in captured["messages"][1]["content"]
+    assert "task_success_authorized" in captured["messages"][1]["content"]

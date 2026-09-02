@@ -9,7 +9,10 @@ from typing import Iterable
 
 import yaml
 
-from PhyAgentOS.agent.experience.attribution import assess_evolution_attribution
+from PhyAgentOS.agent.experience.attribution import (
+    assess_evolution_attribution,
+    validate_assessment_attribution,
+)
 from PhyAgentOS.agent.experience.contracts import (
     ExperienceAssessment,
     FailureObservation,
@@ -90,6 +93,14 @@ class SkillEvolutionManager:
                 "capability_attribution_blocked",
                 episode.episode_id,
                 attribution.event_payload,
+            )
+            return set()
+        consistency = validate_assessment_attribution(episode, assessment)
+        if not consistency.allowed:
+            self.store.record_event_once(
+                "capability_attribution_rejected",
+                episode.episode_id,
+                consistency.event_payload,
             )
             return set()
         touched_skills: set[str] = set()

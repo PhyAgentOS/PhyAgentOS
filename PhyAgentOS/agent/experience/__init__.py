@@ -3,6 +3,8 @@
 from PhyAgentOS.agent.experience.attribution import (
     EvolutionAttributionDecision,
     assess_evolution_attribution,
+    build_analyzer_attribution_context,
+    validate_assessment_attribution,
 )
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeErrorFact,
@@ -49,4 +51,6 @@ __all__ = [
     "WorkflowTraceItem",
     "EvolutionAttributionDecision",
     "assess_evolution_attribution",
+    "build_analyzer_attribution_context",
+    "validate_assessment_attribution",
 ]

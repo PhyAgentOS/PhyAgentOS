@@ -11,6 +11,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - base runtime installs this dependency
     json_repair = None
 
+from PhyAgentOS.agent.experience.attribution import build_analyzer_attribution_context
 from PhyAgentOS.agent.experience.contracts import (
     ExperienceAssessment,
     FailureObservation,
@@ -125,6 +126,7 @@ class ModelExperienceAnalyzer:
     ) -> ExperienceAssessment:
         payload = {
             "episode": episode.model_dump(mode="json"),
+            "capability_attribution_context": build_analyzer_attribution_context(episode),
             "active_candidates": [item.model_dump(mode="json") for item in candidates[:20]],
             "active_lessons": [item.model_dump(mode="json") for item in lessons[:40]],
             "lesson_clusters": [item.model_dump(mode="json") for item in clusters[:40]],
