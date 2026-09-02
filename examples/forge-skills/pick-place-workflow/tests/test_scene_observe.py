@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 
-from scene_observe.fake_gateway import (
+from pick_place_workflow.fake_gateway import (
     TOOL_SPEC,
     FakeGatewayTransport,
     ObservationSnapshot,

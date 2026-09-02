@@ -1,8 +1,8 @@
 import pytest
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 
-from scene_observe.fake_gateway import FakeGatewayTransport
-from scene_observe.understanding import (
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.understanding import (
     SceneUnderstandingEndpoint,
     UnderstandingSnapshot,
 )

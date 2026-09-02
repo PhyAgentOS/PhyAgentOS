@@ -10,12 +10,12 @@ from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError, AgentTas
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
-from scene_observe.fake_gateway import FakeGatewayTransport, ObservationSnapshot
-from scene_observe.grasp_proposal import GraspProposalSnapshot
-from scene_observe.manipulation_prepare import PreparationSnapshot
-from scene_observe.object_acquire import AcquireSnapshot
-from scene_observe.object_place import PlaceSnapshot
-from scene_observe.understanding import UnderstandingSnapshot
+from pick_place_workflow.fake_gateway import FakeGatewayTransport, ObservationSnapshot
+from pick_place_workflow.grasp_proposal import GraspProposalSnapshot
+from pick_place_workflow.manipulation_prepare import PreparationSnapshot
+from pick_place_workflow.object_acquire import AcquireSnapshot
+from pick_place_workflow.object_place import PlaceSnapshot
+from pick_place_workflow.understanding import UnderstandingSnapshot
 
 NOW = datetime(2026, 9, 1, 0, 0, 0, 500000, tzinfo=timezone.utc)
 OBSERVATION_REF = "observation://scene-7/camera_front"

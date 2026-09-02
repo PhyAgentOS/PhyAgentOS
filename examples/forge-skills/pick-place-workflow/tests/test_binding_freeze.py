@@ -11,10 +11,10 @@ from PhyAgentOS.forge.binding import (
 from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, ActiveSkillRuntime
 from PhyAgentOS.skill_runtime.manifest import load_manifest
 
-from scene_observe.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
-SKILL_NAME = "scene-observe"
+SKILL_NAME = "pick-place-workflow"
 TOOL_IDS = (
     "scene.observe",
     "scene.understand",

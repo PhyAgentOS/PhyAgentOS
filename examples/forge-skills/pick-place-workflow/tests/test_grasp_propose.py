@@ -5,8 +5,8 @@ import pytest
 import yaml
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 
-from scene_observe.fake_gateway import FakeGatewayTransport
-from scene_observe.grasp_proposal import (
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.grasp_proposal import (
     GRASP_TOOL_ID,
     GRASP_TOOL_SPEC,
     GraspProposalEndpoint,

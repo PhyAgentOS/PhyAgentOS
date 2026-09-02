@@ -73,7 +73,7 @@ class ActiveTaskStore:
 def _setup(tmp_path, *, failing=()):
     shared_url = "http://127.0.0.1:19020"
     manifests = {
-        "scene-observe": Manifest("scene-observe", "0.7.0", shared_url),
+        "pick-place-workflow": Manifest("pick-place-workflow", "0.7.0", shared_url),
         "scene-alternate": Manifest("scene-alternate", "0.1.0", shared_url),
     }
     catalog = Catalog(*manifests.values())
@@ -100,39 +100,39 @@ def test_switch_is_blocked_while_an_agent_task_is_nonterminal(tmp_path):
     )
 
     with pytest.raises(RuntimeError, match="AgentTask is non-terminal"):
-        controller.switch("scene-observe", "fake")
+        controller.switch("pick-place-workflow", "fake")
     assert registry.current() is None
     assert manager.started == []
 
 
 def test_failed_target_restores_previous_runtime_and_keeps_registry(tmp_path):
     controller, registry, manager = _setup(tmp_path, failing={"scene-alternate"})
-    selected = controller.switch("scene-observe", "fake")
+    selected = controller.switch("pick-place-workflow", "fake")
 
     with pytest.raises(RuntimeError, match="failed to start scene-alternate"):
         controller.switch("scene-alternate", "fake")
 
     restored = registry.current()
     assert restored is not None
-    assert restored.skill_name == selected.skill_name == "scene-observe"
+    assert restored.skill_name == selected.skill_name == "pick-place-workflow"
     assert manager.started == [
-        ("scene-observe", "fake"),
+        ("pick-place-workflow", "fake"),
         ("scene-alternate", "fake"),
-        ("scene-observe", "fake"),
+        ("pick-place-workflow", "fake"),
     ]
-    assert manager.stopped[0] == ("scene-observe", False)
+    assert manager.stopped[0] == ("pick-place-workflow", False)
 
 
 def test_healthy_target_replaces_active_registry_atomically(tmp_path):
     controller, registry, manager = _setup(tmp_path)
-    first = controller.switch("scene-observe", "fake")
+    first = controller.switch("pick-place-workflow", "fake")
     second = controller.switch("scene-alternate", "fake")
 
     assert second is registry.current()
     assert second.skill_name == "scene-alternate"
     assert first is not second
     assert manager.started == [
-        ("scene-observe", "fake"),
+        ("pick-place-workflow", "fake"),
         ("scene-alternate", "fake"),
     ]
-    assert manager.stopped[-1] == ("scene-observe", False)
+    assert manager.stopped[-1] == ("pick-place-workflow", False)

@@ -100,10 +100,14 @@
 | 证据、验证、恢复 | Developer Manual §7–8；Forge Contract §8–9 | generic verification/evidence |
 | Episode、Lesson、Skill 晋升 | Evolution §1–10；Developer Manual §11 | ExperienceCoordinator |
 
-公共 Agent 代码只能看到 provider-neutral Tool API。Skill 只承载通用 ToolSpec 和工作流说明；RoboTwin 2.0
+公共 Agent 代码只能看到 provider-neutral Tool API。`pick-place-workflow` 是一个完整的六 Tool 工作流 Skill，
+不是只做观察的 Skill，也不是六个独立 Skill。Skill 只承载通用 ToolSpec 和工作流说明；RoboTwin 2.0
 不是 PAOS 内部 provider，也不是能力名称的一部分。RoboTwin task、SAPIEN、embodiment、benchmark 和
 厂商 SDK 参数由 Gateway/ToolEndpoint adapter 持有，Dora 负责运行时编排；Skill Bundle 只冻结 profile、
-锁定 Node 制品及其启动 wiring，不把仿真器语义写入公共 ToolSpec 或 Skill 名称。
+锁定 Node 制品及其启动 wiring，不把仿真器语义写入公共 ToolSpec 或 Skill 名称。RoboTwin 的 actor/entity
+列表、segmentation、object metadata、精确 pose 和 `check_success()` 只能作为仿真内部辅助、对照或验收
+事实，不能冒充真实物理世界的 observation/understanding；真实部署必须接入相机、深度、力/触觉等传感器
+以及独立 perception provider，并保留 provenance、时间戳、frame 和 calibration。
 
 ## 5. 推荐实施顺序
 

@@ -24,20 +24,26 @@ Gateway Session/Policy route。
 ### RoboTwin 2.0 的边界与执行顺序
 
 RoboTwin 2.0 是独立的仿真/benchmark runtime，位于物理执行链末端，不是 PAOS provider，也不定义
-Skill 的业务语义。PAOS Skill 只发布 provider-neutral ToolSpec 与工作流；RoboTwin task、SAPIEN、
+Skill 的业务语义。PAOS v1.0 仍采用独立 generic capability runtime；`pick-place-workflow` 是一个
+完整的六 Tool workflow Skill，只发布 provider-neutral ToolSpec 与工作流。RoboTwin task、SAPIEN、
 embodiment、benchmark 以及厂商 SDK 参数由 Gateway/ToolEndpoint adapter 持有。Dora profile 和
-锁定 Node artifact 只负责把该 runtime 接入已治理的 Tool API。
+锁定 Node artifact 只负责把该 runtime 接入已治理的 Tool API。仿真 actor/entity、segmentation、
+object metadata 和内部 pose 只能作为仿真对照事实，不能冒充真实物理世界的感知；真实部署必须接入
+传感器和独立 perception provider。
 
 接入顺序固定为：
 
 1. 先定义不包含仿真器字段的通用 ToolSpec（`query|action|session`、严格 schema、frame/unit、readiness）；
 2. 用 Fake Gateway 验证 `/tools`、context、binding、路由和错误语义；
-3. 在独立 RoboTwin 2.0 环境实现 Gateway/ToolEndpoint adapter，并在 adapter/profile 内配置
-   RoboTwin task、SAPIEN、embodiment 和 benchmark；
-4. 通过 manifest-v2 Skill Bundle 提供锁定 Node 与 Dora profile wiring，使用 Skill Runtime 启动；
-5. Runtime 等待 Dora flow、Gateway `/tools` 以及全部 `required_tools` context ready 后，才做仿真验收；
-6. Agent 始终通过 `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator` 调用，
-   不得创建 `robotwin2-scene-observe` 这类把能力名与仿真器绑定的 Skill，也不得直连 SDK、Dora 或 simulator。
+3. 在不连接任何仿真器的独立 generic capability runtime 中实现通用 ToolEndpoint 生命周期、provider
+   port、结果投影和失败语义；
+4. 在独立 RoboTwin 2.0 环境实现 `EnvironmentAdapter` 与 provider ports，由 generic runtime/Gateway
+   调用，并在 adapter/profile 内配置 RoboTwin task、SAPIEN、embodiment 和 benchmark；actor/entity、
+   segmentation、object metadata 和内部 pose 只能用于仿真对照，不能代替真实传感器 observation 或 perception；
+5. 通过 manifest-v2 Skill Bundle 提供锁定 Node 与 Dora profile wiring，使用 Skill Runtime 启动；
+6. Runtime 等待 Dora flow、Gateway `/tools` 以及全部 `required_tools` context ready 后，才做仿真验收；
+7. Agent 始终通过 `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator` 调用，
+   不得创建 `robotwin2-pick-place-workflow` 这类把能力名与仿真器绑定的 Skill，也不得直连 SDK、Dora 或 simulator。
 
 ## 2. 定义 ToolSpec
 

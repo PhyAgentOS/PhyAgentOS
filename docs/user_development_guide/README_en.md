@@ -24,21 +24,28 @@ Session/Policy routes outside the governed Tool API.
 ### RoboTwin 2.0 boundary and execution order
 
 RoboTwin 2.0 is an independent simulation/benchmark runtime at the end of the physical execution
-plane. It is not a PAOS provider and it does not define Skill business semantics. A PAOS Skill publishes
-only provider-neutral ToolSpecs and workflow guidance. The Gateway/ToolEndpoint adapter owns RoboTwin
-tasks, SAPIEN, embodiment, benchmark, and vendor-SDK parameters. Dora profiles and locked Node artifacts
-only wire that runtime into the governed Tool API.
+plane. It is not a PAOS provider and it does not define Skill business semantics. PAOS v1.0 still uses an
+independent generic capability runtime. The single `pick-place-workflow` Skill describes the complete six-Tool
+workflow and publishes only provider-neutral ToolSpecs and workflow guidance. The Gateway/ToolEndpoint adapter
+owns RoboTwin tasks, SAPIEN, embodiment, benchmark, and vendor-SDK parameters. Dora profiles and locked Node
+artifacts only wire that runtime into the governed Tool API. Simulation actor/entity truth, segmentation, object
+metadata, and internal poses are comparison facts only; real deployment must use sensor artifacts and an
+independent perception provider.
 
 Use this order:
 
 1. Define a simulator-neutral ToolSpec (`query|action|session`, strict schemas, frame/unit, and readiness).
 2. Use the Fake Gateway to verify `/tools`, contexts, binding, routes, and error semantics.
-3. In the independent RoboTwin 2.0 environment, implement the Gateway/ToolEndpoint adapter and keep
-   RoboTwin task, SAPIEN, embodiment, and benchmark configuration inside the adapter/profile.
-4. Provide locked Nodes and Dora-profile wiring through a manifest-v2 Skill Bundle and start it with Skill Runtime.
-5. Wait for the Dora flow, Gateway `/tools`, and every `required_tools` context to become ready before simulation acceptance.
-6. Keep Agent calls on `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator`.
-   Do not create a simulator-bound Skill such as `robotwin2-scene-observe`, or connect directly to an SDK,
+3. In an independent generic capability runtime with no simulator dependency, implement the generic
+   ToolEndpoint lifecycle, provider ports, result projection, and failure semantics.
+4. In the independent RoboTwin 2.0 environment, implement an `EnvironmentAdapter` and provider ports
+   consumed by the generic runtime/Gateway, and keep RoboTwin task, SAPIEN, embodiment, and benchmark
+   configuration inside the adapter/profile. Actor/entity truth, segmentation, object metadata, and internal
+   poses are simulation comparison facts only; they must not replace sensor observations or real perception providers.
+5. Provide locked Nodes and Dora-profile wiring through a manifest-v2 Skill Bundle and start it with Skill Runtime.
+6. Wait for the Dora flow, Gateway `/tools`, and every `required_tools` context to become ready before simulation acceptance.
+7. Keep Agent calls on `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator`.
+   Do not create a simulator-bound Skill such as `robotwin2-pick-place-workflow`, or connect directly to an SDK,
    Dora, or simulator.
 
 ## 2. Define a ToolSpec

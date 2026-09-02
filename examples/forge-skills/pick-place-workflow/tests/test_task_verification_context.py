@@ -20,9 +20,9 @@ from PhyAgentOS.verification.contracts import (
 )
 from PhyAgentOS.verification.request_builder import VerificationRequestBuilder
 
-from scene_observe.fake_gateway import FakeGatewayTransport
-from scene_observe.fake_gateway import ObservationSnapshot as GatewaySnapshot
-from scene_observe.object_acquire import AcquireSnapshot
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.fake_gateway import ObservationSnapshot as GatewaySnapshot
+from pick_place_workflow.object_acquire import AcquireSnapshot
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 9, 2, tzinfo=timezone.utc)
@@ -127,7 +127,7 @@ def _write_empty_capture(coordinator, task_id, phase, *, before_ref=None):
 
 
 async def _setup(tmp_path, verifier):
-    workspace_skill = tmp_path / "skills" / "scene-observe"
+    workspace_skill = tmp_path / "skills" / "pick-place-workflow"
     shutil.copytree(BUNDLE_ROOT, workspace_skill)
     manifest = load_manifest(workspace_skill / "skill.yaml")
     provider = Provider()
@@ -142,7 +142,7 @@ async def _setup(tmp_path, verifier):
     )
     client = ForgeToolClient("http://fake", transport=transport)
     runtime = ActiveSkillRuntime(
-        skill_name="scene-observe",
+        skill_name="pick-place-workflow",
         skill_version=manifest.version,
         profile="fake",
         runtime_instance_id="runtime-verification-context",
@@ -177,14 +177,14 @@ async def test_bound_execution_facts_reach_generic_verifier_without_authorizing_
             workspace=tmp_path,
             analyzer=object(),
             binding_resolver=resolver,
-            runtime_availability_provider=lambda name: name == "scene-observe",
+            runtime_availability_provider=lambda name: name == "pick-place-workflow",
         )
         coordinator.set_experience(experience)
         coordinator.set_activation_manager(experience.activation)
         session = "verification-context-session"
         experience.begin_turn(session, "acquire one bounded object")
         activation, _content, _lessons = await experience.activation.activate(
-            session_key=session, name="scene-observe", role="primary"
+            session_key=session, name="pick-place-workflow", role="primary"
         )
         task = await coordinator.create_task(
             task_description="acquire one bounded object",

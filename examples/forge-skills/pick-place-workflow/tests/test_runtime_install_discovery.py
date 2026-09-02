@@ -33,7 +33,7 @@ def _package_bundle(tmp_path: Path) -> Path:
         "--force",
     ]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
-    archive = output / "scene-observe-0.7.0.tar.gz"
+    archive = output / "pick-place-workflow-0.7.0.tar.gz"
     assert archive.is_file(), completed.stdout
     return archive
 
@@ -44,14 +44,14 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
     installer = SkillInstaller(tmp_path / "skills", state_store=state_store)
 
     manifest = installer.install(archive)
-    reloaded = SkillCatalog(tmp_path / "skills").get("scene-observe")
+    reloaded = SkillCatalog(tmp_path / "skills").get("pick-place-workflow")
 
     assert manifest == reloaded
-    assert manifest.name == "scene-observe"
+    assert manifest.name == "pick-place-workflow"
     assert manifest.manifest_version == 2
     assert set(manifest.required_tools) == EXPECTED_TOOLS
     assert manifest.profiles["fake"].dataflow.as_posix() == "profiles/fake/dataflow.yaml"
-    assert (tmp_path / "skills" / "scene-observe" / "SKILL.md").is_file()
+    assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
 
 
 class HealthyRuntimeManager:
@@ -75,12 +75,12 @@ def test_discovery_publishes_only_one_healthy_installed_runtime(tmp_path):
     state_store = RuntimeStateStore(tmp_path / "run")
     SkillInstaller(tmp_path / "skills", state_store=state_store).install(archive)
     catalog = SkillCatalog(tmp_path / "skills")
-    manifest = catalog.get("scene-observe")
+    manifest = catalog.get("pick-place-workflow")
     state = RuntimeState(
         skill_name=manifest.name,
         profile="fake",
         status="running",
-        flow_name="paos-scene-observe-fake",
+        flow_name="paos-pick-place-workflow-fake",
         gateway_url=manifest.gateway_url,
         gateway_identity="gateway_fake_fixture",
     )
@@ -94,11 +94,11 @@ def test_discovery_publishes_only_one_healthy_installed_runtime(tmp_path):
     )
 
     assert active is not None
-    assert active.skill_name == "scene-observe"
+    assert active.skill_name == "pick-place-workflow"
     assert active.skill_version == "0.7.0"
     assert active.profile == "fake"
     assert active.gateway_identity == "gateway_fake_fixture"
-    assert manager.calls == ["scene-observe"]
+    assert manager.calls == ["pick-place-workflow"]
 
 
 def test_discovery_fail_closed_for_non_ready_runtime(tmp_path):
@@ -106,12 +106,12 @@ def test_discovery_fail_closed_for_non_ready_runtime(tmp_path):
     state_store = RuntimeStateStore(tmp_path / "run")
     SkillInstaller(tmp_path / "skills", state_store=state_store).install(archive)
     catalog = SkillCatalog(tmp_path / "skills")
-    manifest = catalog.get("scene-observe")
+    manifest = catalog.get("pick-place-workflow")
     state = RuntimeState(
         skill_name=manifest.name,
         profile="fake",
         status="starting",
-        flow_name="paos-scene-observe-fake",
+        flow_name="paos-pick-place-workflow-fake",
         gateway_url=manifest.gateway_url,
     )
     state_store.save(state)
@@ -172,7 +172,7 @@ def test_runtime_manager_status_reads_http_health_and_fails_closed_on_missing_co
         state_store = RuntimeStateStore(tmp_path / "run")
         SkillInstaller(tmp_path / "skills", state_store=state_store).install(archive)
         catalog = SkillCatalog(tmp_path / "skills")
-        manifest = catalog.get("scene-observe")
+        manifest = catalog.get("pick-place-workflow")
         object.__setattr__(manifest, "gateway_url", f"http://127.0.0.1:{server.server_port}")
 
         class LocalCatalog:
@@ -184,7 +184,7 @@ def test_runtime_manager_status_reads_http_health_and_fails_closed_on_missing_co
             skill_name=manifest.name,
             profile="fake",
             status="running",
-            flow_name="paos-scene-observe-fake",
+            flow_name="paos-pick-place-workflow-fake",
             gateway_url=manifest.gateway_url,
         )
         state_store.save(state)

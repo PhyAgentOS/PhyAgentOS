@@ -13,7 +13,7 @@ from PhyAgentOS.verification.contracts import (
     VerificationVerdict,
 )
 
-from scene_observe.fake_gateway import FakeGatewayTransport, ObservationSnapshot
+from pick_place_workflow.fake_gateway import FakeGatewayTransport, ObservationSnapshot
 
 
 class Provider:

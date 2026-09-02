@@ -202,8 +202,10 @@ attempt。Outcome source 将每个 revision verdict 映射到该 revision
 2. 实现或打包 ToolEndpoint operation，并在 Gateway 定义 `max_concurrency`；
 3. 使用 Fake Gateway 测试 binding 漂移、context、路由、invoke、pending、terminal、cancel/stop、
    ownership 与 unknown；
-4. 如需仿真器，在独立 runtime 实现 Gateway/ToolEndpoint adapter，并将 RoboTwin/SAPIEN 的 task、
-   embodiment 与 benchmark 设置保留在 adapter/profile 内；
+4. 如需仿真器，在独立 runtime 实现 `EnvironmentAdapter` 与 provider ports，供通用
+   Gateway/ToolEndpoint 调用，并将 RoboTwin/SAPIEN 的 task、embodiment 与 benchmark 设置保留在
+   adapter/profile 内；仿真 actor/entity 真值、segmentation、metadata 和内部 pose 只能作为对照事实，
+   不能代替真实传感器 observation 或真实 perception provider；
 5. 在 manifest v2 Bundle 中加入锁定 Node 与 Dora profile 引用，由 RuntimeManager 启动 flow，等待
    `/tools` 及全部 required Tool context；
 6. 在 Skill 中加入 provider-neutral 工作流指导，不写入仿真器名称、任务特定坐标、provider payload

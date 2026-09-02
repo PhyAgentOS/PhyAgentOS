@@ -22,8 +22,14 @@ ForgeToolClient
   → robot/simulator
 ```
 
-这样同一组 ToolSpec、Skill workflow、AgentTask、verification 和 experience 可以跨 RoboTwin、ManiSkill、
+这样同一组 ToolSpec、`pick-place-workflow` Skill workflow、AgentTask、verification 和 experience 可以跨 RoboTwin、ManiSkill、
 回放或其他环境复用。
+
+这里的“复用”不意味着把仿真器的内部真值当成感知结果。RoboTwin/SAPIEN 的 actor/entity 列表、
+segmentation、object metadata、精确 pose 和 `check_success()` 都是仿真内部事实，只能用于仿真调试、
+对照或验收证据；它们不能填充面向真实物理世界的 observation/understanding 输出，也不能授予动作准入。
+真实世界的观察必须来自相机、深度、力/触觉或其他明确声明的传感器，场景理解必须由独立的 perception
+provider 从这些观测 artifacts 推断，并保留传感器 provenance、时间戳、frame 和 calibration。
 
 ## 2. 规范依据
 
@@ -43,11 +49,11 @@ ForgeToolClient
 
 | 概念 | 责任方 | 不应承担的职责 |
 |---|---|---|
-| Skill | PAOS SkillsLoader/Skill Runtime | 不包含 RoboTwin task、SAPIEN API 或控制器代码 |
+| Skill (`pick-place-workflow`) | PAOS SkillsLoader/Skill Runtime | 只描述六步通用工作流；不包含 RoboTwin task、SAPIEN API、仿真真值或控制器代码 |
 | ToolSpec | PAOS/Forge contract | 不暴露 provider、embodiment 或 benchmark 字段 |
 | Generic ToolEndpoint | capability runtime/Gateway | 不直接解析某个仿真器对象 |
 | Provider Port | capability runtime | 不拥有 HTTP、AgentTask 或 Skill 生命周期 |
-| EnvironmentAdapter | 独立环境 runtime | 不改变公共 ToolSpec 或 PAOS task/verdict |
+| EnvironmentAdapter | 独立环境 runtime | 只管理环境生命周期和 Port 实现；不得把仿真真值伪装成真实感知或改变公共 ToolSpec/PAOS task/verdict |
 | Gateway | 执行面 | 不定义用户级任务成功 |
 | AgentTask | PAOS | 不直接执行机器人或仿真器 |
 | Verification | PAOS | 不把 simulator `check_success()` 单独当作用户级 verdict |
@@ -132,7 +138,9 @@ environment_adapters/
 ```
 
 RoboTwin task、SAPIEN scene、embodiment、benchmark、camera 名称和内部句柄都留在
-`environment_adapters/robotwin20` 及其 profile。
+`environment_adapters/robotwin20` 及其 profile。adapter 可以读取这些事实来驱动仿真和产生
+对照证据，但公共 `scene.observe`/`scene.understand` 必须经过真实传感器/感知 Port；不得直接把
+actor/entity、segmentation 或 object metadata 当作现实感知结果。
 
 ## 6. 六个能力的重构 seam
 
@@ -169,7 +177,7 @@ Hephaestus 代码不作为新 runtime 的依赖，也不直接复制到 PAOS。�
 
 ## 8. Skill 和 profile 设计
 
-推荐继续使用 provider-neutral workflow Skill，内部声明六个 ToolSpec：
+推荐使用名为 `pick-place-workflow` 的 provider-neutral workflow Skill，内部声明六个 ToolSpec：
 
 ```yaml
 required_tools:
@@ -181,19 +189,19 @@ required_tools:
   - object.place
 ```
 
-环境通过 profile 选择：
+环境通过 profile 选择，Skill 名称不随环境变化：
 
 ```text
-scene-observe + profile=robotwin20
-scene-observe + profile=maniskill
-scene-observe + profile=replay
+pick-place-workflow + profile=robotwin20
+pick-place-workflow + profile=maniskill
+pick-place-workflow + profile=replay
 ```
 
 禁止使用以下模式：
 
 ```text
-robotwin2-scene-observe
-maniskill-scene-observe
+robotwin2-pick-place-workflow
+maniskill-pick-place-workflow
 robotwin_grasp_propose
 ```
 
@@ -209,9 +217,9 @@ robotwin_grasp_propose
 4. **定义 EnvironmentAdapter Port**：只包含 reset/seed/snapshot、observation、scene state 和经过验证的
    execution seam，不泄漏 PAOS task 或 provider payload。
 5. **实现 RoboTwin20 adapter**：在独立 `RoboTwin20` 环境中接入 task、SAPIEN、camera 和 embodiment；不修改
-   PAOS ToolSpec。
-6. **先打通 `scene.observe`**：只做 Query，验证真实 RoboTwin observation、frame、calibration、freshness
-   和 artifact。
+   PAOS ToolSpec。仿真 actor/entity、segmentation、object metadata 和内部 pose 只作为仿真辅助/对照事实。
+6. **先打通真实传感器 observation**：`scene.observe` 只做 Query，验证 camera/depth/state 传感器输出、frame、
+   calibration、freshness 和 artifact；不得用仿真 ground truth 代替传感器观测。
 7. **依次接入 understand、propose、prepare**：每个能力先 adapter 单测，再真实 Gateway conformance。
 8. **最后接入 acquire/place**：沿用标准 Action invocation/status/result/cancel，内部 phase 不暴露给 Agent。
 9. **添加 Dora profile 和 locked Node**：Bundle 只冻结 wiring、profile、Node artifact 和 digest。
@@ -230,9 +238,10 @@ robotwin_grasp_propose
 
 ### 环境 gate
 
+- `pick-place-workflow` Skill 名称与 ToolSpec 保持环境无关；RoboTwin 通过 profile 选择；
 - RoboTwin task 可以在 `RoboTwin20` 环境启动；
 - 需要的 assets 已完整；
-- observation source 能读取真实 RGB/depth/state；
+- observation source 能读取真实 RGB/depth/state 传感器输出；仿真真值仅作为独立对照，不进入公共感知结果；
 - frame、calibration、scene revision 可确定；
 - adapter 不向 PAOS 暴露 RoboTwin 私有字段；
 - acquire/place 只有显式 Action admission 后才能执行。
@@ -251,7 +260,9 @@ robotwin_grasp_propose
 当前 PAOS 仓库已经具备：
 
 - 六个 provider-neutral ToolSpec；
+- 一个职责明确的 `pick-place-workflow` Skill，用于编排六个 Tool，而不是把六个能力误称为六个 Skill；
 - Fake Gateway 和 no-motion conformance；
+- v1.0 所要求的独立 generic capability runtime 分层设计（当前仍是设计目标，尚未有生产实现）；
 - Skill Runtime、Bundle、binding、AgentTask、verification 和 experience 基础；
 - 已修正 RoboTwin 不应绑定 Skill 的文档边界。
 
@@ -263,16 +274,19 @@ robotwin_grasp_propose
 - RoboTwin 对应 Dora flow、locked Node 和 profile；
 - 六个真实能力的 PAOS 端到端验证。
 
-因此不能声称“六个 RoboTwin Skill 已接入”。准确表述是：
+因此不能声称“六个 RoboTwin Skill 已接入”，也不能把 RoboTwin 的 ground truth 称为真实感知。准确表述是：
 
-> PAOS 公共能力契约和验证骨架已完成；Hephaestus 的真实能力只能作为重构需求参考；新的、环境可替换的
-> capability runtime 和 RoboTwin adapter 仍需按本文顺序独立实现。
+> PAOS 公共能力契约、`pick-place-workflow` 编排和验证骨架已完成；Hephaestus 的真实能力只能作为
+> clean-room 重构的需求/行为参考；新的、环境可替换的 capability runtime、真实传感器感知 Port
+> 和 RoboTwin adapter 仍需按本文顺序独立实现。
 
 ## 12. English summary
 
 The migration must be a clean reimplementation of the capability boundary, not a code copy from Hephaestus.
-Keep six stable provider-neutral ToolSpecs in PAOS. Implement generic ToolEndpoint semantics against abstract
-provider ports, and place RoboTwin 2.0, SAPIEN, task, embodiment, benchmark, and simulator details in a separate
-environment adapter selected by profile. The same Skill and ToolSpecs must remain usable with RoboTwin, ManiSkill,
-replay, or future hardware profiles. The first real slice is `scene.observe` as a read-only Query; acquire and
-place remain the final bounded Actions after the generic runtime and adapter contracts pass conformance gates.
+Keep six stable provider-neutral ToolSpecs under one clearly named `pick-place-workflow` Skill. PAOS v1.0
+still requires an independent generic capability runtime: implement generic ToolEndpoint semantics against
+abstract provider ports, and place RoboTwin 2.0, SAPIEN, task, embodiment, benchmark, and simulator details in
+a separate environment adapter selected by profile. Simulation actor/entity truth, segmentation, metadata, and
+`check_success()` are comparison/acceptance facts, not real-world perception. Real deployment must use sensor
+artifacts and replaceable perception providers. The same Skill and ToolSpecs must remain usable with RoboTwin,
+ManiSkill, replay, or future hardware profiles.

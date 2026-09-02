@@ -1,5 +1,5 @@
 [project]
-name = "paos-perception-manipulation"
+name = "paos-pick-place-workflow"
 version = "0.7.0"
 description = "Provider-neutral Forge capability contracts and no-motion conformance fixtures."
 requires-python = ">=3.11"

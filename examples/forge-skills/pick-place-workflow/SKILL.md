@@ -1,10 +1,17 @@
 ---
-name: scene-observe
-description: Read a fresh, calibrated scene observation without causing a physical effect.
-metadata: {"PhyAgentOS":{"always":false,"requires":{"runtime":["scene-observe"]}}}
+name: pick-place-workflow
+description: Execute a provider-neutral pick-and-place workflow through governed observation, grasp, preparation, acquire, and place Tools.
+metadata: {"PhyAgentOS":{"always":false,"requires":{"runtime":["pick-place-workflow"]}}}
 ---
 
-# Scene Observe
+# Pick and Place Workflow
+
+This Skill describes one complete provider-neutral pick-and-place workflow. It is
+not a scene-observation-only Skill: `scene.observe` and `scene.understand` are the
+perception steps, `grasp.propose` and `manipulation.prepare` are non-mutating
+planning/readiness steps, and `object.acquire` plus `object.place` are bounded
+physical-effect Actions. The Skill does not implement any provider, simulator,
+camera driver, robot SDK, or task-specific success rule.
 
 Use `scene.observe` only to obtain measured observation artifacts. Before invocation,
 read the ToolSpec and live context through `forge_tool_context`; use only the declared

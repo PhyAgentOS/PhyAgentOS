@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scene_observe.long_horizon import (
+from pick_place_workflow.long_horizon import (
     WORKFLOW_ID,
     WORKFLOW_VERSION,
     LongHorizonWorkflow,

@@ -13,9 +13,9 @@ from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, ActiveSk
 from PhyAgentOS.skill_runtime.manifest import load_manifest
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
-from scene_observe.fake_gateway import FakeGatewayTransport, ObservationSnapshot
-from scene_observe.object_acquire import AcquireSnapshot
-from scene_observe.object_place import PlaceSnapshot
+from pick_place_workflow.fake_gateway import FakeGatewayTransport, ObservationSnapshot
+from pick_place_workflow.object_acquire import AcquireSnapshot
+from pick_place_workflow.object_place import PlaceSnapshot
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 9, 1, tzinfo=timezone.utc)
@@ -60,7 +60,7 @@ class Catalog:
 
 
 async def _setup(tmp_path):
-    workspace_skill = tmp_path / "skills" / "scene-observe"
+    workspace_skill = tmp_path / "skills" / "pick-place-workflow"
     shutil.copytree(BUNDLE_ROOT, workspace_skill)
     manifest = replace(load_manifest(BUNDLE_ROOT / "skill.yaml"), gateway_url="http://fake")
     provider = Provider()
@@ -74,7 +74,7 @@ async def _setup(tmp_path):
     )
     client = ForgeToolClient("http://fake", transport=transport)
     runtime = ActiveSkillRuntime(
-        skill_name="scene-observe",
+        skill_name="pick-place-workflow",
         skill_version=manifest.version,
         profile="fake",
         runtime_instance_id="runtime-records",
@@ -91,7 +91,7 @@ async def _setup(tmp_path):
         workspace=tmp_path,
         analyzer=Analyzer(),
         binding_resolver=resolver,
-        runtime_availability_provider=lambda name: name == "scene-observe",
+        runtime_availability_provider=lambda name: name == "pick-place-workflow",
     )
     coordinator = AgentTaskCoordinator(
         workspace=tmp_path,
@@ -116,7 +116,7 @@ async def test_bound_query_and_action_records_retain_binding_and_revision_identi
         session = "session-records"
         experience.begin_turn(session, "capture and acquire an object")
         activation, _content, _lessons = await experience.activation.activate(
-            session_key=session, name="scene-observe", role="primary"
+            session_key=session, name="pick-place-workflow", role="primary"
         )
         task = await coordinator.create_task(
             task_description="capture and acquire an object",

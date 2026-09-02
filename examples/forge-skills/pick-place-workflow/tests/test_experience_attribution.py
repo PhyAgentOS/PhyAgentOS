@@ -255,7 +255,7 @@ def test_skill_candidate_support_is_partitioned_by_capability_owner_scope():
     manager._bind_matching_unbound_lessons = lambda *args: None
     proposal = SkillWorkflowProposal(
         operation="update",
-        skill_name="scene-observe",
+        skill_name="pick-place-workflow",
         workflow_key="pick-place",
         description="bounded workflow",
         steps=["observe"],

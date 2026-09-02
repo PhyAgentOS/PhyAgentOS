@@ -1,10 +1,14 @@
-# Scene Observe Forge Skill
+# Pick and Place Workflow Forge Skill
 
 This directory is an independently installable Forge Skill source bundle for the
 provider-neutral `scene.observe`, `scene.understand`, `grasp.propose`,
 `manipulation.prepare`, `object.acquire`, and `object.place` Query/Action contracts. It is an
 example integration and is not part
 of the `PhyAgentOS` Python distribution.
+
+The Skill is intentionally named `pick-place-workflow` because it describes the
+complete six-tool workflow. It is not a `scene-observe` Skill and does not claim
+that observation alone includes grasping or manipulation.
 
 The implementation deliberately has no simulator, robot SDK, camera driver, or
 actuator dependency. `FakeGatewayTransport` is used for contract and workflow tests;

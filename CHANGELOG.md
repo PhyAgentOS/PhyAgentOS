@@ -2,6 +2,35 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.6.3] - 2026-09-02
+
+Corrected the documented extension order so the independent generic capability runtime is implemented before
+any RoboTwin adapter work.
+
+### Changed
+
+- Added the simulator-free generic ToolEndpoint/provider-port phase to the bilingual user development guides.
+- RoboTwin remains a profile-selected EnvironmentAdapter and simulation ground truth remains comparison-only.
+
+## [v2.6.2] - 2026-09-02
+
+Renamed the six-Tool workflow Skill to `pick-place-workflow` and corrected the RoboTwin perception boundary.
+
+### Changed
+
+- The Skill name now describes the complete observe → understand → propose → prepare → acquire → place workflow;
+  the six stable Tool IDs are unchanged.
+- PAOS v1.0 still requires an independent generic capability runtime. RoboTwin actor/entity truth, segmentation,
+  object metadata, internal poses, and `check_success()` are simulation comparison/acceptance facts only; real
+  deployment must use sensor artifacts and replaceable perception providers.
+- Renamed `examples/forge-skills/scene-observe/` to `examples/forge-skills/pick-place-workflow/` and synchronized
+  package imports, tests, manifest, and runtime discovery fixtures.
+
+### Validation
+
+- `220 passed`; `ruff check`; `compileall`; and `git diff --check` passed.
+- No Dora, real Gateway server, RoboTwin, hardware, or motion route was started.
+
 ## [v2.6.1] - 2026-09-02
 
 Saved and reviewed the RoboTwin adapter refactor diagnosis, separating reusable capability runtime semantics

@@ -5,8 +5,8 @@ import pytest
 import yaml
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 
-from scene_observe.fake_gateway import FakeGatewayTransport
-from scene_observe.manipulation_prepare import (
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     PREPARATION_TOOL_ID,
     ManipulationPreparationEndpoint,

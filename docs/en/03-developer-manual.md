@@ -213,8 +213,10 @@ To add a robot capability:
 2. implement or package the ToolEndpoint operation and define its `max_concurrency` in Gateway;
 3. use the Fake Gateway to test binding drift, context, route, invocation, pending, terminal,
    cancel/stop, ownership, and unknown outcomes;
-4. for a simulator, implement the Gateway/ToolEndpoint adapter in the independent runtime and keep
-   RoboTwin/SAPIEN task, embodiment, and benchmark settings in its adapter/profile;
+4. for a simulator, implement an `EnvironmentAdapter` and provider ports in the independent runtime for the
+   generic Gateway/ToolEndpoint to call, and keep RoboTwin/SAPIEN task, embodiment, and benchmark settings in
+   its adapter/profile; simulator actor/entity truth, segmentation, metadata, and internal poses are comparison
+   facts only and must not replace sensor observations or real perception providers;
 5. add the locked Node and Dora profile references to a manifest-v2 Bundle, then let RuntimeManager
    start the flow and wait for `/tools` plus every required Tool context;
 6. add provider-neutral workflow guidance to a Skill without embedding simulator names, task-specific

@@ -10,7 +10,7 @@ from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, ActiveSk
 from PhyAgentOS.skill_runtime.manifest import load_manifest
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
-from scene_observe.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,7 +40,7 @@ class Catalog:
         self.manifest = manifest
 
     def get(self, name):
-        assert name == "scene-observe"
+        assert name == "pick-place-workflow"
         return self.manifest
 
 
@@ -50,7 +50,7 @@ class Analyzer:
 
 
 def _setup(tmp_path):
-    workspace_skill = tmp_path / "skills" / "scene-observe"
+    workspace_skill = tmp_path / "skills" / "pick-place-workflow"
     shutil.copytree(BUNDLE_ROOT, workspace_skill)
     manifest = load_manifest(BUNDLE_ROOT / "skill.yaml")
     manifest = manifest.__class__(
@@ -67,7 +67,7 @@ def _setup(tmp_path):
     )
     client = ForgeToolClient("http://fake", transport=transport)
     runtime = ActiveSkillRuntime(
-        skill_name="scene-observe",
+        skill_name="pick-place-workflow",
         skill_version="0.7.0",
         profile="fake",
         runtime_instance_id="runtime-binding",
@@ -84,7 +84,7 @@ def _setup(tmp_path):
         workspace=tmp_path,
         analyzer=Analyzer(),
         binding_resolver=resolver,
-        runtime_availability_provider=lambda name: name == "scene-observe",
+        runtime_availability_provider=lambda name: name == "pick-place-workflow",
     )
     coordinator = AgentTaskCoordinator(
         workspace=tmp_path,
@@ -105,7 +105,7 @@ async def test_activation_freeze_and_task_creation_share_one_immutable_binding(t
         experience.begin_turn(session_key, "run the scene observation workflow")
         activation, content, _lessons = await experience.activation.activate(
             session_key=session_key,
-            name="scene-observe",
+            name="pick-place-workflow",
             role="primary",
         )
         task = await coordinator.create_task(
@@ -123,7 +123,7 @@ async def test_activation_freeze_and_task_creation_share_one_immutable_binding(t
     binding = task.primary_skill_binding
     assert task.active_revision.skill_binding_id == binding.binding_id
     assert task.runtime_snapshot_ref == "runtime:runtime-binding"
-    assert binding.skill_name == "scene-observe"
+    assert binding.skill_name == "pick-place-workflow"
     assert binding.skill_document_sha256 == activation.content_sha256
     assert experience.store.get_binding(task.task_id)["forge_skill_binding"]["binding_id"] == binding.binding_id
 
@@ -136,7 +136,7 @@ async def test_task_query_is_blocked_before_gateway_when_runtime_binding_drifts(
         experience.begin_turn(session_key, "observe a scene")
         activation, _content, _lessons = await experience.activation.activate(
             session_key=session_key,
-            name="scene-observe",
+            name="pick-place-workflow",
             role="primary",
         )
         task = await coordinator.create_task(
@@ -147,7 +147,7 @@ async def test_task_query_is_blocked_before_gateway_when_runtime_binding_drifts(
         )
         registry.replace(
             ActiveSkillRuntime(
-                skill_name="scene-observe",
+                skill_name="pick-place-workflow",
                 skill_version="0.7.0",
                 profile="fake",
                 runtime_instance_id="runtime-drifted",

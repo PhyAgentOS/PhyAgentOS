@@ -4,9 +4,9 @@ import pytest
 import yaml
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 
-from scene_observe.fake_gateway import FakeGatewayTransport
-from scene_observe.object_acquire import AcquireSnapshot
-from scene_observe.object_place import (
+from pick_place_workflow.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.object_acquire import AcquireSnapshot
+from pick_place_workflow.object_place import (
     PLACE_TOOL_ID,
     PLACE_TOOL_SPEC,
     ObjectPlaceEndpoint,
