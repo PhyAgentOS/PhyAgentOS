@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.9] - 2026-09-02
+
+Moved the provider-neutral `manipulation.prepare` Query implementation into
+the PAOS-owned generic capability runtime. The runtime owns candidate binding,
+preparation identity, workspace/kinematic/collision check validation, evidence
+projection, stale/empty/unavailable/invalid states, and the fixed
+`motion_authorized: false` boundary. The Skill module is now a compatibility
+export only; no robot, simulator, or model dependency was added.
+
+将 provider-neutral `manipulation.prepare` Query 实现迁移到 PAOS 自有 generic capability runtime。运行时统一
+持有候选绑定、preparation identity、workspace/kinematic/collision 检查校验、证据投影、
+stale/empty/unavailable/invalid 状态以及固定的 `motion_authorized: false` 边界。Skill 模块仅保留兼容导出，
+未加入机器人、仿真器或模型依赖。
+
+### Validation
+
+- `250 passed` for the adapter/workflow suites.
+- Ruff, compileall, and `git diff --check` passed.
+- `manipulation.prepare` remains read-only; no Action/Session/motion route is created.
+
 ## [v2.8.8] - 2026-09-02
 
 Moved the provider-neutral `grasp.propose` Query implementation into the

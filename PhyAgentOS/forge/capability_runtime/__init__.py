@@ -5,6 +5,11 @@ from .grasp_proposal import (
     GraspProposalEndpoint,
     GraspProposalSnapshot,
 )
+from .manipulation_prepare import (
+    MANIPULATION_TOOL_SPEC,
+    ManipulationPreparationEndpoint,
+    PreparationSnapshot,
+)
 from .ports import (
     ActionAdmission,
     ActionEndpoint,
@@ -43,6 +48,9 @@ __all__ = [
     "GraspProposalEndpoint",
     "GraspProposalSnapshot",
     "GRASP_PROPOSAL_TOOL_SPEC",
+    "MANIPULATION_TOOL_SPEC",
+    "ManipulationPreparationEndpoint",
+    "PreparationSnapshot",
     "Invocation",
     "ManipulationExecutor",
     "ObservationSource",

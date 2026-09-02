@@ -193,6 +193,14 @@ def test_tool_spec_is_strict_and_never_authorizes_motion():
     assert not any(token in blob for token in _ADMISSION_KEYS)
 
 
+def test_skill_imports_resolve_to_paos_generic_runtime():
+    assert (
+        ManipulationPreparationEndpoint.__module__
+        == "PhyAgentOS.forge.capability_runtime.manipulation_prepare"
+    )
+    assert PreparationSnapshot.__module__ == "PhyAgentOS.forge.capability_runtime.manipulation_prepare"
+
+
 def test_contract_yaml_matches_the_published_tool_spec():
     contract_path = (
         Path(__file__).resolve().parents[1] / "contracts" / "manipulation.prepare.tool.yaml"
