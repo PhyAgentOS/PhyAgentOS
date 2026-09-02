@@ -2,6 +2,20 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.0.0] - 2026-09-02
+
+Added immutable Forge Skill binding coverage for the provider-neutral scene-observe Bundle.
+
+### Added
+
+- Added preview/freeze tests for manifest, SKILL document, Runtime identity, and all required
+  ToolSpec hashes.
+- Added fail-closed validation tests for Runtime replacement and ToolSpec tampering after binding.
+
+### Security
+
+- Binding tests execute no Action or Session and do not start Dora, hardware, or motion routes.
+
 ## [v1.9.0] - 2026-09-02
 
 Added Runtime controller switch and rollback protection coverage.
