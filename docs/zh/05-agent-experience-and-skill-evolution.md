@@ -57,6 +57,13 @@ Binding 同时冻结每个已激活 Skill 当时返回的适用 active Lesson。
 
 学习内容不复制原始工具输出、input 值、evidence locator、endpoint、凭据、绝对路径或可执行 Gateway ID。Task、revision、invocation 与 attempt identity 只保留为内部不透明 reference，不能进入生成的 Lesson 或 Skill。
 
+在进入 `TaskOutcomeEnvelope` 前，能力终态摘要还会被压缩为 `CapabilityOutcomeFact`。该 fact
+只保留 provider-neutral capability、终态 status、有界 capability phase、failure owner、世界
+变化状态、outcome-known 状态和证据可用性；record identity 使用 opaque fingerprint，排除
+artifact URI 与 failure code。非法或不支持的摘要不会生成 fact，只保留为 verification 诊断
+错误。fact 只为 reflection 提供归因上下文，不能建立任务 verdict、使 episode 自动可学习，
+也不能满足 Skill candidate/Lesson 晋升门槛。
+
 Outcome 策略：
 
 | 结果 | 经验行为 |

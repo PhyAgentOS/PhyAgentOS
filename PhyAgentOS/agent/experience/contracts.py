@@ -50,6 +50,52 @@ class LineageOutcome(ExperienceModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class CapabilityOutcomeFact(ExperienceModel):
+    """Redacted execution fact available to experience analysis."""
+
+    version: Literal["capability_outcome_fact_v1"] = "capability_outcome_fact_v1"
+    record_ref: str = Field(pattern=r"^evidence:[0-9a-f]{24}$")
+    capability: str = Field(min_length=1, max_length=96)
+    status: Literal["succeeded", "failed", "cancelled", "stopped", "unknown"]
+    capability_phase: Literal[
+        "approach",
+        "contact",
+        "close",
+        "lift",
+        "hold",
+        "transport",
+        "descent",
+        "release",
+        "retreat",
+        "none",
+    ]
+    failure_owner: Literal[
+        "none",
+        "input",
+        "binding",
+        "readiness",
+        "planner",
+        "execution",
+        "settlement",
+        "operator",
+        "infrastructure",
+    ] | None = None
+    world_change_started: bool
+    outcome_known: bool
+    evidence_availability: Literal["complete", "partial", "none", "unknown"]
+    post_release_evidence_availability: Literal[
+        "complete", "partial", "none", "unknown"
+    ] | None = None
+
+
+class CapabilityOutcomeErrorFact(ExperienceModel):
+    """Bounded diagnostic for a summary that could not become an execution fact."""
+
+    version: Literal["capability_outcome_error_v1"] = "capability_outcome_error_v1"
+    record_ref: str = Field(pattern=r"^evidence:[0-9a-f]{24}$")
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+
+
 class TaskOutcomeEnvelope(ExperienceModel):
     version: Literal["task_outcome_envelope_v1"] = "task_outcome_envelope_v1"
     task_id: str
@@ -67,6 +113,8 @@ class TaskOutcomeEnvelope(ExperienceModel):
     record_refs: list[str] = Field(default_factory=list)
     agent_task_ref: str | None = None
     tool_invocation_refs: list[str] = Field(default_factory=list)
+    capability_outcomes: list[CapabilityOutcomeFact] = Field(default_factory=list)
+    capability_outcome_errors: list[CapabilityOutcomeErrorFact] = Field(default_factory=list)
     completed_at: datetime = Field(default_factory=utc_now)
 
     @property

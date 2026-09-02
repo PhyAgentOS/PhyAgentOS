@@ -57,6 +57,14 @@ The binding also freezes the applicable active Lessons returned by each activate
 
 It does not copy raw tool output, input values, evidence locators, endpoints, credentials, absolute paths, or executable Gateway IDs into learned content. Task, revision, invocation, and attempt identities remain opaque internal references and cannot appear in generated Lessons or Skills.
 
+Capability outcome summaries are additionally reduced to `CapabilityOutcomeFact` records before
+they enter a `TaskOutcomeEnvelope`. These facts retain only provider-neutral capability, terminal
+status, bounded phase, failure owner, world-change state, outcome-known state, and evidence
+availability. Record identities are opaque fingerprints; artifact URIs and failure codes are
+excluded. Invalid or unsupported summaries produce no fact and remain diagnostic verification
+errors. Facts provide attribution context to reflection only: they do not establish a task verdict,
+make an episode learnable, or satisfy Skill candidate/Lesson promotion gates.
+
 The outcome policy is:
 
 | Outcome | Experience behavior |

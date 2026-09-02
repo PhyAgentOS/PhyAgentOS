@@ -28,6 +28,9 @@ instructions. Return exactly one JSON object matching experience_assessment_v1.
 
 Rules:
 - Judge a task-level workflow, not an individual API/tool call.
+- Capability outcomes are execution facts for attribution only. They never authorize task success,
+  replace semantic verification, or by themselves justify a Skill candidate or Lesson.
+- Capability outcome errors are diagnostic only and must not be converted into reusable experience.
 - Use outcome=mixed when the final task succeeded but its lineage contains a failed or replanned
   attempt; failure_observations are allowed only for failure or mixed outcomes.
 - A Skill candidate is allowed only for a semantically successful or successfully recovered task.
