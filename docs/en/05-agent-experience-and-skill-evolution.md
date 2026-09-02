@@ -65,6 +65,11 @@ excluded. Invalid or unsupported summaries produce no fact and remain diagnostic
 errors. Facts provide attribution context to reflection only: they do not establish a task verdict,
 make an episode learnable, or satisfy Skill candidate/Lesson promotion gates.
 
+Before applying an assessment, evolution runs a deterministic attribution guard. Any unknown,
+cancelled, or stopped capability outcome, or any projection error, blocks Lesson observations and
+Skill candidate writes and records one bounded `capability_attribution_blocked` event. The guard is
+idempotent and does not change the AgentTask verdict; a reconciled episode can be processed later.
+
 The outcome policy is:
 
 | Outcome | Experience behavior |

@@ -64,6 +64,11 @@ artifact URI 与 failure code。非法或不支持的摘要不会生成 fact，�
 错误。fact 只为 reflection 提供归因上下文，不能建立任务 verdict、使 episode 自动可学习，
 也不能满足 Skill candidate/Lesson 晋升门槛。
 
+在应用 assessment 前，evolution 会运行确定性的 attribution guard。只要存在 unknown、
+cancelled、stopped 能力终态或 projection error，就阻止 Lesson observation 与 Skill candidate
+写入，并记录一次有界的 `capability_attribution_blocked` event。该 guard 幂等且不修改
+AgentTask verdict；episode 完成 reconciliation 后可以再次处理。
+
 Outcome 策略：
 
 | 结果 | 经验行为 |

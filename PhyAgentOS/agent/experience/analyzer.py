@@ -33,6 +33,8 @@ Rules:
 - Capability outcome errors are diagnostic only and must not be converted into reusable experience.
 - The capability outcome summary is a deterministic attribution aid, not a success score or
   promotion signal.
+- Unknown, cancelled, stopped, or projection-error capability states are not eligible for
+  evolution writes until explicitly reconciled.
 - Use outcome=mixed when the final task succeeded but its lineage contains a failed or replanned
   attempt; failure_observations are allowed only for failure or mixed outcomes.
 - A Skill candidate is allowed only for a semantically successful or successfully recovered task.

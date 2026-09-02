@@ -1,5 +1,9 @@
 """Task-level experience capture and guarded Skill evolution."""
 
+from PhyAgentOS.agent.experience.attribution import (
+    EvolutionAttributionDecision,
+    assess_evolution_attribution,
+)
 from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeErrorFact,
     CapabilityOutcomeFact,
@@ -43,4 +47,6 @@ __all__ = [
     "TaskOutcomeSource",
     "TaskOutcomeEnvelope",
     "WorkflowTraceItem",
+    "EvolutionAttributionDecision",
+    "assess_evolution_attribution",
 ]
