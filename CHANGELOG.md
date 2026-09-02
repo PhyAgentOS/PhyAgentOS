@@ -2,6 +2,30 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.5] - 2026-09-02
+
+Unified Fake Gateway and RoboTwin `scene.observe` results behind the existing
+`ForgeToolClient.invoke_query_tool` path. Added a runtime-only
+`RoboTwinObservationProvider` that projects camera/depth/state captures into
+provider-neutral observation identity, frame, calibration, freshness, and typed
+artifact references. The adapter accepts either the external runtime capture
+seam or the injected `RoboTwin20Adapter` seam; PAOS remains free of RoboTwin,
+SAPIEN, Torch, and model imports. Relaxed the Fake Gateway artifact-reference
+validator to accept capture subpaths, and added equality/integration tests.
+
+通过既有 `ForgeToolClient.invoke_query_tool` 路径统一 Fake Gateway 与 RoboTwin 的 `scene.observe` 结果。
+新增 runtime-only `RoboTwinObservationProvider`，将 camera/depth/state capture 投影为 provider-neutral 的
+observation identity、frame、calibration、freshness 与 typed artifact refs；支持外部 runtime capture seam
+和注入式 `RoboTwin20Adapter` seam。PAOS 仍不包含 RoboTwin、SAPIEN、Torch 或模型导入；Fake Gateway
+artifact ref 校验支持 capture 子路径，并新增一致性集成测试。
+
+### Validation
+
+- `244 passed in 2.53s` for adapter/workflow tests.
+- Ruff, compileall, and `git diff --check` passed.
+- External RoboTwin20 `--format scene_observe` smoke returned the expected observation reference and RGB/depth/state artifacts; OIDN CUDA warnings remain a known runtime risk.
+- `.codegraph/` and `.cursor/` remain untracked and were not staged.
+
 ## [v2.8.4] - 2026-09-02
 
 Fixed the external RoboTwin runtime working-directory boundary in

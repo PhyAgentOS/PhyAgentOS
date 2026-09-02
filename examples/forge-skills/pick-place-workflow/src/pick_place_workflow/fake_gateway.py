@@ -59,7 +59,7 @@ from .understanding import (
 TOOL_ID = "scene.observe"
 ENDPOINT_ID = "scene_observation"
 OPERATION = "observe"
-_ARTIFACT_REF = re.compile(r"^artifact://[^/]+/[^/]+$")
+_ARTIFACT_REF = re.compile(r"^artifact://[^/]+/.+$")
 _OBSERVATION_REF = re.compile(r"^observation://[^/]+/[^/]+$")
 
 

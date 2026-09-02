@@ -267,9 +267,10 @@ robotwin_grasp_propose
   或硬件，且不执行物理运动；
 - 当前没有 YOLO/Ultralytics 检测器、真实相机感知、抓取模型或机器人执行器接入；`grasp.propose` 仍是
   provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成；
-- 独立 `examples/forge-adapters/robotwin20` adapter foundation：环境 reset/snapshot seam、注入式
-  `RoboTwinSensorBackend`、camera/depth/state artifact 校验和 `RoboTwinObservationSource`；该包不进入
-  PAOS wheel、不依赖 RoboTwin/SAPIEN/Torch/YOLO，也不复制仿真资产；
+- 独立 `examples/forge-adapters/robotwin20` adapter/runtime：环境 reset/snapshot seam、注入式
+  `RoboTwinSensorBackend`、camera/depth/state artifact 校验、`RoboTwinObservationProvider` 和
+  provider-neutral `scene.observe` snapshot；外部 RoboTwin20 Python 3.10 runtime 已完成一次无动作
+  RGB/depth/state capture。该包不进入 PAOS wheel、不依赖 RoboTwin/SAPIEN/Torch/YOLO，也不复制仿真资产；
 - Skill Runtime、Bundle、binding、AgentTask、verification 和 experience 基础；
 - 已修正 RoboTwin 不应绑定 Skill 的文档边界。
 
@@ -277,17 +278,18 @@ robotwin_grasp_propose
 
 - generic capability runtime 的 Gateway HTTP/Dora 生产 wiring、持久化 invocation backend 和完整 Action
   executor（当前仅有无仿真依赖的 in-process foundation）；
-- 可运行的 RoboTwin20 backend 实现及其独立 Python 环境（当前 `paos` 环境中没有 RoboTwin/SAPIEN）；
-- RoboTwin20 camera/depth/state 的真实运行证据（当前只完成 adapter contract 与注入式 backend 测试）；
+- RoboTwin20 到真实 Gateway/Dora 的跨进程 provider wiring（当前 runtime-only CLI 和 in-process
+  provider conformance 已完成，但尚未启动生产 HTTP Gateway）；
 - 真实 Gateway/ToolEndpoint HTTP server；
 - RoboTwin 对应 Dora flow、locked Node 和 profile；
-- 六个真实能力的 PAOS 端到端验证。
+- `scene.understand`、`grasp.propose`、`manipulation.prepare`、`object.acquire`、`object.place` 的真实
+  provider 接入与六能力 PAOS 端到端验证。
 
 因此不能声称“六个 RoboTwin Skill 已接入”，也不能把 RoboTwin 的 ground truth 称为真实感知。准确表述是：
 
-> PAOS 公共能力契约、`pick-place-workflow` 编排和验证骨架已完成；Hephaestus 的真实能力只能作为
-> clean-room 重构的需求/行为参考；新的、环境可替换的 capability runtime、真实传感器感知 Port
-> 和 RoboTwin adapter 仍需按本文顺序独立实现。
+> PAOS 公共能力契约、`pick-place-workflow` 编排、generic capability runtime 基础和 RoboTwin
+> `scene.observe` runtime/provider conformance 已完成；Hephaestus 的真实能力只能作为 clean-room
+> 重构的需求/行为参考；Gateway HTTP/Dora wiring 以及其余五项能力仍需按本文顺序独立实现。
 
 ## 12. English summary
 

@@ -16,7 +16,7 @@ import os
 import re
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -44,6 +44,64 @@ _CAMERA_REFS = {
     "camera/left_wrist": "left_camera",
     "camera/right_wrist": "right_camera",
 }
+
+
+@dataclass(frozen=True)
+class RoboTwinObservationSnapshot:
+    """Provider-neutral ``scene.observe`` value projected from a sensor capture."""
+
+    captured_at: datetime
+    scene_revision: str
+    frame_id: str
+    calibration_ref: str | None
+    artifacts: tuple[dict[str, str], ...]
+    sensor_available: bool = True
+    observation_ref: str | None = None
+
+
+class RoboTwinObservationProvider:
+    """Expose the runtime backend through the generic observation-provider port."""
+
+    def __init__(self, backend: Any) -> None:
+        if not callable(getattr(backend, "capture_sensors", None)) and not callable(
+            getattr(backend, "capture", None)
+        ):
+            raise RoboTwinRuntimeError(
+                "observation provider backend must expose capture_sensors or capture"
+            )
+        self.backend = backend
+
+    def reset(self, *, seed: int | None = None) -> None:
+        reset = getattr(self.backend, "reset", None)
+        if not callable(reset):
+            raise RoboTwinRuntimeError("observation provider backend must expose reset")
+        reset(seed=seed)
+
+    def observe(self, sensor_ref: str) -> RoboTwinObservationSnapshot | None:
+        capture_sensors = getattr(self.backend, "capture_sensors", None)
+        capture = (
+            capture_sensors(sensor_ref)
+            if callable(capture_sensors)
+            else self.backend.capture(sensor_ref)
+        )
+        if capture is None:
+            return None
+        if not isinstance(capture, SensorCapture):
+            raise RoboTwinRuntimeError("RoboTwin backend returned an invalid sensor capture")
+        return RoboTwinObservationSnapshot(
+            captured_at=capture.captured_at,
+            scene_revision=capture.scene_revision,
+            frame_id=capture.frame_id,
+            calibration_ref=capture.calibration_ref,
+            artifacts=tuple(
+                {"ref": item.ref, "kind": item.kind, "media_type": item.media_type}
+                for item in capture.artifacts
+            ),
+            sensor_available=capture.sensor_available,
+            observation_ref=(
+                f"observation://{capture.scene_revision}/{capture.frame_id}"
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -287,6 +345,8 @@ class RoboTwinSensorBackend:
 
 
 def _jsonable(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     if np is not None and isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, Mapping):
@@ -314,6 +374,12 @@ def main() -> int:
     )
     parser.add_argument("--sensor-ref", default="camera/head")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--format",
+        choices=("capture", "scene_observe"),
+        default="capture",
+        help="Emit the raw capture metadata or the provider-neutral scene.observe snapshot.",
+    )
     args = parser.parse_args()
     backend = RoboTwinSensorBackend(
         RoboTwinRuntimeProfile(
@@ -327,8 +393,14 @@ def main() -> int:
     )
     try:
         backend.reset(seed=args.seed)
-        capture = backend.capture_sensors(args.sensor_ref)
-        print(json.dumps(_jsonable(capture.__dict__), indent=2, default=str))
+        if args.format == "scene_observe":
+            snapshot = RoboTwinObservationProvider(backend).observe(args.sensor_ref)
+            if snapshot is None:
+                raise RoboTwinRuntimeError("requested RoboTwin sensor is unavailable")
+            print(json.dumps(_jsonable(asdict(snapshot)), indent=2, default=str))
+        else:
+            capture = backend.capture_sensors(args.sensor_ref)
+            print(json.dumps(_jsonable(capture.__dict__), indent=2, default=str))
     finally:
         backend.close()
     return 0

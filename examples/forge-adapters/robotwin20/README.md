@@ -58,6 +58,30 @@ examples/forge-adapters/robotwin20/runtime/robotwin_backend.py \
   --seed 0
 ```
 
+To emit the exact provider-neutral snapshot consumed by the `scene.observe`
+ToolEndpoint, use `--format scene_observe`. This command is intended to run in
+the Python 3.10 RoboTwin process; PAOS (Python 3.11+) consumes the JSON through
+the Gateway/provider boundary and must not import RoboTwin modules directly:
+
+```bash
+PYTHONPATH=examples/forge-adapters/robotwin20/src \
+/home/yanxu/miniconda3/envs/RoboTwin20/bin/python \
+examples/forge-adapters/robotwin20/runtime/robotwin_backend.py \
+  --runtime-root /home/yanxu/robotwin20-runtime/RoboTwin \
+  --artifact-root /home/yanxu/robotwin20-runtime/artifacts \
+  --forbidden-root /home/yanxu/PhyAgentOS-forge \
+  --sensor-ref camera/head \
+  --seed 0 \
+  --format scene_observe
+```
+
+The snapshot fields are the same ones returned by
+`ForgeToolClient.invoke_query_tool("scene.observe", ...)` through the Fake
+Gateway: observation identity, timestamp, scene revision, frame, calibration,
+freshness, and typed artifact references. Runtime warnings may be emitted by
+third-party renderers; the JSON object is the provider payload, not simulator
+truth.
+
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
 `check_success`, segmentation APIs, actor/entity APIs, or any action route.
