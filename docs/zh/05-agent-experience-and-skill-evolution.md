@@ -69,6 +69,11 @@ cancelled、stopped 能力终态或 projection error，就阻止 Lesson observat
 写入，并记录一次有界的 `capability_attribution_blocked` event。该 guard 幂等且不修改
 AgentTask verdict；episode 完成 reconciliation 后可以再次处理。
 
+Analyzer 还会接收只读的 `capability_attribution_context`，其中只包含有界的 owner 与证据计数。
+Planner、execution 和 readiness owner 会标记为 `requires_semantic_attribution_owners`；仅有
+infrastructure 或证据缺口的失败会携带必需的 Lesson reason。只有与这些明确事实冲突的
+assessment 才会被 evolution 拒绝。
+
 Outcome 策略：
 
 | 结果 | 经验行为 |

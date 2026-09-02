@@ -70,6 +70,11 @@ cancelled, or stopped capability outcome, or any projection error, blocks Lesson
 Skill candidate writes and records one bounded `capability_attribution_blocked` event. The guard is
 idempotent and does not change the AgentTask verdict; a reconciled episode can be processed later.
 
+The analyzer also receives a read-only `capability_attribution_context` containing bounded owner
+and evidence counts. Planner, execution, and readiness owners are exposed as
+`requires_semantic_attribution_owners`; infrastructure-only and evidence-only failures carry a
+required Lesson reason. Evolution rejects only assessments that contradict those explicit facts.
+
 The outcome policy is:
 
 | Outcome | Experience behavior |
