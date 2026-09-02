@@ -10,11 +10,12 @@ from PhyAgentOS.agent.experience.contracts import (
     CapabilityOutcomeSummary,
     ExperienceAssessment,
     FailureObservationProposal,
+    LessonCluster,
     LessonEligibility,
     TaskEpisode,
     TaskOutcomeEnvelope,
 )
-from PhyAgentOS.agent.experience.evolution import SkillEvolutionManager
+from PhyAgentOS.agent.experience.evolution import SkillEvolutionError, SkillEvolutionManager
 
 
 def _episode(summary):
@@ -75,6 +76,50 @@ def test_attribution_context_maps_owner_classes_without_authorizing_success():
     assert context["requires_semantic_attribution_owners"] == ["planner"]
     assert context["required_lesson_reason"] is None
     assert context["task_success_authorized"] is False
+
+
+def _related_observation():
+    return FailureObservationProposal(
+        eligibility=LessonEligibility(
+            decision="related",
+            reason="workflow_related",
+            confidence=0.9,
+            rationale="workflow issue",
+        ),
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        pattern_summary="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        recovery_principle="recheck state",
+    )
+
+
+def test_new_observation_records_owner_scope_and_mismatched_cluster_is_rejected():
+    store = type("Store", (), {"get_cluster": lambda self, _: LessonCluster(
+        cluster_id="cluster-1",
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        canonical_pattern="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        capability_failure_owners=["execution"],
+    )})()
+    manager = SkillEvolutionManager(workspace=".", store=store)
+    episode = _episode(
+        CapabilityOutcomeSummary(
+            status_counts={"failed": 1},
+            failure_owner_counts={"planner": 1},
+        )
+    )
+    proposal = _related_observation()
+    proposal.matched_cluster_id = "cluster-1"
+    try:
+        manager._observation_from_proposal(episode, proposal)
+    except SkillEvolutionError as exc:
+        assert str(exc) == "matched Lesson cluster has a different capability failure scope"
+    else:
+        raise AssertionError("owner-scope mismatch was accepted")
 
 
 def test_infrastructure_and_evidence_only_claims_must_use_bounded_lesson_reason():

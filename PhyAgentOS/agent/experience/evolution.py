@@ -197,6 +197,9 @@ class SkillEvolutionManager:
     def _observation_from_proposal(
         self, episode: TaskEpisode, proposal: FailureObservationProposal
     ) -> tuple[FailureObservation, LessonCluster]:
+        capability_failure_owners = sorted(
+            episode.outcome.capability_outcome_summary.failure_owner_counts
+        )
         target = proposal.skill_name or episode.primary_skill
         target_activation = next(
             (item for item in episode.skill_activations if item.skill_name == target),
@@ -219,6 +222,16 @@ class SkillEvolutionManager:
                 or cluster.skill_version_spec != version_spec
             ):
                 raise SkillEvolutionError("matched Lesson cluster has a different scope")
+            if (
+                cluster.capability_failure_owners
+                and capability_failure_owners
+                and cluster.capability_failure_owners != capability_failure_owners
+            ):
+                raise SkillEvolutionError(
+                    "matched Lesson cluster has a different capability failure scope"
+                )
+            if not cluster.capability_failure_owners:
+                cluster.capability_failure_owners = capability_failure_owners
         else:
             digest = hashlib.sha256(
                 f"{target or 'unbound'}\n{version_spec or '*'}\n{workflow_key}\n{pattern_key}".encode("utf-8")
@@ -233,6 +246,7 @@ class SkillEvolutionManager:
                 applies_when=proposal.applies_when,
                 does_not_apply_when=proposal.does_not_apply_when,
                 recovery_principles=[proposal.recovery_principle or ""],
+                capability_failure_owners=capability_failure_owners,
             )
         observation_id = "failure_observation_" + hashlib.sha256(
             f"{episode.episode_id}\n{cluster.cluster_id}".encode("utf-8")
@@ -250,6 +264,7 @@ class SkillEvolutionManager:
             applies_when=proposal.applies_when,
             does_not_apply_when=proposal.does_not_apply_when,
             recovery_principle=proposal.recovery_principle or "",
+            capability_failure_owners=capability_failure_owners,
         )
         return observation, cluster
 

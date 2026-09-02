@@ -296,6 +296,7 @@ class FailureObservation(ExperienceModel):
     applies_when: list[str] = Field(min_length=1)
     does_not_apply_when: list[str] = Field(min_length=1)
     recovery_principle: str = Field(min_length=1, max_length=1000)
+    capability_failure_owners: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -321,6 +322,7 @@ class LessonCluster(ExperienceModel):
     applies_when: list[str] = Field(min_length=1)
     does_not_apply_when: list[str] = Field(min_length=1)
     recovery_principles: list[str] = Field(default_factory=list)
+    capability_failure_owners: list[str] = Field(default_factory=list)
     observation_ids: list[str] = Field(default_factory=list)
     supporting_root_task_ids: list[str] = Field(default_factory=list)
     status: Literal["collecting", "blocked", "activated"] = "collecting"

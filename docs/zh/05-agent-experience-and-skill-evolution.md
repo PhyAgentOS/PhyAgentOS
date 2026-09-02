@@ -74,6 +74,10 @@ Planner、execution 和 readiness owner 会标记为 `requires_semantic_attribut
 infrastructure 或证据缺口的失败会携带必需的 Lesson reason。只有与这些明确事实冲突的
 assessment 才会被 evolution 拒绝。
 
+每个规范化 failure observation 和 LessonCluster 都会记录有界的 capability failure-owner 作用域。
+如果匹配到的 cluster 已有不同的非空 owner 作用域，系统会拒绝合并，避免把 infrastructure、
+planner 和 execution 失败混成一个可复用 Lesson pattern。
+
 Outcome 策略：
 
 | 结果 | 经验行为 |

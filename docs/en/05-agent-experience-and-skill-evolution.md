@@ -75,6 +75,10 @@ and evidence counts. Planner, execution, and readiness owners are exposed as
 `requires_semantic_attribution_owners`; infrastructure-only and evidence-only failures carry a
 required Lesson reason. Evolution rejects only assessments that contradict those explicit facts.
 
+Each normalized failure observation and LessonCluster records its bounded capability failure-owner
+scope. A matched cluster with a different non-empty owner scope is rejected, so independent tasks
+cannot merge infrastructure, planner, and execution failures into one reusable Lesson pattern.
+
 The outcome policy is:
 
 | Outcome | Experience behavior |

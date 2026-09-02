@@ -537,6 +537,12 @@ class ExperienceStore:
                     cluster.recovery_principles + [observation.recovery_principle]
                 )
             )
+            cluster.capability_failure_owners = list(
+                dict.fromkeys(
+                    cluster.capability_failure_owners
+                    + observation.capability_failure_owners
+                )
+            )
             if inserted_support and cluster.status == "blocked":
                 cluster.status = "collecting"
                 cluster.draft = None
