@@ -2,6 +2,21 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.9.0] - 2026-09-02
+
+Added Runtime controller switch and rollback protection coverage.
+
+### Added
+
+- Added tests that block Skill Runtime switching while an AgentTask is non-terminal.
+- Added rollback coverage for failed target startup and atomic active-registry replacement after a
+  healthy target check.
+
+### Security
+
+- Tests use fake catalog/manager state only and start no Dora, Gateway, simulator, hardware, or
+  motion route.
+
 ## [v1.8.0] - 2026-09-02
 
 Added HTTP health-contract coverage for the RuntimeManager's Gateway and required Tool context
