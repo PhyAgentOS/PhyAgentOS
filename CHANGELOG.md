@@ -2,6 +2,21 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.2.0] - 2026-09-02
+
+Added governed execution record coverage after immutable Skill binding.
+
+### Added
+
+- Added a bound Query and bounded Action integration test through `AgentTaskCoordinator` and the
+  standard Forge Tool API.
+- Verified binding ID, revision ID, ToolSpec digest, invocation/attempt references, and capability
+  outcome summary on persisted records.
+
+### Security
+
+- Execution remains on the Fake Gateway no-motion path; no real robot or simulator is invoked.
+
 ## [v2.1.0] - 2026-09-02
 
 Added activation-to-AgentTask immutable binding integration coverage for the scene-observe Skill.
