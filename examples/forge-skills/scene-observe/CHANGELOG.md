@@ -25,7 +25,7 @@
 
 ### Git Commit
 
-- Commit: pending (bundle SHA-256 `f285ee78ee7dbf3374f3a1e86b025ad6860a4fb065ca4fc62f9542bda1eb0357`, 46,093 bytes)
+- Commit: `4e3c57e` (bundle SHA-256 `f285ee78ee7dbf3374f3a1e86b025ad6860a4fb065ca4fc62f9542bda1eb0357`, 46,093 bytes)
 - Branch: `feature/long-horizon-workflow`
 - Time: 2026-09-02 (Asia/Shanghai)
 
