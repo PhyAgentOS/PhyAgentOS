@@ -2,6 +2,16 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.4.0] - 2026-09-02
+
+Active Lesson counterexamples now require an exact capability failure-owner scope match. Mismatched
+or scoped/legacy-missing scopes are recorded diagnostically and cannot retire or weaken a Lesson.
+
+### Changed
+
+- Added bounded owner-scope persistence to `ScopedLesson` and exact-scope counterexample checks.
+- Preserved legacy behavior when both Lesson and episode have empty owner scopes.
+
 ## [v1.3.0] - 2026-09-02
 
 Lesson activation now validates cross-episode capability failure-owner scope. Same-owner
