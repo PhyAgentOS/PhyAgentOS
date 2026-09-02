@@ -2,6 +2,21 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.6.0] - 2026-09-02
+
+Clarified the v1.0 PAOS boundary for simulator integration and corrected the RoboTwin execution order.
+
+### Changed
+
+- Skills expose provider-neutral ToolSpecs and workflow guidance; RoboTwin 2.0 remains an independent
+  Gateway/ToolEndpoint/Dora/simulator runtime.
+- Documented that RoboTwin task, SAPIEN, embodiment, and benchmark configuration belongs in the adapter/profile,
+  while a Skill Bundle freezes only runtime wiring and locked artifacts.
+
+### Security
+
+- Documentation-only change; no PAOS runtime, Gateway implementation, simulator, hardware, or motion path changed.
+
 ## [v2.5.3] - 2026-09-02
 
 Added a reusable v1.0 feature-reference-card method for planning and reviewing PAOS extensions.

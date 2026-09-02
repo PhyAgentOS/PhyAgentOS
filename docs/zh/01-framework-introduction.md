@@ -8,7 +8,9 @@
 
 PhyAgentOS 是面向具身任务的 Agent 框架。Agent 理解用户目标、选择 Forge Tool、定义任务级
 成功标准，并决定继续还是恢复；Forge Gateway 负责 Tool 执行、ToolEndpoint 选择、Dora
-集成以及机器人或仿真器访问。
+集成以及机器人或仿真器访问。RoboTwin 2.0 属于该执行面的末端
+`机器人/仿真器` runtime；PAOS 不 import RoboTwin 或 SAPIEN。其 task、embodiment、benchmark
+和仿真器参数由 Gateway/ToolEndpoint adapter 与 profile 持有。
 
 该边界把认知规划与物理效果分离。通用 Agent tools、verification、任务经验、evolution、
 Skill activation 和动态 MCP 工具继续属于 Agent 平台；机器人动作统一使用 Forge
@@ -34,6 +36,10 @@ Query/Action/Session Tool API。
 
 终结 AgentTask ───────► Experience Coordinator ──► evolution ledger
 ```
+
+PAOS 侧的 adapter 边界保持 provider-neutral：Skill 只暴露 ToolSpec 和工作流说明，Gateway
+adapter 再把这些操作翻译到选定的 RoboTwin/SAPIEN runtime。仿真器名称不得写入能力 Skill 名称
+或公共 ToolSpec。
 
 绑定调用和诊断 Query 经过相同 Gateway endpoint；诊断 Query 不占 AgentTask 槽位，Action 与
 task-owned Session 必须使用冻结的 task binding。PAOS 不增加跨 Tool 资源租约，由所选 endpoint

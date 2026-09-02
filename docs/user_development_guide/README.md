@@ -12,6 +12,7 @@
 | 机器人物理效果 | Gateway Action ToolSpec + ToolEndpoint operation |
 | 有状态能力生命周期 | Gateway Session ToolSpec + ToolEndpoint operation |
 | Dora nodes 与部署资产 | manifest v2 Skill Bundle 与锁定 Node artifacts |
+| 仿真器/外部 provider 接入 | Gateway/ToolEndpoint adapter + Dora profile；Bundle 仅冻结 wiring 与制品引用 |
 | 工作流说明 | 由 SkillsLoader 发现的 `SKILL.md` |
 | 用户任务成功 | 通用 `TaskVerificationContract` 与 AgentTask finalize |
 | 新模型 Provider | 现有 provider registry/configuration |
@@ -19,6 +20,24 @@
 
 不要把 Agent 代码直接连接到机器人 SDK、Dora node、仿真器，或统一 Tool API 之外的旧式
 Gateway Session/Policy route。
+
+### RoboTwin 2.0 的边界与执行顺序
+
+RoboTwin 2.0 是独立的仿真/benchmark runtime，位于物理执行链末端，不是 PAOS provider，也不定义
+Skill 的业务语义。PAOS Skill 只发布 provider-neutral ToolSpec 与工作流；RoboTwin task、SAPIEN、
+embodiment、benchmark 以及厂商 SDK 参数由 Gateway/ToolEndpoint adapter 持有。Dora profile 和
+锁定 Node artifact 只负责把该 runtime 接入已治理的 Tool API。
+
+接入顺序固定为：
+
+1. 先定义不包含仿真器字段的通用 ToolSpec（`query|action|session`、严格 schema、frame/unit、readiness）；
+2. 用 Fake Gateway 验证 `/tools`、context、binding、路由和错误语义；
+3. 在独立 RoboTwin 2.0 环境实现 Gateway/ToolEndpoint adapter，并在 adapter/profile 内配置
+   RoboTwin task、SAPIEN、embodiment 和 benchmark；
+4. 通过 manifest-v2 Skill Bundle 提供锁定 Node 与 Dora profile wiring，使用 Skill Runtime 启动；
+5. Runtime 等待 Dora flow、Gateway `/tools` 以及全部 `required_tools` context ready 后，才做仿真验收；
+6. Agent 始终通过 `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator` 调用，
+   不得创建 `robotwin2-scene-observe` 这类把能力名与仿真器绑定的 Skill，也不得直连 SDK、Dora 或 simulator。
 
 ## 2. 定义 ToolSpec
 

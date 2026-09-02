@@ -6,13 +6,15 @@
 
 ## 1. 开发不变量
 
-1. 机器人执行只有一条物理路径：`ForgeToolClient → Gateway Tool API → ToolEndpoint`；
+1. 机器人或仿真器执行只有一条物理路径：`ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator`；
 2. AgentTask 聚合规划、证据和判定，但不执行机器人；
 3. `binding_id`、`task_id`、`revision_id`、record ID、`caller_id`、`invocation_id` 与 `attempt_id` 相互独立；
 4. Forge ToolResult 与 invocation events 是权威执行事实；
 5. Action/Session admission、cancel/stop 接受、timeout 和 `unknown` 都不能证明物理停止；
 6. 通用 Agent tools、verification、experience、evolution 与动态 MCP 保持独立；
 7. Runtime 制品必须通过有界归档与摘要校验后才能安装。
+8. PAOS 核心和公共 Skill 保持 provider-neutral；RoboTwin、SAPIEN、task、embodiment 与
+   benchmark 配置属于 Gateway/ToolEndpoint adapter 和 profile。
 
 ## 2. 模块地图
 
@@ -196,14 +198,19 @@ attempt。Outcome source 将每个 revision verdict 映射到该 revision
 
 新增机器人能力时：
 
-1. 实现或打包 ToolEndpoint operation；
-2. 发布带精确 schema 与 binding 的 Query/Action/Session ToolSpec；
-3. 在 Gateway 定义 operation `max_concurrency`；
-4. 在 manifest v2 Bundle 中加入锁定 Node 与 profile 引用；
-5. 测试 binding 漂移、context、invoke、pending、terminal、cancel/stop、ownership 与 unknown；
-6. 在 Skill 中加入工作流指导，不写入任务特定坐标或凭据。
+1. 发布保持 provider-neutral、带精确 schema 与 binding 的 Query/Action/Session ToolSpec；
+2. 实现或打包 ToolEndpoint operation，并在 Gateway 定义 `max_concurrency`；
+3. 使用 Fake Gateway 测试 binding 漂移、context、路由、invoke、pending、terminal、cancel/stop、
+   ownership 与 unknown；
+4. 如需仿真器，在独立 runtime 实现 Gateway/ToolEndpoint adapter，并将 RoboTwin/SAPIEN 的 task、
+   embodiment 与 benchmark 设置保留在 adapter/profile 内；
+5. 在 manifest v2 Bundle 中加入锁定 Node 与 Dora profile 引用，由 RuntimeManager 启动 flow，等待
+   `/tools` 及全部 required Tool context；
+6. 在 Skill 中加入 provider-neutral 工作流指导，不写入仿真器名称、任务特定坐标、provider payload
+   或凭据；
+7. 只有完整 runtime 和 Tool contexts ready 后，才进行仿真或硬件验收。
 
-不要创建第二套 PAOS 执行协议、Agent 直连 Dora 或跨 Tool lease。只有通用 task/Tool API tools
+不要创建第二套 PAOS 执行协议、Agent 直连 Dora/SDK、与仿真器绑定的 Skill 名称或跨 Tool lease。只有通用 task/Tool API tools
 无法表达能力时，才应新增 Agent tool。
 
 ## 13. 测试门禁

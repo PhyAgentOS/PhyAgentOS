@@ -96,11 +96,14 @@
 | 感知、场景理解、候选生成 | Integration Guide §1–3、§8–10；Forge Contract §2–3 | Query ToolSpec + ToolEndpoint |
 | 物理动作 | Integration Guide §1–3、§8–10；Forge Contract §4、§7–9；Operations §5–7 | Action ToolSpec + ToolEndpoint |
 | 长程或有状态流程 | Forge Contract §5、§7–10；Communication §3–6 | Session + AgentTask |
-| RoboTwin/仿真器适配 | Integration Guide §4–6、§9–10；Configuration §8.1、§9 | Skill Bundle profile + adapter |
+| RoboTwin/仿真器接入 | Integration Guide §4–6、§9–10；Configuration §8.1、§9 | Gateway/ToolEndpoint adapter + Dora profile；Bundle 仅冻结 wiring 与制品 |
 | 证据、验证、恢复 | Developer Manual §7–8；Forge Contract §8–9 | generic verification/evidence |
 | Episode、Lesson、Skill 晋升 | Evolution §1–10；Developer Manual §11 | ExperienceCoordinator |
 
-公共 Agent 代码只能看到 provider-neutral Tool API。RoboTwin、SAPIEN、Dora 和厂商 SDK 的参数应停留在 adapter、profile 或 Bundle 中。
+公共 Agent 代码只能看到 provider-neutral Tool API。Skill 只承载通用 ToolSpec 和工作流说明；RoboTwin 2.0
+不是 PAOS 内部 provider，也不是能力名称的一部分。RoboTwin task、SAPIEN、embodiment、benchmark 和
+厂商 SDK 参数由 Gateway/ToolEndpoint adapter 持有，Dora 负责运行时编排；Skill Bundle 只冻结 profile、
+锁定 Node 制品及其启动 wiring，不把仿真器语义写入公共 ToolSpec 或 Skill 名称。
 
 ## 5. 推荐实施顺序
 
@@ -112,6 +115,23 @@
 6. 将 Tool、Node、profile 和依赖加入 manifest-v2 Bundle，并执行本地安装闭环。
 7. 按需要接入 AgentTask、evidence、verification，再接入 ExperienceCoordinator。
 8. 最后执行仿真或硬件验收，并记录确切 Bundle、Node digest、profile 和环境。
+
+### 5.1 RoboTwin 2.0 接入顺序
+
+RoboTwin 接入必须沿用 v1.0 的唯一物理路径，而不是创建一个与仿真器同名的 Skill：
+
+```text
+provider-neutral ToolSpec
+  → Fake Gateway conformance
+  → Gateway ToolEndpoint adapter
+  → Dora profile / locked Node wiring
+  → RoboTwin 2.0 task + SAPIEN runtime
+```
+
+PAOS 侧只通过 `ForgeToolClient → Gateway Tool API` 访问 ToolEndpoint；PAOS 不 import RoboTwin 或
+SAPIEN，不直连 Dora，也不读取仿真器专有 task/embodiment/benchmark 字段。若某个能力只实现
+`scene.observe`，不能把它伪装成包含其他 `required_tools` 的多能力 Bundle；应先让 Gateway
+`/tools` 与声明的全部 required Tool contexts ready，再进行 Runtime 验收。
 
 ## 6. 感知抓取链路示例
 
@@ -144,4 +164,3 @@ Skill activation → AgentTask/PlanRevision → Tool records
 PR 描述应包含：基线 commit、规范章节、选定扩展点、所有权表、非目标、测试命令和结果。若修改了公共契约，必须同时更新 schema、Fake Gateway、conformance tests 和相应文档；若只是新增 adapter，优先保持 PAOS 核心不变。
 
 不要把官方文档全文复制到功能目录。使用章节链接和 commit pinning，项目 ADR 只保留本项目特有的映射理由和取舍。这样文档更新时可以重新审核引用，而不会产生多份互相漂移的契约。
-

@@ -6,13 +6,15 @@
 
 ## 1. Development invariants
 
-1. Robot execution has one physical path: `ForgeToolClient → Gateway Tool API → ToolEndpoint`.
+1. Robot or simulator execution has one physical path: `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator`.
 2. AgentTask aggregates planning, evidence, and verdicts; it never executes the robot.
 3. `binding_id`, `task_id`, `revision_id`, record ID, `caller_id`, `invocation_id`, and `attempt_id` are distinct.
 4. Forge ToolResult and invocation events are authoritative execution facts.
 5. Action/Session admission, cancel/stop acceptance, timeout, and `unknown` do not prove physical stop.
 6. General Agent tools, verification, experience, evolution, and dynamic MCP remain independent.
 7. Runtime artifacts are installed only after bounded archive and digest verification.
+8. PAOS core and public Skills remain provider-neutral; RoboTwin, SAPIEN, task, embodiment, and
+   benchmark configuration belong to the Gateway/ToolEndpoint adapter and profile.
 
 ## 2. Module map
 
@@ -207,14 +209,20 @@ Evolution failures remain fail-open.
 
 To add a robot capability:
 
-1. implement or package the ToolEndpoint operation;
-2. publish a Query, Action, or Session ToolSpec with exact schemas and binding;
-3. define operation `max_concurrency` in Gateway;
-4. add the locked node and profile references to a manifest-v2 Bundle;
-5. test binding drift, context, invocation, pending, terminal, cancel/stop, ownership, and unknown outcomes;
-6. add workflow guidance to a Skill without embedding task-specific coordinates or secrets.
+1. publish a provider-neutral Query, Action, or Session ToolSpec with exact schemas and binding;
+2. implement or package the ToolEndpoint operation and define its `max_concurrency` in Gateway;
+3. use the Fake Gateway to test binding drift, context, route, invocation, pending, terminal,
+   cancel/stop, ownership, and unknown outcomes;
+4. for a simulator, implement the Gateway/ToolEndpoint adapter in the independent runtime and keep
+   RoboTwin/SAPIEN task, embodiment, and benchmark settings in its adapter/profile;
+5. add the locked Node and Dora profile references to a manifest-v2 Bundle, then let RuntimeManager
+   start the flow and wait for `/tools` plus every required Tool context;
+6. add provider-neutral workflow guidance to a Skill without embedding simulator names, task-specific
+   coordinates, provider payloads, or secrets;
+7. perform simulation or hardware acceptance only after the complete runtime and Tool contexts are ready.
 
-Do not create a second PAOS execution protocol, direct Agent-to-Dora calls, or a cross-Tool lease.
+Do not create a second PAOS execution protocol, direct Agent-to-Dora/SDK calls, simulator-bound Skill
+names, or a cross-Tool lease.
 A new Agent tool is justified only when the generic task and Tool API tools cannot express the
 capability.
 
