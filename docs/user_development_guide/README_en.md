@@ -42,6 +42,8 @@ Use this order:
    consumed by the generic runtime/Gateway, and keep RoboTwin task, SAPIEN, embodiment, and benchmark
    configuration inside the adapter/profile. Actor/entity truth, segmentation, object metadata, and internal
    poses are simulation comparison facts only; they must not replace sensor observations or real perception providers.
+   Adapter dependencies, RoboTwin/SAPIEN/Torch/YOLO packages, and simulator assets must live in the separate
+   adapter environment and external directories; they must not enter the PAOS wheel or control-plane `pyproject.toml`.
 5. Provide locked Nodes and Dora-profile wiring through a manifest-v2 Skill Bundle and start it with Skill Runtime.
 6. Wait for the Dora flow, Gateway `/tools`, and every `required_tools` context to become ready before simulation acceptance.
 7. Keep Agent calls on `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator`.

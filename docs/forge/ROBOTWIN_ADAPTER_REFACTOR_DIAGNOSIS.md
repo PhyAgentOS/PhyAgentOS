@@ -267,6 +267,9 @@ robotwin_grasp_propose
   或硬件，且不执行物理运动；
 - 当前没有 YOLO/Ultralytics 检测器、真实相机感知、抓取模型或机器人执行器接入；`grasp.propose` 仍是
   provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成；
+- 独立 `examples/forge-adapters/robotwin20` adapter foundation：环境 reset/snapshot seam、注入式
+  `RoboTwinSensorBackend`、camera/depth/state artifact 校验和 `RoboTwinObservationSource`；该包不进入
+  PAOS wheel、不依赖 RoboTwin/SAPIEN/Torch/YOLO，也不复制仿真资产；
 - Skill Runtime、Bundle、binding、AgentTask、verification 和 experience 基础；
 - 已修正 RoboTwin 不应绑定 Skill 的文档边界。
 
@@ -274,7 +277,8 @@ robotwin_grasp_propose
 
 - generic capability runtime 的 Gateway HTTP/Dora 生产 wiring、持久化 invocation backend 和完整 Action
   executor（当前仅有无仿真依赖的 in-process foundation）；
-- RoboTwin20 `EnvironmentAdapter`；
+- 可运行的 RoboTwin20 backend 实现及其独立 Python 环境（当前 `paos` 环境中没有 RoboTwin/SAPIEN）；
+- RoboTwin20 camera/depth/state 的真实运行证据（当前只完成 adapter contract 与注入式 backend 测试）；
 - 真实 Gateway/ToolEndpoint HTTP server；
 - RoboTwin 对应 Dora flow、locked Node 和 profile；
 - 六个真实能力的 PAOS 端到端验证。

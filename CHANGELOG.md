@@ -2,6 +2,18 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.0] - 2026-09-02
+
+Implemented the first RoboTwin 2.0 adapter slice: an environment-owned lifecycle seam and sensor-only observation
+source that can be connected to camera/depth/state outputs without importing RoboTwin into PAOS.
+
+### Changed
+
+- Added an independently packaged `robotwin20` adapter with explicit backend and sensor artifact protocols.
+- Requires RGB/depth/state artifacts, frame, calibration, timestamp, and scene revision; rejects missing or
+  simulator-ground-truth-only observations.
+- Added no-motion tests; no YOLO, SAPIEN, robot SDK, Dora, or actuator dependencies were added to PAOS.
+
 ## [v2.7.0] - 2026-09-02
 
 Implemented the simulator-free generic capability runtime foundation for the next integration phase.

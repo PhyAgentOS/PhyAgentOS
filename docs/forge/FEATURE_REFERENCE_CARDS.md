@@ -143,6 +143,9 @@ SAPIEN，不直连 Dora，也不读取仿真器专有 task/embodiment/benchmark 
 
 当前实现状态：generic capability runtime 已有无仿真依赖的 in-process foundation，但尚未接入 YOLO/Ultralytics、
 真实相机或抓取模型；`grasp.propose` 的 Fake/provider-neutral 候选不能解释为 YOLO 识别结果或抓取成功。
+RoboTwin20 adapter foundation 位于独立 `examples/forge-adapters/robotwin20` 包，PAOS `pyproject.toml` 不增加
+RoboTwin/SAPIEN/Torch/YOLO 依赖，资产也必须通过 adapter profile 引用外部目录，不能复制进 PAOS wheel 或
+control-plane 环境。
 
 ## 6. 感知抓取链路示例
 

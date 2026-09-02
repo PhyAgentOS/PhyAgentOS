@@ -40,6 +40,8 @@ object metadata 和内部 pose 只能作为仿真对照事实，不能冒充真�
 4. 在独立 RoboTwin 2.0 环境实现 `EnvironmentAdapter` 与 provider ports，由 generic runtime/Gateway
    调用，并在 adapter/profile 内配置 RoboTwin task、SAPIEN、embodiment 和 benchmark；actor/entity、
    segmentation、object metadata 和内部 pose 只能用于仿真对照，不能代替真实传感器 observation 或 perception；
+   adapter 依赖、RoboTwin/SAPIEN/Torch/YOLO 包和仿真资产必须位于独立环境及外部目录，不得加入 PAOS wheel
+   或 control-plane `pyproject.toml`；
 5. 通过 manifest-v2 Skill Bundle 提供锁定 Node 与 Dora profile wiring，使用 Skill Runtime 启动；
 6. Runtime 等待 Dora flow、Gateway `/tools` 以及全部 `required_tools` context ready 后，才做仿真验收；
 7. Agent 始终通过 `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator` 调用，
