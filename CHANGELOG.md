@@ -2,6 +2,33 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v0.8.0] - 2026-09-02
+
+Added a generic verification-layer projection for versioned Forge capability outcomes. The
+projection exposes execution facts to AgentTask verification without creating a second execution
+protocol or authorizing task success.
+
+### Added
+
+- Added `PhyAgentOS.verification.outcome_projection` for terminal Action summaries, including
+  bounded validation of status, capability phase, failure ownership, evidence availability,
+  opaque artifact references, metric names, and post-release evidence.
+- Added AgentTask verifier-context fields for capability outcome projections and bounded projection
+  errors while preserving the existing evidence allowlist and verdict flow.
+- Added 14 projection tests covering valid outcomes, malformed summaries, unknown/failure paths,
+  post-release evidence, missing summaries, and request-builder integration.
+
+### Changed
+
+- Documented the `execution_fact_only` authority boundary and fixed
+  `task_success_authorized=false`; only `TaskVerificationContract` and the generic verifier may
+  produce a user-level task verdict.
+
+### Security
+
+- Gateway artifact references remain opaque and are never promoted into `valid_evidence_refs`.
+- Projection performs no Gateway calls, motion admission, retry, or PlanRevision mutation.
+
 ## [v1.0.0] - 2026-08-30
 
 Initial stable release of PhyAgentOS.

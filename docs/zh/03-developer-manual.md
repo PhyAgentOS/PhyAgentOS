@@ -112,6 +112,18 @@ deadline。`begin_revision` 检查相同 `task_id`、replan budget、deadline �
 revision。历史 attempts 对 experience analysis 保持可见。Verifier exception 会持久化为失败
 attempt；audit 保留执行语义，enforce/recovery 则失败。
 
+### 7.1 能力终态投影
+
+通用 verification 层可以把终态 Action 的版本化
+`capability_outcome_summary_v1` 投影到 verifier context 的
+`capability_outcome_projections`。该视图的权威级别始终是
+`execution_fact_only`：它保留能力阶段、失败归因、unknown 状态、有界指标名和可选
+释放后证据，同时保持 Gateway artifact 引用为 opaque。格式错误、版本不支持或状态不
+一致的摘要只产生有界 projection error，不会成为任务证据。投影始终携带
+`task_success_authorized=false`；任务级 verdict 仍只能由用户的
+`TaskVerificationContract`、证据策略和 verifier 产生。投影不调用 Gateway、不执行运动
+准入、不重试，也不修改 PlanRevision。
+
 ## 8. Evidence 与 retention
 
 Evidence 路径相对工作区并原子写入。进入语义验证前，先检查 bundle 身份、关联质量、

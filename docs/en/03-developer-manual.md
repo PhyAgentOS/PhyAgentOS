@@ -115,6 +115,19 @@ deadline. `begin_revision` checks the same `task_id`, replan budget, deadline, a
 appends a revision. Earlier attempts remain visible to experience analysis. Verifier exceptions are
 persisted as failed attempts; audit preserves execution semantics, while enforce/recovery fail.
 
+### 7.1 Capability outcome projection
+
+The generic verification layer may project a terminal Action's versioned
+`capability_outcome_summary_v1` into `capability_outcome_projections` in the verifier
+context. This is an `execution_fact_only` view: it preserves the capability phase,
+failure ownership, unknown status, bounded metric names, and optional post-release
+evidence while keeping Gateway artifact references opaque. Malformed, unsupported, or
+status-mismatched summaries are reported as bounded projection errors and are not used
+as task evidence. The projection always carries `task_success_authorized=false`; only
+the user-level `TaskVerificationContract`, its evidence policy, and the verifier may
+produce a task verdict. The projection performs no Gateway call, motion admission,
+retry, or PlanRevision mutation.
+
 ## 8. Evidence and retention
 
 Evidence paths are workspace-relative and written atomically. Before semantic verification, the

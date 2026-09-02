@@ -14,6 +14,10 @@ from PhyAgentOS.verification.contracts import (
     ForgeSessionRecord,
     VerificationEvidencePolicy,
 )
+from PhyAgentOS.verification.outcome_projection import (
+    project_terminal_outcomes,
+    projection_to_dict,
+)
 
 if TYPE_CHECKING:
     from PhyAgentOS.forge.task import AgentTaskRecord
@@ -117,6 +121,7 @@ class VerificationRequestBuilder:
             )
         valid_refs = validated.artifact_ids | execution_refs
         records = task.execution_records
+        capability_projection = project_terminal_outcomes(records)
         context = {
             "agent_task": {
                 "task_id": task.task_id,
@@ -154,6 +159,17 @@ class VerificationRequestBuilder:
                 }
                 for item in records
                 if item.terminal
+            ],
+            "capability_outcome_projections": [
+                projection_to_dict(item) for item in capability_projection.projections
+            ],
+            "capability_outcome_projection_errors": [
+                {
+                    "record_id": item.record_id,
+                    "code": item.code,
+                    "message": item.message,
+                }
+                for item in capability_projection.errors
             ],
             "evidence_bundle": validated.evidence.model_dump(mode="json"),
             "structured_evidence": validated.structured,
