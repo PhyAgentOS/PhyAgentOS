@@ -2,6 +2,22 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.5.0] - 2026-09-02
+
+Added bound AgentTask verification-context integration coverage.
+
+### Added
+
+- Added an integration test that routes bound Query and bounded Action execution facts through
+  `VerificationRequestBuilder` into the generic verifier context.
+- Verified frozen binding/revision/invocation identity, execution-fact-only capability projections,
+  opaque capability artifact references, and the absence of motion authorization in verifier input.
+
+### Security
+
+- The test uses only the Fake Gateway no-motion path and starts no Dora, simulator, hardware, or
+  motion route.
+
 ## [v2.4.0] - 2026-09-02
 
 Added ExperienceCoordinator recovery-episode integration coverage.
