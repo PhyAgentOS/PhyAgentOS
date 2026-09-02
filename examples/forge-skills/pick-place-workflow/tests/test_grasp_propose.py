@@ -208,6 +208,11 @@ def test_tool_spec_is_strict_and_provider_neutral():
     assert not any(token in blob for token in _MOTION_KEYS)
 
 
+def test_skill_imports_resolve_to_paos_generic_runtime():
+    assert GraspProposalEndpoint.__module__ == "PhyAgentOS.forge.capability_runtime.grasp_proposal"
+    assert GraspProposalSnapshot.__module__ == "PhyAgentOS.forge.capability_runtime.grasp_proposal"
+
+
 def test_contract_yaml_matches_the_published_tool_spec():
     contract_path = Path(__file__).resolve().parents[1] / "contracts" / "grasp.propose.tool.yaml"
     assert yaml.safe_load(contract_path.read_text(encoding="utf-8")) == GRASP_TOOL_SPEC

@@ -2,6 +2,29 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.8] - 2026-09-02
+
+Moved the provider-neutral `grasp.propose` Query implementation into the
+PAOS-owned generic capability runtime. The runtime now owns the strict
+ToolSpec, observation/frame/calibration binding, candidate and candidate-set
+identity, funnel reconciliation, provenance validation, stale/empty/
+unavailable/invalid states, and fail-closed provider error projection. The
+Skill module is now a compatibility export only, and preparation imports the
+shared candidate validator directly from PAOS. No YOLO, GraspGen, RoboTwin,
+SAPIEN, Torch, Dora, or Hephaestus dependency was added.
+
+将 provider-neutral `grasp.propose` Query 实现迁移到 PAOS 自有 generic capability runtime。运行时统一持有
+严格 ToolSpec、observation/frame/calibration 绑定、候选与候选集身份、funnel 对账、provenance 校验、
+stale/empty/unavailable/invalid 状态以及 provider 异常的 fail-closed 投影；Skill 模块仅保留兼容导出，
+准备能力直接导入 PAOS 的候选校验器。未加入 YOLO、GraspGen、RoboTwin、SAPIEN、Torch、Dora 或 Hephaestus
+依赖。
+
+### Validation
+
+- `249 passed` for the adapter/workflow suites.
+- Ruff, compileall, and `git diff --check` passed.
+- `grasp.propose` remains Query-only; no Action/Session/motion route is created.
+
 ## [v2.8.7] - 2026-09-02
 
 Moved the provider-neutral `scene.understand` contract into the PAOS-owned

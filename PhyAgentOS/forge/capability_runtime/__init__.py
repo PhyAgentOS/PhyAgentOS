@@ -1,5 +1,10 @@
 """Simulator-neutral Forge capability runtime APIs."""
 
+from .grasp_proposal import GRASP_TOOL_SPEC as GRASP_PROPOSAL_TOOL_SPEC
+from .grasp_proposal import (
+    GraspProposalEndpoint,
+    GraspProposalSnapshot,
+)
 from .ports import (
     ActionAdmission,
     ActionEndpoint,
@@ -35,6 +40,9 @@ __all__ = [
     "EndpointRegistration",
     "EnvironmentAdapter",
     "GraspProposalProvider",
+    "GraspProposalEndpoint",
+    "GraspProposalSnapshot",
+    "GRASP_PROPOSAL_TOOL_SPEC",
     "Invocation",
     "ManipulationExecutor",
     "ObservationSource",

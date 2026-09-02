@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .grasp_proposal import _validate_candidate
+from PhyAgentOS.forge.capability_runtime.grasp_proposal import _validate_candidate
 
 PREPARATION_TOOL_ID = "manipulation.prepare"
 PREPARATION_ENDPOINT_ID = "manipulation_preparation"
