@@ -14,6 +14,9 @@ The implementation deliberately has no simulator, robot SDK, camera driver, or
 actuator dependency. `FakeGatewayTransport` is used for contract and workflow tests;
 deployment adapters can replace the observation, understanding, proposal, and
 preparation providers without changing the ToolSpec or PAOS Agent route.
+It also does not include YOLO/Ultralytics or any other detector; a provider result
+from `grasp.propose` is a contract-shaped proposal fixture, not object detection or
+successful grasp execution.
 
 The fixed capability workflow is:
 

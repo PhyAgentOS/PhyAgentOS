@@ -115,10 +115,13 @@
 2. 填写引用卡，先确定语义、所有权、身份和失败状态。
 3. 定义严格 ToolSpec：schema、frame、unit、tolerance、readiness 和 `max_concurrency`。
 4. 用 Fake Gateway 覆盖 discovery、context、路由、错误和生命周期。
-5. 实现 Gateway Endpoint 或外部 adapter；PAOS 核心只增加确有必要的通用能力。
-6. 将 Tool、Node、profile 和依赖加入 manifest-v2 Bundle，并执行本地安装闭环。
-7. 按需要接入 AgentTask、evidence、verification，再接入 ExperienceCoordinator。
-8. 最后执行仿真或硬件验收，并记录确切 Bundle、Node digest、profile 和环境。
+5. 先实现不依赖仿真器的 generic capability runtime（ToolEndpoint 生命周期、provider ports、结果投影和
+   failure semantics）；PAOS 核心只增加确有必要的通用能力。
+6. 再实现 EnvironmentAdapter/provider ports；RoboTwin、SAPIEN、task、embodiment、benchmark 和 SDK
+   参数只存在于 adapter/profile。
+7. 将 Tool、Node、profile 和依赖加入 manifest-v2 Bundle，并执行本地安装闭环。
+8. 按需要接入 AgentTask、evidence、verification，再接入 ExperienceCoordinator。
+9. 最后执行仿真或硬件验收，并记录确切 Bundle、Node digest、profile 和环境。
 
 ### 5.1 RoboTwin 2.0 接入顺序
 
@@ -127,7 +130,8 @@ RoboTwin 接入必须沿用 v1.0 的唯一物理路径，而不是创建一个�
 ```text
 provider-neutral ToolSpec
   → Fake Gateway conformance
-  → Gateway ToolEndpoint adapter
+  → generic capability runtime
+  → EnvironmentAdapter/provider ports
   → Dora profile / locked Node wiring
   → RoboTwin 2.0 task + SAPIEN runtime
 ```
@@ -136,6 +140,9 @@ PAOS 侧只通过 `ForgeToolClient → Gateway Tool API` 访问 ToolEndpoint；P
 SAPIEN，不直连 Dora，也不读取仿真器专有 task/embodiment/benchmark 字段。若某个能力只实现
 `scene.observe`，不能把它伪装成包含其他 `required_tools` 的多能力 Bundle；应先让 Gateway
 `/tools` 与声明的全部 required Tool contexts ready，再进行 Runtime 验收。
+
+当前实现状态：generic capability runtime 已有无仿真依赖的 in-process foundation，但尚未接入 YOLO/Ultralytics、
+真实相机或抓取模型；`grasp.propose` 的 Fake/provider-neutral 候选不能解释为 YOLO 识别结果或抓取成功。
 
 ## 6. 感知抓取链路示例
 

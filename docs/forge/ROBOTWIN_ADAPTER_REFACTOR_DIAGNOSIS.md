@@ -262,13 +262,18 @@ robotwin_grasp_propose
 - 六个 provider-neutral ToolSpec；
 - 一个职责明确的 `pick-place-workflow` Skill，用于编排六个 Tool，而不是把六个能力误称为六个 Skill；
 - Fake Gateway 和 no-motion conformance；
-- v1.0 所要求的独立 generic capability runtime 分层设计（当前仍是设计目标，尚未有生产实现）；
+- v1.0 所要求的独立 generic capability runtime 基础实现：ToolEndpoint 注册、发现/context、Query 分发、
+  bounded Action invocation bookkeeping 和 provider-port 协议；该实现不依赖仿真器、YOLO、机器人 SDK、Dora
+  或硬件，且不执行物理运动；
+- 当前没有 YOLO/Ultralytics 检测器、真实相机感知、抓取模型或机器人执行器接入；`grasp.propose` 仍是
+  provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成；
 - Skill Runtime、Bundle、binding、AgentTask、verification 和 experience 基础；
 - 已修正 RoboTwin 不应绑定 Skill 的文档边界。
 
 当前尚未具备：
 
-- generic capability runtime 的独立生产实现；
+- generic capability runtime 的 Gateway HTTP/Dora 生产 wiring、持久化 invocation backend 和完整 Action
+  executor（当前仅有无仿真依赖的 in-process foundation）；
 - RoboTwin20 `EnvironmentAdapter`；
 - 真实 Gateway/ToolEndpoint HTTP server；
 - RoboTwin 对应 Dora flow、locked Node 和 profile；

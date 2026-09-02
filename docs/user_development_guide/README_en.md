@@ -12,7 +12,7 @@
 | Robot effect | Gateway Action ToolSpec + ToolEndpoint operation |
 | Stateful capability lifecycle | Gateway Session ToolSpec + ToolEndpoint operation |
 | Dora nodes and deployment assets | Manifest-v2 Skill Bundle and locked Node artifacts |
-| Simulator/external provider integration | Gateway/ToolEndpoint adapter + Dora profile; the Bundle freezes wiring and artifact references only |
+| Simulator/external provider integration | generic capability runtime + EnvironmentAdapter/provider ports + Dora profile; the Bundle freezes wiring and artifact references only |
 | Workflow instructions | `SKILL.md` discovered by SkillsLoader |
 | User-task success | Generic `TaskVerificationContract` and AgentTask finalize |
 | New model provider | Existing provider registry/configuration |
@@ -26,7 +26,7 @@ Session/Policy routes outside the governed Tool API.
 RoboTwin 2.0 is an independent simulation/benchmark runtime at the end of the physical execution
 plane. It is not a PAOS provider and it does not define Skill business semantics. PAOS v1.0 still uses an
 independent generic capability runtime. The single `pick-place-workflow` Skill describes the complete six-Tool
-workflow and publishes only provider-neutral ToolSpecs and workflow guidance. The Gateway/ToolEndpoint adapter
+workflow and publishes only provider-neutral ToolSpecs and workflow guidance. The EnvironmentAdapter/profile
 owns RoboTwin tasks, SAPIEN, embodiment, benchmark, and vendor-SDK parameters. Dora profiles and locked Node
 artifacts only wire that runtime into the governed Tool API. Simulation actor/entity truth, segmentation, object
 metadata, and internal poses are comparison facts only; real deployment must use sensor artifacts and an

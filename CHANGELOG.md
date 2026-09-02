@@ -2,6 +2,18 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.7.0] - 2026-09-02
+
+Implemented the simulator-free generic capability runtime foundation for the next integration phase.
+
+### Changed
+
+- Added reusable ToolEndpoint registration, discovery/context, Query dispatch, and bounded Action lifecycle
+  primitives under `PhyAgentOS.forge`, with provider ports defined independently of RoboTwin, SAPIEN, YOLO,
+  robot SDKs, and hardware.
+- Added no-motion conformance tests and documented that this phase does not implement perception models or
+  physical execution.
+
 ## [v2.6.3] - 2026-09-02
 
 Corrected the documented extension order so the independent generic capability runtime is implemented before

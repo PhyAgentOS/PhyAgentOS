@@ -12,7 +12,7 @@
 | 机器人物理效果 | Gateway Action ToolSpec + ToolEndpoint operation |
 | 有状态能力生命周期 | Gateway Session ToolSpec + ToolEndpoint operation |
 | Dora nodes 与部署资产 | manifest v2 Skill Bundle 与锁定 Node artifacts |
-| 仿真器/外部 provider 接入 | Gateway/ToolEndpoint adapter + Dora profile；Bundle 仅冻结 wiring 与制品引用 |
+| 仿真器/外部 provider 接入 | generic capability runtime + EnvironmentAdapter/provider ports + Dora profile；Bundle 仅冻结 wiring 与制品引用 |
 | 工作流说明 | 由 SkillsLoader 发现的 `SKILL.md` |
 | 用户任务成功 | 通用 `TaskVerificationContract` 与 AgentTask finalize |
 | 新模型 Provider | 现有 provider registry/configuration |
@@ -26,7 +26,7 @@ Gateway Session/Policy route。
 RoboTwin 2.0 是独立的仿真/benchmark runtime，位于物理执行链末端，不是 PAOS provider，也不定义
 Skill 的业务语义。PAOS v1.0 仍采用独立 generic capability runtime；`pick-place-workflow` 是一个
 完整的六 Tool workflow Skill，只发布 provider-neutral ToolSpec 与工作流。RoboTwin task、SAPIEN、
-embodiment、benchmark 以及厂商 SDK 参数由 Gateway/ToolEndpoint adapter 持有。Dora profile 和
+embodiment、benchmark 以及厂商 SDK 参数由 EnvironmentAdapter/profile 持有。Dora profile 和
 锁定 Node artifact 只负责把该 runtime 接入已治理的 Tool API。仿真 actor/entity、segmentation、
 object metadata 和内部 pose 只能作为仿真对照事实，不能冒充真实物理世界的感知；真实部署必须接入
 传感器和独立 perception provider。
