@@ -7,6 +7,37 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.4.3] - 2026-09-03
+
+增加 Evidence request-level conformance：不可变 Evidence Bundle 在跨工作区 replay 时重新校验
+capture window、必需 kind/source、association、retention、digest/size、媒体类型和结构化 JSON。
+该轮不修改 Verifier 语义权威逻辑，也不把 `ENVIRONMENT.md` 变成 Evidence。
+
+Added Evidence request-level conformance: immutable Evidence Bundles are revalidated across workspace replay
+for capture windows, required kind/source, association, retention, digest/size, media type, and structured JSON.
+This iteration does not change Verifier semantic authority or turn `ENVIRONMENT.md` into Evidence.
+
+### Detailed changes
+
+- `tests/test_evidence_semantic_replay_conformance.py:L1-L184` adds immutable bundle replay and fail-closed request validation tests.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L280-L287` records request-level Evidence conformance and its remaining limits.
+- `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L59-L61` records Evidence request conformance coverage.
+
+### Key diff
+
+```text
+Before: Evidence boundary had basic projection rejection but no dedicated replay matrix for request consumption.
+After:  immutable bundle replay validates identity, window, policy, retention, digest/size, media, and structured data;
+        LLM semantic verdict and live Gateway replay remain explicitly out of scope.
+```
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `48 passed`.
+- `PYTHONPATH=examples/forge-skills/pick-place-workflow/src python -m pytest -q examples/forge-skills/pick-place-workflow/tests` → `241 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No real Gateway, Watchdog, Action, or motion authorization was used.
+
 ## [v3.4.2] - 2026-09-03
 
 增加状态文件适配的 replay/failure conformance：跨工作区回放保持确定性，未知字段在触及 Store/Gateway

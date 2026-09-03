@@ -277,6 +277,11 @@ reference，并拒绝调用方提供的不匹配值。writer 现在拒绝同一 
 作为 verdict evidence reference。完整 Evidence 语义验收、跨环境 replay/failure conformance 仍未完成，
 因此阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
 
+随后补充了 Evidence request-level conformance：完整 bundle 的 capture window、必需 kind/source、
+authoritative association、artifact retention、byte size/digest、媒体类型和结构化 JSON 均在
+不可变 bundle replay 中被重新校验；跨工作区复制后 artifact identity 与结构化事实保持一致。该测试
+验证的是 Evidence 消费边界，不等同于已经完成 LLM 语义 verdict 或真实 Gateway replay。
+
 本轮进一步补充了文件适配的 Fake Store/Fake Gateway replay、未知字段失败前置、编译失败无残留、
 projection drift 保留旧内容和 no-motion conformance。这里的 replay 只证明适配器输入/投影的确定性和
 失败边界，不把 Fake Gateway 变成生产执行路径，也不把 Markdown 提升为事实源。

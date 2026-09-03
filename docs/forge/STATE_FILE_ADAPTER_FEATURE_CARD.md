@@ -56,6 +56,7 @@
 - binding and identity checks: revision/source and deterministic preview identity are tested
 - evidence and verification: no evidence/verdict is produced by this adapter
 - verifier boundary conformance: `ENVIRONMENT.md` cannot be parsed as an Evidence Bundle, and projection URIs are rejected as verifier evidence references
+- Evidence request conformance: `tests/test_evidence_semantic_replay_conformance.py` covers immutable bundle replay, capture-window ordering, required kind/source, authoritative association, retention, digest/size, and structured JSON validation
 - replay/failure conformance: `tests/test_state_file_replay_conformance.py` covers cross-workspace deterministic replay, unknown-field fail-closed behavior, Fake Store compilation failure without lifecycle residue, projection-drift preservation, and no-motion boundaries
 - Fake Gateway/conformance: not applicable; no Gateway route is created
 - simulation or hardware proof: not applicable; implementation is no-motion
