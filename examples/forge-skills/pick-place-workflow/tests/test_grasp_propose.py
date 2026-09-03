@@ -218,6 +218,41 @@ def test_contract_yaml_matches_the_published_tool_spec():
     assert yaml.safe_load(contract_path.read_text(encoding="utf-8")) == GRASP_TOOL_SPEC
 
 
+@pytest.mark.asyncio
+async def test_adapter_mapping_snapshot_is_normalized_at_generic_boundary():
+    provider = Provider(
+        {
+            "candidates": [candidate(1)],
+            "ambiguities": [],
+            "funnel": {"decoded": 1, "canonicalized": 1, "deduplicated": 1, "retained": 1},
+            "provider_available": True,
+        }
+    )
+    _, _, result, _ = await query(provider, request_payload())
+    assert result["data"]["status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_geometry_artifact_binding_is_provider_neutral_and_strict():
+    geometry = {
+        "artifact_ref": "artifact://obs-7/camera_front/derived/points-bottle",
+        "kind": "object_point_cloud",
+        "observation_ref": "observation://scene-7/camera_front",
+        "scene_revision": "scene-7",
+        "entity_ref": "entity://bottle-1",
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "provenance": ["artifact://obs-7/depth"],
+    }
+    provider = Provider(proposal_snapshot())
+    _, _, result, _ = await query(provider, request_payload(targets=[target(geometry_artifacts=[geometry])]))
+    assert result["data"]["status"] == "available"
+    bad = dict(geometry, frame_id="base_link")
+    _, _, invalid, _ = await query(provider, request_payload(targets=[target(geometry_artifacts=[bad])]))
+    assert invalid["data"]["status"] == "invalid"
+    assert invalid["data"]["error"]["code"] == "invalid_geometry_artifacts"
+
+
 def test_bundle_and_package_versions_match_the_feature_revision():
     bundle_manifest = yaml.safe_load(
         (Path(__file__).resolve().parents[1] / "skill.yaml").read_text(encoding="utf-8")
@@ -465,7 +500,19 @@ def test_non_finite_target_coordinates_fail_closed_at_the_endpoint(coordinate):
         ),
         (
             proposal_snapshot(
+                candidates=(candidate(1, grasp_frame={"orientation_xyzw": [0.0, 0.0, 0.0, 2.0]}),)
+            ),
+            "invalid_candidate_geometry",
+        ),
+        (
+            proposal_snapshot(
                 candidates=(candidate(1, approach_direction={"vector": [0.0, -1.0]}),)
+            ),
+            "invalid_candidate_geometry",
+        ),
+        (
+            proposal_snapshot(
+                candidates=(candidate(1, approach_direction={"vector": [0.0, 0.0, 0.0]}),)
             ),
             "invalid_candidate_geometry",
         ),

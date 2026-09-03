@@ -1,0 +1,27 @@
+schema_version: paos-robotwin20-grasp/v1
+artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
+max_candidates: 24
+score_threshold: 0.02
+apply_nms: true
+nms_position_threshold_m: 0.005
+nms_approach_angle_deg: 10.0
+nms_closing_angle_deg: 10.0
+apply_model_collision: false
+
+worker:
+  python: ${GRASPGEN_PYTHON}
+  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/graspgen_worker.py
+  cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  startup_timeout_s: 300
+  request_timeout_s: 120
+  shutdown_timeout_s: 15
+  environment:
+    PYTHONUNBUFFERED: "1"
+  arguments:
+    - --stdio-worker
+    - --checkpoint
+    - ${GRASPGEN_CHECKPOINT}
+    - --config
+    - ${GRASPGEN_CONFIG}
+    - --source-root
+    - ${GRASPGEN_SOURCE_ROOT}

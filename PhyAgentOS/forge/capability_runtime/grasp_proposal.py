@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 GRASP_TOOL_ID = "grasp.propose"
 GRASP_ENDPOINT_ID = "grasp_proposal"
@@ -32,7 +32,7 @@ _FUNNEL_STAGES = ("decoded", "canonicalized", "deduplicated", "retained")
 
 
 class GraspProposalProvider(Protocol):
-    def propose(self, request: dict[str, Any]) -> "GraspProposalSnapshot | None": ...
+    def propose(self, request: dict[str, Any]) -> "GraspProposalSnapshot | Mapping[str, Any] | None": ...
 
 
 @dataclass(frozen=True)
@@ -99,6 +99,30 @@ GRASP_TOOL_SPEC: dict[str, Any] = {
                                 "provenance": {
                                     "type": "array",
                                     "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+                                },
+                            },
+                        },
+                        "geometry_artifacts": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "artifact_ref", "kind", "observation_ref", "scene_revision",
+                                    "entity_ref", "frame_id", "calibration_ref", "provenance",
+                                ],
+                                "properties": {
+                                    "artifact_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+                                    "kind": {"enum": ["object_point_cloud", "fused_entity_perception"]},
+                                    "observation_ref": {"type": "string", "pattern": r"^observation://[^/]+/[^/]+$"},
+                                    "scene_revision": {"type": "string", "minLength": 1},
+                                    "entity_ref": {"type": "string", "pattern": r"^entity://[^/]+$"},
+                                    "frame_id": {"type": "string", "minLength": 1},
+                                    "calibration_ref": {"type": "string", "minLength": 1},
+                                    "provenance": {
+                                        "type": "array", "minItems": 1,
+                                        "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+                                    },
                                 },
                             },
                         },
@@ -266,10 +290,18 @@ def _artifact_refs(values: Any) -> bool:
     )
 
 
-def _validate_target(target: Any, frame_id: str) -> str | None:
+def _validate_target(
+    target: Any,
+    frame_id: str,
+    *,
+    observation_ref: str,
+    scene_revision: str,
+    calibration_ref: str,
+) -> str | None:
     if (
         not isinstance(target, dict)
-        or set(target) != {"entity_ref", "category", "confidence", "spatial_envelope"}
+        or not set(target) <= {"entity_ref", "category", "confidence", "spatial_envelope", "geometry_artifacts"}
+        or not {"entity_ref", "category", "confidence", "spatial_envelope"} <= set(target)
         or not isinstance(target.get("entity_ref"), str)
         or _ENTITY_REF.fullmatch(target["entity_ref"]) is None
         or not isinstance(target.get("category"), str)
@@ -299,6 +331,27 @@ def _validate_target(target: Any, frame_id: str) -> str | None:
     # One Query invocation is bound to one observation frame; envelopes must agree.
     if envelope["frame_id"] != frame_id:
         return "invalid_target_frame"
+    geometry = target.get("geometry_artifacts", [])
+    if not isinstance(geometry, list):
+        return "invalid_geometry_artifacts"
+    for artifact in geometry:
+        if (
+            not isinstance(artifact, dict)
+            or set(artifact) != {
+                "artifact_ref", "kind", "observation_ref", "scene_revision", "entity_ref",
+                "frame_id", "calibration_ref", "provenance",
+            }
+            or not isinstance(artifact.get("artifact_ref"), str)
+            or _ARTIFACT_REF.fullmatch(artifact["artifact_ref"]) is None
+            or artifact.get("kind") not in {"object_point_cloud", "fused_entity_perception"}
+            or artifact.get("observation_ref") != observation_ref
+            or artifact.get("scene_revision") != scene_revision
+            or artifact.get("entity_ref") != target.get("entity_ref")
+            or artifact.get("frame_id") != frame_id
+            or artifact.get("calibration_ref") != calibration_ref
+            or not _artifact_refs(artifact.get("provenance"))
+        ):
+            return "invalid_geometry_artifacts"
     return None
 
 
@@ -343,7 +396,13 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
     if not isinstance(targets, list):
         return _error("invalid_target", "targets must be an array", observation_ref=observation_ref)
     for target in targets:
-        target_error = _validate_target(target, arguments["frame_id"])
+        target_error = _validate_target(
+            target,
+            arguments["frame_id"],
+            observation_ref=observation_ref,
+            scene_revision=arguments["scene_revision"],
+            calibration_ref=arguments["calibration_ref"],
+        )
         if target_error is not None:
             return _error(target_error, "grasp target failed contract validation", observation_ref=observation_ref)
     return None
@@ -390,6 +449,9 @@ def _validate_candidate(
         or any(not _finite_number(value) for value in grasp_frame["orientation_xyzw"])
     ):
         return "invalid_candidate_geometry"
+    quaternion_norm = math.sqrt(sum(value * value for value in grasp_frame["orientation_xyzw"]))
+    if not math.isfinite(quaternion_norm) or not math.isclose(quaternion_norm, 1.0, rel_tol=0.0, abs_tol=1e-3):
+        return "invalid_candidate_geometry"
     approach = candidate.get("approach_direction")
     if (
         not isinstance(approach, dict)
@@ -407,6 +469,9 @@ def _validate_candidate(
         or any(not _finite_number(value) for value in approach["vector"])
     ):
         return "invalid_candidate_geometry"
+    approach_norm = math.sqrt(sum(value * value for value in approach["vector"]))
+    if not math.isfinite(approach_norm) or approach_norm <= 1e-9 or not math.isclose(approach_norm, 1.0, rel_tol=0.0, abs_tol=1e-3):
+        return "invalid_candidate_geometry"
     if not _finite_unit_interval(candidate.get("score")) or not _finite_unit_interval(candidate.get("confidence")):
         return "invalid_candidate_score"
     if (
@@ -420,13 +485,42 @@ def _validate_candidate(
     return None
 
 
+def normalize_snapshot(snapshot: Any) -> GraspProposalSnapshot | None:
+    if isinstance(snapshot, GraspProposalSnapshot):
+        return snapshot
+    if not isinstance(snapshot, Mapping):
+        return None
+    allowed = {"candidates", "ambiguities", "funnel", "provider_available"}
+    if set(snapshot) - allowed or not {"candidates", "ambiguities", "funnel"} <= set(snapshot):
+        return None
+    candidates = snapshot.get("candidates", ())
+    ambiguities = snapshot.get("ambiguities", ())
+    if (
+        not isinstance(candidates, (list, tuple))
+        or not isinstance(ambiguities, (list, tuple))
+        or any(not isinstance(item, Mapping) for item in candidates)
+        or any(not isinstance(item, Mapping) for item in ambiguities)
+    ):
+        return None
+    provider_available = snapshot.get("provider_available", True)
+    if not isinstance(provider_available, bool):
+        return None
+    return GraspProposalSnapshot(
+        candidates=tuple(dict(item) for item in candidates),
+        ambiguities=tuple(dict(item) for item in ambiguities),
+        funnel=snapshot.get("funnel"),
+        provider_available=provider_available,
+    )
+
+
 def validate_snapshot(
-    snapshot: GraspProposalSnapshot,
+    snapshot: GraspProposalSnapshot | Mapping[str, Any],
     *,
     frame_id: str,
     requested_entity_refs: set[str],
 ) -> str | None:
-    if not isinstance(snapshot, GraspProposalSnapshot):
+    snapshot = normalize_snapshot(snapshot)
+    if snapshot is None:
         return "invalid_snapshot"
     if not isinstance(snapshot.candidates, (tuple, list)):
         return "invalid_snapshot"
@@ -531,12 +625,14 @@ class GraspProposalEndpoint:
                 "grasp proposal provider is unavailable",
                 observation_ref=observation_ref,
             )
-        if not isinstance(snapshot, GraspProposalSnapshot):
+        normalized = normalize_snapshot(snapshot)
+        if normalized is None:
             return _error(
                 "invalid_snapshot",
                 "grasp proposal provider returned an invalid snapshot",
                 observation_ref=observation_ref,
             )
+        snapshot = normalized
         if not isinstance(snapshot.provider_available, bool):
             return _error(
                 "invalid_snapshot",
@@ -582,5 +678,5 @@ __all__ = [
     "GraspProposalProvider",
     "GraspProposalSnapshot",
     "GraspProposalEndpoint",
+    "normalize_snapshot",
 ]
-

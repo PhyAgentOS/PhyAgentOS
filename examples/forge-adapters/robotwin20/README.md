@@ -131,8 +131,11 @@ entity to a LocateAnything proposal, releases that model process, invokes SAM2
 with the exact box, and deterministically localizes the mask with aligned depth
 and calibration. It materializes provider-neutral `instance_mask`,
 `object_point_cloud`, and `metric_localization` records through the existing
-`scene.understand` contract. It does not implement `grasp.propose` and does not
-fold any of these providers into `scene.observe` or a RoboTwin-named Skill.
+`scene.understand` contract. The adapter also exposes a separate
+`GraspGenProposalProvider`: it consumes an explicitly bound object point-cloud
+or fused-entity artifact and returns provider-neutral candidate poses through
+`grasp.propose`; it never performs IK, collision admission, or motion and does
+not fold any provider into `scene.observe` or a RoboTwin-named Skill.
 
 The perception models retain their existing isolated environments. Configure
 them through the adapter profile without importing either environment into
@@ -167,6 +170,23 @@ plus a camera-frame metric envelope with `motion_authorized=false`. The run used
 a fixed semantic entity as composition input; it was not a fresh GPT invocation
 and does not validate grasp proposal or execution. Both model processes exited
 after their bounded stage and no worker remained resident.
+
+The grasp provider is configured independently through
+`profiles/robotwin20/graspgen.yaml`. Its worker receives only an adapter-resolved
+point-cloud path and returns 4x4 matrices plus scores; the adapter validates the
+homogeneous transform, converts it to a normalized quaternion and approach
+vector, applies deterministic confidence-ordered SE(3) NMS, and projects the
+candidate funnel. GraspGen/Torch/checkpoint settings remain in the external
+worker profile. The repository currently contains the worker protocol and
+conformance tests, but no local GraspGen checkpoint is assumed; until the
+profile points at a verified external model environment the provider must stay
+`unavailable` rather than fabricate candidates.
+
+Although this reference wiring lives beside the RoboTwin adapter example, the
+provider itself depends only on the generic `PointCloudArtifactResolver` and
+`GraspWorkerClient` ports. A future hardware or replay adapter can reuse the
+same provider with its own artifact resolver/profile; no RoboTwin or SAPIEN
+object is part of the provider API.
 
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,

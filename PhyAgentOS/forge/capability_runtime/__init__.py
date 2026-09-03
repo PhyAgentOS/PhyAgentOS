@@ -5,6 +5,9 @@ from .grasp_proposal import (
     GraspProposalEndpoint,
     GraspProposalSnapshot,
 )
+from .grasp_proposal import (
+    normalize_snapshot as normalize_grasp_snapshot,
+)
 from .manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     ManipulationPreparationEndpoint,
@@ -47,6 +50,7 @@ __all__ = [
     "GraspProposalProvider",
     "GraspProposalEndpoint",
     "GraspProposalSnapshot",
+    "normalize_grasp_snapshot",
     "GRASP_PROPOSAL_TOOL_SPEC",
     "MANIPULATION_TOOL_SPEC",
     "ManipulationPreparationEndpoint",

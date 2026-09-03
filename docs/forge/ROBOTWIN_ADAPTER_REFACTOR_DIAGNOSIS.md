@@ -457,7 +457,9 @@ Runtime 视为已移除。Markdown 文件可以作为人工输入、工作区上
   释放 proposal 进程，再启动 SAM2 box segmentation worker，最后用同帧 depth/intrinsics 生成
   camera-frame point cloud 与 spatial envelope。两个模型保留在独立 Python 环境，路径、revision、
   checkpoint、device 和 timeout 由 `profiles/robotwin20/perception.yaml` 注入；
-- adapter-side 已新增独立 `GraspGenProposalProvider`、JSONL worker 入口和 `graspgen.yaml` profile：它只消费
+- adapter-side 已新增独立 `GraspGenProposalProvider`、JSONL worker 入口和 `graspgen.yaml` profile：provider port
+  只依赖通用 `PointCloudArtifactResolver`，不依赖 RoboTwin/SAPIEN 类型；RoboTwin adapter 只负责产生并绑定
+  observation geometry artifacts。它只消费
   `scene.understand` 产生并绑定到 observation/revision/frame/calibration/entity 的
   `object_point_cloud` 或 `fused_entity_perception` artifact，校验 4x4 矩阵、四元数、approach vector，
   生成 provider-neutral candidate funnel，并通过确定性 SE(3) NMS 投影 `grasp.propose`。这仍是 Query 证据，

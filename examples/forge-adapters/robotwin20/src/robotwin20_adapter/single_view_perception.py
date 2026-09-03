@@ -290,6 +290,25 @@ class FilesystemPerceptionArtifactStore:
         except (OSError, ValueError) as exc:
             raise SingleViewPerceptionError("depth artifact could not be loaded") from exc
 
+    def load_point_cloud(self, artifact_ref: str) -> Any:
+        """Load a provider-neutral derived object point cloud inside the artifact root."""
+        np = _numpy()
+        parts = _artifact_parts(artifact_ref)
+        if parts[-2:-1] != ("derived",):
+            raise SingleViewPerceptionError("point-cloud artifact must be a derived artifact")
+        path = self._derived_path(artifact_ref, ".npy")
+        if not path.is_file():
+            raise SingleViewPerceptionError("point-cloud artifact is unavailable")
+        try:
+            points = np.asarray(np.load(path, allow_pickle=False), dtype=np.float32)
+        except (OSError, ValueError) as exc:
+            raise SingleViewPerceptionError("point-cloud artifact could not be loaded") from exc
+        if points.ndim != 2 or points.shape[1] != 3 or points.shape[0] < 1:
+            raise SingleViewPerceptionError("point-cloud artifact must be a non-empty Nx3 array")
+        if not bool(np.isfinite(points).all()):
+            raise SingleViewPerceptionError("point-cloud artifact contains non-finite values")
+        return points
+
     def load_calibration(self, calibration_ref: str) -> Mapping[str, Any]:
         path = self.resolve_source(calibration_ref, "calibration")
         try:

@@ -143,8 +143,9 @@ SAPIEN，不直连 Dora，也不读取仿真器专有 task/embodiment/benchmark 
 
 当前实现状态：generic capability runtime 已有无仿真依赖的 in-process foundation；RoboTwin20 adapter 已能将
 外部 runtime 的 RGB/depth/state capture 投影为 provider-neutral `scene.observe` 结果，并提供注入式
-`scene.understand` provider seam。尚未接入 YOLO/Ultralytics、真实场景理解模型或抓取模型；`grasp.propose`
-的 Fake/provider-neutral 候选不能解释为 YOLO 识别结果或抓取成功。RoboTwin20 adapter 位于独立
+`scene.understand` provider seam，并已接入 adapter-side 的 GraspGen-compatible provider port、点云
+artifact binding、隔离 worker 协议和候选 funnel/NMS conformance；尚未在本机 verified checkpoint 上完成
+live GraspGen inference，Fake/provider-neutral 候选不能解释为真实抓取成功。RoboTwin20 adapter 位于独立
 `examples/forge-adapters/robotwin20` 包，PAOS `pyproject.toml` 不增加 RoboTwin/SAPIEN/Torch/YOLO 依赖，
 资产也必须通过 adapter profile 引用外部目录，不能复制进 PAOS wheel 或 control-plane 环境。
 

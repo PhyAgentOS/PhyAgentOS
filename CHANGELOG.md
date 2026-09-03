@@ -33,6 +33,37 @@ closure, then add file input/projection adapters” for review.
 - Markdown headings, cross-document links, line references, and bilingual changelog entries were inspected.
 - No source code, runtime behavior, or execution contract was changed by this documentation decision.
 
+## [v2.8.17] - 2026-09-03
+
+Implemented the provider-neutral grasp proposal extension: `grasp.propose`
+targets may carry observation/revision/frame/calibration-bound geometry
+artifacts, while the independent adapter resolves point clouds and invokes an
+isolated GraspGen-compatible JSONL worker. Candidate matrices are validated,
+converted to normalized pose/approach evidence, filtered with deterministic
+SE(3) NMS, and returned with a reconciled funnel; no IK, collision admission,
+or motion authorization is added.
+
+实现 provider-neutral 抓取候选扩展：`grasp.propose` target 可携带绑定
+observation/revision/frame/calibration 的几何资产；独立 adapter 解析点云并调用隔离的
+GraspGen-compatible JSONL worker，校验候选矩阵、转换为归一化位姿/approach 证据，执行确定性
+SE(3) NMS 并返回闭合 funnel；没有增加 IK、碰撞准入或运动授权。
+
+### Detailed changes
+
+- `PhyAgentOS/forge/capability_runtime/grasp_proposal.py:L34-L678` adds neutral geometry-artifact binding, mapping normalization, unit quaternion/approach validation, and strict fail-closed projection.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py:L1-L383` adds point-cloud resolution, isolated worker request/response mapping, candidate canonicalization, NMS, provenance, and cleanup handling.
+- `examples/forge-adapters/robotwin20/runtime/graspgen_worker.py:L1-L129` and `runtime/worker_protocol.py:L12-L72` add the isolated worker entrypoint and versioned JSONL lifecycle.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py:L1-L75` and `profiles/robotwin20/graspgen.yaml:L1-L29` keep interpreter, checkpoint, and filtering settings outside PAOS.
+- `examples/forge-skills/pick-place-workflow/contracts/grasp.propose.tool.yaml:L1-L110` mirrors the public ToolSpec; tests cover mapping normalization, artifact binding, NMS, malformed worker data, and cleanup failure.
+
+### Validation
+
+- Generic PAOS grasp conformance: `57 passed`.
+- Isolated adapter grasp/provider/profile tests: `7 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Live GraspGen inference was not claimed: no verified local checkpoint/source environment was found; the worker reports unavailable until an external profile supplies them.
+- `.codegraph/` and `.cursor/` remain untracked and are not staged.
+
 ## [v2.8.16] - 2026-09-03
 
 Implemented the clean-room, adapter-side single-view perception composition:

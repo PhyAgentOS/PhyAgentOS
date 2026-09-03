@@ -9,6 +9,19 @@ from .adapter import (
     SensorArtifact,
     SensorCapture,
 )
+from .grasp_profile import (
+    GRASP_PROFILE_SCHEMA_VERSION,
+    GraspProfileError,
+    build_grasp_provider,
+    load_grasp_profile,
+)
+from .grasp_proposal import (
+    FilesystemPointCloudArtifactResolver,
+    GraspGenProposalProvider,
+    GraspProposalAdapterError,
+    GraspWorkerClient,
+    PointCloudArtifactResolver,
+)
 from .openai_scene_understanding import (
     SCENE_UNDERSTANDING_JSON_SCHEMA,
     ArtifactPayload,
@@ -74,6 +87,15 @@ __all__ = [
     "JsonlProcessWorkerClient",
     "ProcessWorkerConfig",
     "ProcessWorkerError",
+    "GraspGenProposalProvider",
+    "GraspProposalAdapterError",
+    "GraspWorkerClient",
+    "FilesystemPointCloudArtifactResolver",
+    "PointCloudArtifactResolver",
+    "GRASP_PROFILE_SCHEMA_VERSION",
+    "GraspProfileError",
+    "build_grasp_provider",
+    "load_grasp_profile",
     "FilesystemPerceptionArtifactStore",
     "LocalizationRequest",
     "LocalizationResult",

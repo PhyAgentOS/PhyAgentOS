@@ -38,6 +38,24 @@ input_schema:
               provenance:
                 type: array
                 items: {type: string, pattern: '^artifact://[^/]+/.+$'}
+          geometry_artifacts:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [artifact_ref, kind, observation_ref, scene_revision, entity_ref, frame_id, calibration_ref, provenance]
+              properties:
+                artifact_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
+                kind: {enum: [object_point_cloud, fused_entity_perception]}
+                observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+                scene_revision: {type: string, minLength: 1}
+                entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+                frame_id: {type: string, minLength: 1}
+                calibration_ref: {type: string, minLength: 1}
+                provenance:
+                  type: array
+                  minItems: 1
+                  items: {type: string, pattern: '^artifact://[^/]+/.+$'}
 output_schema:
   type: object
   additionalProperties: false
