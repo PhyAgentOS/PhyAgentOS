@@ -94,7 +94,7 @@ dependency in the adapter/provider environment only:
 
 ```bash
 python -m pip install -e 'examples/forge-adapters/robotwin20[openai]'
-export HEPHAESTUS_RELAY_API_KEY='(set outside the repository)'
+export CUSTOM_API_KEY='(set outside the repository)'
 ```
 
 Construct `OpenAIResponsesSceneUnderstandingInference` with an injected
@@ -109,6 +109,22 @@ The provider emits only `entities`, `relations`, `spatial_envelopes`, and
 `ambiguities`; PAOS performs the final contract validation, including binding
 each claim's provenance to an artifact in the requested observation, and
 projects the result through the same Gateway endpoint used by the Fake path.
+
+The perception boundary is intentionally split by PAOS use case:
+
+| Capability | ToolSpec | Adapter/provider responsibility |
+|---|---|---|
+| Object recognition/detection | `scene.understand` | Infer entities from RGB or other observation artifacts; never read simulator actor truth. |
+| Instance segmentation | `scene.understand` | Produce an opaque, provenance-bound mask artifact through a replaceable provider. |
+| Metric 3D localization | `scene.understand` | Combine depth, calibration, frame transforms, and masks; fail closed when any input is missing. |
+| Grasp pose proposal | `grasp.propose` | Emit candidate poses and provenance only; it does not authorize motion. |
+| IK/collision/workspace readiness | `manipulation.prepare` | Evaluate candidates before any bounded Action. |
+
+The current GPT Responses provider covers RGB semantic recognition and relations.
+It does not implement segmentation or metric localization, and it does not
+implement `grasp.propose`. Those providers must be added behind their PAOS
+ports; they must not be folded into `scene.observe` or exposed as RoboTwin-
+named Skills.
 
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,

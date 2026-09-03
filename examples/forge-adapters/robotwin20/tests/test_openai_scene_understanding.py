@@ -70,7 +70,7 @@ class Resolver:
 
 
 def test_responses_provider_builds_structured_image_request_and_projects_result(monkeypatch):
-    monkeypatch.setenv("HEPHAESTUS_RELAY_API_KEY", "test-key")
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
     client = Client()
     inference = OpenAIResponsesSceneUnderstandingInference(
         Resolver(),
@@ -92,7 +92,7 @@ def test_responses_provider_builds_structured_image_request_and_projects_result(
 
 
 def test_provider_composes_with_generic_scene_understanding_endpoint(monkeypatch):
-    monkeypatch.setenv("HEPHAESTUS_RELAY_API_KEY", "test-key")
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
     client = Client()
     inference = OpenAIResponsesSceneUnderstandingInference(
         Resolver(), client_factory=lambda **kwargs: client
@@ -104,7 +104,7 @@ def test_provider_composes_with_generic_scene_understanding_endpoint(monkeypatch
 
 @pytest.mark.asyncio
 async def test_openai_provider_crosses_forge_tool_client_and_fake_gateway(monkeypatch):
-    monkeypatch.setenv("HEPHAESTUS_RELAY_API_KEY", "test-key")
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
     client = Client()
     provider = RoboTwinSceneUnderstandingProvider(
         OpenAIResponsesSceneUnderstandingInference(Resolver(), client_factory=lambda **kwargs: client)
@@ -122,7 +122,7 @@ async def test_openai_provider_crosses_forge_tool_client_and_fake_gateway(monkey
 
 
 def test_missing_key_fails_closed_before_client_creation(monkeypatch):
-    monkeypatch.delenv("HEPHAESTUS_RELAY_API_KEY", raising=False)
+    monkeypatch.delenv("CUSTOM_API_KEY", raising=False)
     called = False
 
     def factory(**kwargs):
@@ -131,13 +131,13 @@ def test_missing_key_fails_closed_before_client_creation(monkeypatch):
         return Client()
 
     inference = OpenAIResponsesSceneUnderstandingInference(Resolver(), client_factory=factory)
-    with pytest.raises(OpenAIResponsesInferenceError, match="Missing HEPHAESTUS_RELAY_API_KEY"):
+    with pytest.raises(OpenAIResponsesInferenceError, match="Missing CUSTOM_API_KEY"):
         inference.infer(REQUEST)
     assert called is False
 
 
 def test_non_image_or_missing_artifact_fails_closed(monkeypatch):
-    monkeypatch.setenv("HEPHAESTUS_RELAY_API_KEY", "test-key")
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
     inference = OpenAIResponsesSceneUnderstandingInference(
         lambda ref: None,
         client_factory=lambda **kwargs: Client(),
@@ -162,7 +162,7 @@ def test_filesystem_resolver_maps_external_rgb_artifact_and_rejects_escape(tmp_p
 
 
 def test_provider_specific_response_fields_fail_closed(monkeypatch):
-    monkeypatch.setenv("HEPHAESTUS_RELAY_API_KEY", "test-key")
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
 
     class BadResponse(Response):
         output_text = json.dumps(
@@ -193,3 +193,29 @@ def test_response_schema_declares_closed_neutral_claim_objects():
     assert envelope_schema["additionalProperties"] is False
     assert ambiguity_schema["additionalProperties"] is False
     assert "actor_id" not in entity_schema["properties"]
+
+
+def test_response_schema_is_responses_strict_schema_conformant():
+    """Catch omissions that a permissive fake Responses client cannot detect."""
+    from robotwin20_adapter import SCENE_UNDERSTANDING_JSON_SCHEMA
+
+    def walk(node):
+        assert isinstance(node, dict)
+        assert node.get("type") is not None or "anyOf" in node or "$ref" in node
+        if node.get("type") == "object":
+            assert node["additionalProperties"] is False
+            assert set(node["required"]) == set(node["properties"])
+            for child in node["properties"].values():
+                walk(child)
+        elif node.get("type") == "array":
+            walk(node["items"])
+        elif "anyOf" in node:
+            for child in node["anyOf"]:
+                walk(child)
+
+    walk(SCENE_UNDERSTANDING_JSON_SCHEMA)
+    unit_schema = (
+        SCENE_UNDERSTANDING_JSON_SCHEMA["properties"]
+        ["spatial_envelopes"]["items"]["properties"]["unit"]
+    )
+    assert unit_schema == {"type": "string", "const": "m"}

@@ -85,7 +85,7 @@ class OpenAIResponsesConfig:
 
     api_base: str = "https://api.shuaiapi.com/v1"
     model: str = "gpt-5.6-sol"
-    api_key_env: str = "HEPHAESTUS_RELAY_API_KEY"
+    api_key_env: str = "CUSTOM_API_KEY"
     reasoning_effort: str | None = "high"
     timeout_seconds: float = 60.0
     max_output_tokens: int = 512
@@ -158,7 +158,7 @@ SCENE_UNDERSTANDING_JSON_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "entity_ref": {"type": "string", "pattern": r"^entity://[^/]+$"},
                     "frame_id": {"type": "string", "minLength": 1},
-                    "unit": {"const": "m"},
+                    "unit": {"type": "string", "const": "m"},
                     "min_xyz_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
                     "max_xyz_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
@@ -187,6 +187,37 @@ SCENE_UNDERSTANDING_JSON_SCHEMA: dict[str, Any] = {
         },
     },
 }
+
+
+def _validate_strict_schema(schema: Mapping[str, Any]) -> None:
+    """Fail fast on the strict-schema shape required by Responses JSON output."""
+    if not isinstance(schema, Mapping):
+        raise ValueError("Responses schema must be an object")
+    schema_type = schema.get("type")
+    if schema_type is None and "anyOf" not in schema and "$ref" not in schema:
+        raise ValueError("Responses strict schema nodes must declare type, anyOf, or $ref")
+    if schema_type == "object":
+        if schema.get("additionalProperties") is not False:
+            raise ValueError("Responses strict object schemas must close additionalProperties")
+        properties = schema.get("properties")
+        required = schema.get("required")
+        if not isinstance(properties, Mapping) or not isinstance(required, list):
+            raise ValueError("Responses strict object schemas require properties and required")
+        if set(required) != set(properties):
+            raise ValueError("Responses strict object schemas must require every property")
+        for child in properties.values():
+            _validate_strict_schema(child)
+    elif schema_type == "array":
+        items = schema.get("items")
+        if not isinstance(items, Mapping):
+            raise ValueError("Responses strict array schemas require an items schema")
+        _validate_strict_schema(items)
+    elif "anyOf" in schema:
+        variants = schema["anyOf"]
+        if not isinstance(variants, list) or not variants:
+            raise ValueError("Responses strict anyOf must contain schema variants")
+        for variant in variants:
+            _validate_strict_schema(variant)
 
 
 def _default_client_factory(**kwargs: Any) -> ResponsesClient:
@@ -226,6 +257,7 @@ class OpenAIResponsesSceneUnderstandingInference:
         self.resolver = resolver
         self.config = config or OpenAIResponsesConfig()
         self.config.validate()
+        _validate_strict_schema(SCENE_UNDERSTANDING_JSON_SCHEMA)
         self.client_factory = client_factory or _default_client_factory
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:

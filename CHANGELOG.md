@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.13] - 2026-09-03
+
+Fixed the GPT Responses strict JSON schema by declaring `spatial_envelopes.unit`
+as a typed string const. Added recursive regression checks because the fake
+Responses client does not validate request schemas. Updated the RoboTwin
+adapter diagnosis and README to keep recognition, segmentation, metric
+localization, grasp-pose proposal, readiness, and execution in their PAOS
+use-case boundaries; the current GPT provider remains RGB semantic-only.
+
+修正 GPT Responses strict JSON schema，为 `spatial_envelopes.unit` 补充
+`type: string`，并增加递归回归校验，避免 Fake client 遗漏真实 API 的请求阶段错误。
+同步更新 RoboTwin adapter 诊断与 README，明确识别、分割、度量定位、抓取位姿、准入和执行的
+PAOS 用例归属；当前 GPT provider 仍只负责 RGB 语义理解。
+
+### Validation
+
+- `261 passed` for the adapter/workflow suites.
+- Ruff, compileall, and `git diff --check` passed.
+- `.codegraph/` and `.cursor/` remain untracked and were not staged.
+
 ## [v2.8.12] - 2026-09-03
 
 Added an adapter-side `FilesystemArtifactResolver` for external RoboTwin

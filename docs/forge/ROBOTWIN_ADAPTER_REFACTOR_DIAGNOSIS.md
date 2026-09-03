@@ -270,8 +270,10 @@ robotwin_grasp_propose
   adapter-side GPT Responses provider 已按 clean-room 方式实现：它只读取外部 observation artifact，
   输出闭合的 entities/relations/spatial_envelopes/ambiguities schema，并由 PAOS Gateway 做最终校验；
   provider 默认沿用 Hephaestus 已验证的 `gpt-5.6-sol`、Responses API 和 relay base URL，但不导入
-  Hephaestus。当前环境未提供 `HEPHAESTUS_RELAY_API_KEY`，因此尚未取得真实模型返回，只能证明 fake
-  client、provider seam 和 fail-closed 缺凭据路径通过；
+  Hephaestus。当前已用外部 `CUSTOM_API_KEY` 完成真实 GPT 路径验收；RGB-only 输入返回了语义实体/关系，
+  没有生成 metric spatial envelope，且不确定性标记被保留。由于请求没有 depth/calibration，metric 几何仍按
+  contract 不可用，不能把模型的 2D 视觉判断当作 3D 定位。
+  strict schema 中 `unit` 也已声明 `type: string`，避免 Responses API 在请求阶段拒绝 schema；
 - 独立 `examples/forge-adapters/robotwin20` adapter/runtime：环境 reset/snapshot seam、注入式
   `RoboTwinSensorBackend`、camera/depth/state artifact 校验、`RoboTwinObservationProvider` 和
   provider-neutral `scene.observe` snapshot；外部 RoboTwin20 Python 3.10 runtime 已完成一次无动作
@@ -287,17 +289,37 @@ robotwin_grasp_propose
   provider conformance 已完成，但尚未启动生产 HTTP Gateway）；
 - 真实 Gateway/ToolEndpoint HTTP server；
 - RoboTwin 对应 Dora flow、locked Node 和 profile；
-- `scene.understand` provider 的真实凭据调用、`grasp.propose`、`manipulation.prepare`、`object.acquire`、
-  `object.place` 的真实 provider 接入与六能力 PAOS 端到端验证。
+- `grasp.propose`、`manipulation.prepare`、`object.acquire`、`object.place` 的真实 provider 接入与六能力
+  PAOS 端到端验证；当前 GPT provider 只覆盖 RGB 语义理解，尚未覆盖真实分割和 metric 3D 定位。
 
 因此不能声称“六个 RoboTwin Skill 已接入”，也不能把 RoboTwin 的 ground truth 称为真实感知。准确表述是：
 
 > PAOS 公共能力契约、`pick-place-workflow` 编排、generic capability runtime 基础、RoboTwin
 > `scene.observe` runtime/provider conformance，以及 adapter-side `scene.understand` GPT provider
-> 已完成；Hephaestus 的真实能力只作为 clean-room 重构的需求/行为参考。当前尚缺真实凭据调用、Gateway
-> HTTP/Dora wiring 以及其余五项能力，必须继续按本文顺序独立实现。
+> 已完成；Hephaestus 的真实能力只作为 clean-room 重构的需求/行为参考。当前尚缺真实分割/深度定位、
+> `grasp.propose` 及后续准备/执行 provider、Gateway HTTP/Dora wiring，必须继续按本文顺序独立实现。
 
-## 12. English summary
+## 12. 识别、分割、定位与抓取位姿的模块归属
+
+这些是实现能力，不是新增 Skill，也不应通过 `robotwin2-*` 命名绑定到仿真环境。PAOS 对外仍只暴露六个
+稳定 ToolSpec；模型、相机 SDK、点云库和 RoboTwin/SAPIEN 句柄留在 adapter/provider workspace。
+
+| 后续能力 | 对外 ToolSpec | PAOS generic capability runtime | adapter/provider 实现 |
+|---|---|---|---|
+| RGB/depth/state 采集 | `scene.observe` | observation identity、freshness、frame、calibration、artifact 绑定 | `ObservationSource` / `EnvironmentAdapter` 读取真实传感器 |
+| 目标识别/检测 | `scene.understand` | entity schema、confidence、provenance、observation binding | detector/VLM provider；不能使用 actor truth |
+| 实例分割 | `scene.understand` | 校验并投影 opaque mask artifact 与 provenance | 独立 segmentation provider（YOLO/SAM 等），不使用仿真 segmentation truth |
+| 3D 定位 | `scene.understand` | frame/unit/calibration 约束和 metric envelope 校验 | depth + calibration + mask/点云 localization provider；缺任一项 fail-closed |
+| 抓取位姿估计 | `grasp.propose` | candidate schema、候选集 identity、provenance 与 funnel | 独立 grasp proposal provider（可选 YOLO/GraspGen 等），只产候选，不授权动作 |
+| IK/碰撞/工作空间准入 | `manipulation.prepare` | readiness 编排与 `motion_authorized=false` 边界 | `ReadinessEvaluator`，必须在执行前完成 |
+| 实际抓取/放置 | `object.acquire` / `object.place` | Action admission 与 invocation 生命周期 | `ManipulationExecutor`；仅 Gateway 显式准入后执行 |
+
+当前 GPT provider 只做 RGB 语义理解：它能生成实体和关系，但不能凭 RGB 生成可信分割 mask 或 metric
+3D 坐标。下一步应先扩展 adapter-side typed artifact resolver 和真实 segmentation/depth localization
+provider，再通过同一个 `scene.understand` contract 接入；抓取位姿单独接入 `grasp.propose`，不能塞进
+`scene.observe` 或 `scene.understand` 的输出字段。
+
+## 13. English summary
 
 The migration must be a clean reimplementation of the capability boundary, not a code copy from Hephaestus.
 Keep six stable provider-neutral ToolSpecs under one clearly named `pick-place-workflow` Skill. PAOS v1.0
