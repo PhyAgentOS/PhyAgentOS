@@ -207,6 +207,24 @@ AgentTask 生命周期或 Action admission。Markdown 仍不是第二事实源�
 才纳入 LessonCluster 或 SkillCandidate 晋升。文件解析成功、projection 更新或 dry-run 预览本身都不能
 成为进化证据。
 
+### 7.1 第一阶段实现状态（v2.10.0）
+
+已实现 `PhyAgentOS.state_io` 的受限适配骨架，当前只覆盖文件协议验证和无副作用预览：
+
+- `protocol.py` 要求单一 fenced JSON/YAML state block、固定 `paos.state-file.v1` 元数据、有限 JSON 值，
+  并提供原子 projection 写入和基于 canonical data digest 的 drift 拒绝；
+- `adapters.py` 提供 `TARGETS.md` 的 capability matrix shadow validation，校验 profile、观测模态、动作空间
+  和数值限幅，但固定返回 `motion_authorized=false`；
+- `SESSIONS.md` 只生成确定性的 dry-run preview，不创建 `.paos/agent_tasks/tasks.sqlite3`，不调用
+  AgentTaskCoordinator，不调度 Watchdog；
+- `SKILLRUNTIME.md`、`ENVIRONMENT.md`、`LESSONS.md` 目前只提供通用 projection 写入入口，事实源仍由
+  RuntimeState、Evidence/Snapshot 和 `experience.sqlite3` 持有；
+- 测试覆盖结构化块缺失、未知字段、非法限幅、projection drift、确定性 preview 和 no-motion 边界。
+
+本阶段没有把文件适配器接入 AgentLoop、Watchdog、Gateway 或 Action admission。下一阶段若要允许
+`SESSIONS.md` 编译为 `AgentTaskRecord`，必须另行增加人工确认、幂等 compiler、公开 Coordinator 调用和
+事务 conformance；不能直接扩展当前 dry-run 函数的副作用。
+
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
 该方案短期看起来结构完整，但会造成：

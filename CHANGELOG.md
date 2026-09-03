@@ -58,6 +58,29 @@ admission, and no Markdown queue Runtime is introduced.
 - PAOS extension principles were checked against ownership, provider-neutral boundary, no-second-protocol, projection authority, and no-motion requirements.
 - No source code, runtime behavior, hardware IO, or motion authorization changed.
 
+## [v2.10.0] - 2026-09-03
+
+新增 PAOS State File Adapter 第一阶段实现：严格解析 `paos.state-file.v1` Markdown 结构化区块，提供原子 projection 写入、canonical digest drift 检查、`TARGETS.md` capability shadow validation、`SESSIONS.md` 确定性 dry-run 预览，并通过功能引用卡固定其非执行边界。该适配器不写入 AgentTask 生命周期、不调度 Watchdog、不调用 Gateway，也不授权运动。
+
+Added the phase-one PAOS State File Adapter: strict `paos.state-file.v1` Markdown block parsing, atomic projection writes, canonical-digest drift checks, `TARGETS.md` capability shadow validation, and deterministic `SESSIONS.md` dry-run previews. The feature card fixes its non-execution boundary: it does not write AgentTask lifecycle state, schedule Watchdog work, call Gateway, or authorize motion.
+
+### Detailed changes
+
+- `PhyAgentOS/state_io/protocol.py:L1-L224` adds the strict envelope parser, opaque-reference metadata validation, canonical digest, atomic projection writer, and explicit drift error.
+- `PhyAgentOS/state_io/adapters.py:L1-L214` adds target shadow validation, deterministic session previews, and projection entry points for Runtime, Environment, and Lessons.
+- `PhyAgentOS/state_io/__init__.py:L1-L35` exports the bounded adapter API without adding a Gateway or Runtime route.
+- `tests/test_state_file_adapter.py:L1-L198` covers valid/invalid envelopes, limits, drift, projection mode, deterministic dry-run, duplicate/unsafe identities, and no-motion flags.
+- `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L1-L61` records the normative references, ownership, failure semantics, acceptance gates, and non-goals.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L162-L228` records the phase-one implementation status and next promotion gate; `docs/README.md:L30,L65` indexes the feature card.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_state_file_adapter.py` → `9 passed`.
+- `ruff check PhyAgentOS/state_io tests/test_state_file_adapter.py` passed.
+- `python -m compileall -q PhyAgentOS/state_io tests/test_state_file_adapter.py` passed.
+- `git diff --check` passed.
+- No hardware, simulator, Gateway, Watchdog, AgentTask store, or motion path was invoked.
+
 ## [v2.8.17] - 2026-09-03
 
 Implemented the provider-neutral grasp proposal extension: `grasp.propose`
