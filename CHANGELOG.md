@@ -7,6 +7,29 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.2.0] - 2026-09-03
+
+完成 `ENVIRONMENT.md` 的严格 projection 适配：增加 snapshot/provenance schema、revision 一致性校验，
+将 SceneGraph 查询从宽松 loader 切换为严格 parser，并同步模板。缺失、旧版或损坏文件现在返回 bounded
+error；Evidence snapshot 仍是唯一语义事实源，未接入动作、Watchdog、Gateway 或硬件。
+
+Completed strict `ENVIRONMENT.md` projection adaptation with snapshot/provenance schema and revision consistency
+checks, switched SceneGraph queries from the permissive loader to the strict parser, and aligned the template.
+Missing, legacy, or damaged files now return a bounded error. Evidence snapshots remain the sole semantic authority;
+no Action, Watchdog, Gateway, or hardware path was added.
+
+### Detailed changes
+
+- `PhyAgentOS/state_io/adapters.py:L88-L148,L330-L344,L563-L574` adds the strict environment schema, parser, and renderer validation.
+- `PhyAgentOS/agent/tools/scene_graph.py:L11-L63` consumes only valid environment projections and rejects malformed input.
+- `PhyAgentOS/templates/ENVIRONMENT.md:L1-L34` aligns the template with `paos.state-file.v1`.
+- `tests/test_state_file_adapter.py:L264-L335,L406-L414` covers provenance, revision, legacy, and fail-closed behavior.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `26 passed`.
+- `ruff check ...`, `python -m compileall ...`, and `git diff --check` passed.
+
 ## [v3.1.1] - 2026-09-03
 
 完成最近三个 `TARGETS.md` candidate 功能的代码审查与测试。修复 `profile_id` 可包含路径分隔符的问题，

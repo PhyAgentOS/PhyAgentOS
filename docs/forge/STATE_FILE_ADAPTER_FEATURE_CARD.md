@@ -25,7 +25,8 @@
 - Metadata: `kind`, `mode`, `revision`, `source`, optional ISO-8601 `generated_at`
 - `TARGETS.md`: `input` mode; strict capability matrix validation; explicitly approved candidate with `motion_authorized=false`; never direct admission
 - `SESSIONS.md`: `input` mode; deterministic dry-run previews; one-session-at-a-time promotion only after digest-bound human approval
-- `SKILLRUNTIME.md`, `ENVIRONMENT.md`, `LESSONS.md`: `projection` mode; atomic writes and digest-based drift checks
+- `SKILLRUNTIME.md`, `LESSONS.md`: `projection` mode; atomic writes and digest-based drift checks
+- `ENVIRONMENT.md`: `projection` mode; strict snapshot/provenance schema, revision matching, atomic writes, and digest-based drift checks
 
 ## Ownership
 
@@ -49,7 +50,7 @@
 ## Acceptance
 
 - discovery/context: no Gateway route is added; adapter is imported as a local utility
-- valid and invalid contract cases, approval failures, baseline drift, and candidate immutability boundary: covered by `tests/test_state_file_adapter.py`
+- valid and invalid contract cases, approval failures, baseline drift, environment provenance/revision, strict SceneGraph consumption, and no-motion boundaries: covered by `tests/test_state_file_adapter.py`
 - binding and identity checks: revision/source and deterministic preview identity are tested
 - evidence and verification: no evidence/verdict is produced by this adapter
 - Fake Gateway/conformance: not applicable; no Gateway route is created
@@ -64,3 +65,4 @@
 - no direct SQLite writes
 - no automatic motion authorization
 - no multi-session batch promotion (prevents partial writes under the single-task invariant)
+- no Environment Markdown as Evidence or Verifier authority; before/after semantics remain in immutable Evidence snapshots

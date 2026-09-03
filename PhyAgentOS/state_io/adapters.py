@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import inspect
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -82,6 +83,69 @@ class TargetProfileCandidate:
     data: Mapping[str, Any]
     differences: tuple[str, ...]
     motion_authorized: bool = False
+
+
+class EnvironmentProjectionData(BaseModel):
+    """Validated, non-authoritative environment snapshot projection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["paos.environment.v1"]
+    scene_revision: str = Field(min_length=1)
+    snapshot_ref: str = Field(min_length=1)
+    phase: Literal["before", "after", "live"]
+    captured_at: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    frame: str = Field(min_length=1)
+    calibration_ref: str = Field(min_length=1)
+    scene_graph: dict[str, Any]
+    objects: dict[str, Any] = Field(default_factory=dict)
+    robots: dict[str, Any] = Field(default_factory=dict)
+    map: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("scene_revision", "frame")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("environment identity fields must be non-empty")
+        return normalized
+
+    @field_validator("snapshot_ref", "source_id", "calibration_ref")
+    @classmethod
+    def validate_reference(cls, value: str) -> str:
+        normalized = value.strip()
+        if not re.match(r"^[a-z][a-z0-9+.-]*://", normalized, re.IGNORECASE):
+            raise ValueError("environment references must be opaque URI values")
+        return normalized
+
+    @field_validator("captured_at")
+    @classmethod
+    def validate_timestamp(cls, value: str) -> str:
+        normalized = value.strip()
+        try:
+            parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("captured_at must be ISO-8601") from exc
+        if parsed.tzinfo is None:
+            raise ValueError("captured_at must include a timezone")
+        return normalized
+
+    @field_validator("scene_graph")
+    @classmethod
+    def validate_scene_graph(cls, value: dict[str, Any]) -> dict[str, Any]:
+        for field in ("nodes", "relations"):
+            if field in value and not isinstance(value[field], list):
+                raise ValueError(f"scene_graph.{field} must be a list")
+        return value
+
+
+@dataclass(frozen=True)
+class EnvironmentProjectionResult:
+    """Parsed projection plus its protocol-level provenance."""
+
+    source: ParsedStateFile
+    data: EnvironmentProjectionData
 
 
 @dataclass(frozen=True)
@@ -261,6 +325,23 @@ def parse_targets_shadow(path: str | Path, *, baseline: Mapping[str, Any] | None
     if parsed.mode != "input":
         raise StateFileError(f"{parsed.path}: TARGETS.md must use paos.mode=input")
     return _validate_targets(parsed.data, baseline)
+
+
+def parse_environment_projection(path: str | Path) -> EnvironmentProjectionResult:
+    """Parse one strict environment projection without falling back to empty state."""
+
+    parsed = parse_state_file(path, expected_kind="environment")
+    if parsed.mode != "projection":
+        raise StateFileError(f"{parsed.path}: ENVIRONMENT.md must use paos.mode=projection")
+    try:
+        data = EnvironmentProjectionData.model_validate(parsed.data)
+    except Exception as exc:
+        raise StateFileError(f"{parsed.path}: invalid environment projection schema") from exc
+    if data.scene_revision != parsed.revision:
+        raise StateFileError(
+            f"{parsed.path}: scene_revision {data.scene_revision!r} does not match paos.revision {parsed.revision!r}"
+        )
+    return EnvironmentProjectionResult(source=parsed, data=data)
 
 
 def promote_targets_candidate(
@@ -480,7 +561,17 @@ def render_skillruntime_projection(path: str | Path, runtime: Mapping[str, Any],
 
 
 def render_environment_projection(path: str | Path, snapshot: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:
-    return _projection("environment", path, snapshot, revision=revision, source=source)
+    if not isinstance(snapshot, Mapping):
+        raise StateFileError("environment projection data must be an object")
+    try:
+        data = EnvironmentProjectionData.model_validate(snapshot)
+    except Exception as exc:
+        raise StateFileError("invalid environment projection schema") from exc
+    if data.scene_revision != revision:
+        raise StateFileError("environment scene_revision must match projection revision")
+    return _projection(
+        "environment", path, data.model_dump(mode="json"), revision=revision, source=source
+    )
 
 
 def render_lessons_projection(path: str | Path, lessons: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:

@@ -253,6 +253,19 @@ Action 限幅。baseline 漂移、审批不匹配或 schema 失败均 fail-close
 candidate 外壳虽为 frozen dataclass，但其中嵌套 `data` 仍是普通映射；它目前只作为非权威比较/replay 结果，
 不得被当作可变 Runtime 配置或直接传入 admission。若未来需要跨进程缓存 candidate，应再定义深度不可变/序列化契约。
 
+### 7.3 ENVIRONMENT projection 实现状态（v3.2.0）
+
+本阶段完成的是文件适配层，不是环境事实链的全部接入：
+
+- `EnvironmentProjectionData` 要求 `scene_revision`、opaque `snapshot_ref`、`phase`、带时区的 `captured_at`、`source_id`、`frame`、`calibration_ref` 和结构化 `scene_graph`；`scene_revision` 必须与 envelope 的 `paos.revision` 一致。
+- `render_environment_projection()` 和 `parse_environment_projection()` 只接受 `paos.mode=projection` 和上述 schema，错误来源、revision、时间戳或 scene graph 结构均 fail-closed。
+- `SceneGraphQueryTool` 已切换到严格 parser；缺失、旧版或损坏的 `ENVIRONMENT.md` 返回 bounded error，不再静默回退为空环境。
+- 模板已切换为 `paos.state-file.v1` projection envelope，并明确 Markdown 不是 Evidence、Verifier 或任务生命周期事实源。
+
+仍未完成的上层链路：EnvironmentAdapter/ObservationSnapshot 到 projection 的正式 producer 接入、before/after
+Evidence snapshot 引用的自动关联、Verifier 对 Evidence 的语义验收，以及跨环境 replay/failure conformance。
+因此阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
+
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
 该方案短期看起来结构完整，但会造成：

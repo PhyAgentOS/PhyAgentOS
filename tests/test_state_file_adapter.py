@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from PhyAgentOS.agent.tools.scene_graph import SceneGraphQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
 from PhyAgentOS.state_io import (
@@ -14,6 +15,7 @@ from PhyAgentOS.state_io import (
     StateFileError,
     TargetProfileApproval,
     compile_sessions_to_agent_tasks,
+    parse_environment_projection,
     parse_sessions_preview,
     parse_state_file,
     parse_targets_shadow,
@@ -197,7 +199,20 @@ def test_projection_renderers_are_atomic_and_drift_checked(tmp_path):
     assert parsed.mode == "projection"
     assert parsed.data_sha256 == result.data_sha256
     second = render_environment_projection(
-        tmp_path / "ENVIRONMENT.md", {"revision": "scene-1", "entities": []}, revision="scene-1", source="snapshot://1"
+        tmp_path / "ENVIRONMENT.md",
+        {
+            "schema_version": "paos.environment.v1",
+            "scene_revision": "scene-1",
+            "snapshot_ref": "evidence://snapshot/1",
+            "phase": "after",
+            "captured_at": "2026-09-03T00:00:00+00:00",
+            "source_id": "sensor://camera/1",
+            "frame": "world",
+            "calibration_ref": "calibration://1",
+            "scene_graph": {"nodes": [], "relations": []},
+        },
+        revision="scene-1",
+        source="snapshot://1",
     )
     assert second.changed is True
     with pytest.raises(StateFileDriftError):
@@ -224,6 +239,96 @@ def test_lessons_projection_uses_projection_mode(tmp_path):
     parsed = parse_state_file(path, expected_kind="lessons")
     assert parsed.mode == "projection"
     assert parsed.data_sha256 == result.data_sha256
+
+
+def _environment_data(**overrides):
+    data = {
+        "schema_version": "paos.environment.v1",
+        "scene_revision": "scene-1",
+        "snapshot_ref": "evidence://agent-task/task-1/after-snapshot",
+        "phase": "after",
+        "captured_at": "2026-09-03T00:00:00+00:00",
+        "source_id": "sensor://camera/front",
+        "frame": "world",
+        "calibration_ref": "calibration://camera/front/v1",
+        "scene_graph": {
+            "nodes": [{"id": "cup-1", "class": "cup", "center": {"x": 1.0, "y": 0.0}}],
+            "relations": [],
+        },
+        "robots": {"panda": {"robot_pose": {"x": 0.0, "y": 0.0}}},
+    }
+    data.update(overrides)
+    return data
+
+
+def test_environment_projection_requires_snapshot_provenance_and_revision(tmp_path):
+    path = tmp_path / "ENVIRONMENT.md"
+    result = render_environment_projection(
+        path,
+        _environment_data(),
+        revision="scene-1",
+        source="snapshot://agent-task/task-1/after",
+    )
+    projection = parse_environment_projection(path)
+    assert projection.source.data_sha256 == result.data_sha256
+    assert projection.data.snapshot_ref.startswith("evidence://")
+    assert projection.data.phase == "after"
+    assert projection.data.scene_revision == projection.source.revision
+
+
+@pytest.mark.parametrize(
+    ("override", "match"),
+    [
+        ({"snapshot_ref": "../after_snapshot.json"}, "environment projection schema"),
+        ({"calibration_ref": "/tmp/calibration.json"}, "environment projection schema"),
+        ({"captured_at": "2026-09-03T00:00:00"}, "environment projection schema"),
+        ({"scene_graph": {"nodes": {}, "relations": []}}, "environment projection schema"),
+    ],
+)
+def test_environment_projection_rejects_invalid_provenance(tmp_path, override, match):
+    with pytest.raises(StateFileError, match=match):
+        render_environment_projection(
+            tmp_path / "ENVIRONMENT.md",
+            _environment_data(**override),
+            revision="scene-1",
+            source="snapshot://agent-task/task-1/after",
+        )
+
+
+def test_environment_projection_rejects_revision_mismatch(tmp_path):
+    with pytest.raises(StateFileError, match="scene_revision"):
+        render_environment_projection(
+            tmp_path / "ENVIRONMENT.md",
+            _environment_data(),
+            revision="scene-2",
+            source="snapshot://agent-task/task-1/after",
+        )
+
+
+def test_scene_graph_consumes_strict_environment_projection(tmp_path):
+    render_environment_projection(
+        tmp_path / "ENVIRONMENT.md",
+        _environment_data(),
+        revision="scene-1",
+        source="snapshot://agent-task/task-1/after",
+    )
+    result = asyncio.run(
+        SceneGraphQueryTool(tmp_path).execute(query_type="find_by_class", target_class="cup")
+    )
+    assert json.loads(result)["matches"][0]["id"] == "cup-1"
+
+
+def test_scene_graph_rejects_missing_or_legacy_environment_projection(tmp_path):
+    result = asyncio.run(SceneGraphQueryTool(tmp_path).execute(query_type="find_by_id", target_id="cup-1"))
+    payload = json.loads(result)
+    assert payload["error"] == "invalid_environment_projection"
+
+    (tmp_path / "ENVIRONMENT.md").write_text(
+        "```json\n{\"schema_version\": \"PhyAgentOS.environment.v2\"}\n```\n",
+        encoding="utf-8",
+    )
+    result = asyncio.run(SceneGraphQueryTool(tmp_path).execute(query_type="find_by_id", target_id="cup-1"))
+    assert json.loads(result)["error"] == "invalid_environment_projection"
 
 
 def test_sessions_preview_is_deterministic_and_does_not_create_task_store(tmp_path):
@@ -302,7 +407,7 @@ def test_projection_source_must_be_an_opaque_reference(tmp_path):
     with pytest.raises(StateFileError, match="filesystem path|opaque URI"):
         render_environment_projection(
             tmp_path / "ENVIRONMENT.md",
-            {"revision": "scene-1"},
+            _environment_data(),
             revision="scene-1",
             source="/tmp/environment.json",
         )

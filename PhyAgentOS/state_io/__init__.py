@@ -1,6 +1,8 @@
 """PAOS state-file parsing and side-effect-free adapter utilities."""
 
 from PhyAgentOS.state_io.adapters import (
+    EnvironmentProjectionData,
+    EnvironmentProjectionResult,
     SessionCompileApproval,
     SessionCompileError,
     SessionCompileResult,
@@ -9,6 +11,7 @@ from PhyAgentOS.state_io.adapters import (
     TargetProfileCandidate,
     TargetShadowReport,
     compile_sessions_to_agent_tasks,
+    parse_environment_projection,
     parse_sessions_preview,
     parse_targets_shadow,
     promote_targets_candidate,
@@ -28,6 +31,8 @@ from PhyAgentOS.state_io.protocol import (
 __all__ = [
     "ParsedStateFile",
     "ProjectionResult",
+    "EnvironmentProjectionData",
+    "EnvironmentProjectionResult",
     "SessionCompileApproval",
     "SessionCompileError",
     "SessionCompileResult",
@@ -39,6 +44,7 @@ __all__ = [
     "TargetShadowReport",
     "compile_sessions_to_agent_tasks",
     "parse_sessions_preview",
+    "parse_environment_projection",
     "parse_state_file",
     "parse_targets_shadow",
     "promote_targets_candidate",
