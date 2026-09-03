@@ -26,6 +26,10 @@ from PhyAgentOS.verification.request_builder import (
     VerificationRequestBuilder,
 )
 from PhyAgentOS.verification.service import VerificationServiceProcess
+from PhyAgentOS.verification.validation import (
+    VerificationVerdictBoundaryError,
+    validate_verification_verdict_boundary,
+)
 
 if TYPE_CHECKING:
     from PhyAgentOS.forge.task import AgentTaskRecord
@@ -178,20 +182,14 @@ class ForgeTaskVerifier:
         valid_evidence_refs: set[str],
         verdict: VerificationVerdict,
     ) -> None:
-        expected = expected_criteria
-        actual = [item.criterion for item in verdict.criteria]
-        if len(actual) != len(expected) or set(actual) != set(expected):
-            raise VerificationVerdictError(
-                "verifier must return exactly one result for each success criterion"
+        try:
+            validate_verification_verdict_boundary(
+                expected_criteria=expected_criteria,
+                valid_evidence_refs=valid_evidence_refs,
+                verdict=verdict,
             )
-        refs = set(verdict.evidence_refs)
-        for criterion in verdict.criteria:
-            refs.update(criterion.evidence_refs)
-        unknown = refs - valid_evidence_refs
-        if unknown:
-            raise VerificationVerdictError(
-                "verifier referenced unknown evidence: " + ", ".join(sorted(unknown))
-            )
+        except VerificationVerdictBoundaryError as exc:
+            raise VerificationVerdictError(str(exc)) from exc
 
     def apply_retention(
         self,

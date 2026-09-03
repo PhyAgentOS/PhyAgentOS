@@ -210,3 +210,41 @@ Gateway、Watchdog、Action、Evidence 或硬件 owner。readiness 现在同时�
 - 真实模型语义质量、校准和 held-out 评估；
 - 真实 Gateway/Dora wiring、完整 Action executor 和抓取放置闭环；
 - `TARGETS` candidate 到 Runtime/Profile/Action admission 的生产授权接入。
+
+## 7. v3.7.0 真实模型语义评估基础设施
+
+### 实现与审查修复
+
+- [新增] `PhyAgentOS/verification/evaluation.py`：严格加载版本化 dataset/config/provider config；按 seed 选择 split，创建唯一 UTC
+  运行目录，经正式 `VerificationServiceProcess` 执行每个 case，逐条 fsync 结果，并持久化 commit、配置/数据集 digest、model、
+  checkpoint identity、超参数、原始 verdict、分 split 指标和阈值结果。凭据只通过环境变量名引用，不进入产物。
+- [新增] `PhyAgentOS/verification/validation.py`，并修改 `agent/session_verifier.py`：将 criteria identity 和 evidence-ref 权威校验
+  从 Agent 层下沉到 Verification 公共边界，避免评估模块反向依赖 Agent；`ForgeTaskVerifier` 保持原有错误契约。
+- [修改] `PhyAgentOS/verification/request_builder.py`：生产 request 和评估 runner 共用
+  `build_verification_context_content()`，避免语义评估 prompt framing 漂移。
+- [新增] `evals/verification/semantic_verifier_v1.json` 与 `evaluation_config_v1.json`：10 个版本化 case，development/held-out/hazard
+  分离；默认门禁只运行 4 个 held-out 和 3 个 hazard case。
+- [新增] `scripts/evaluate_verification_model.py` 与 `tests/test_verification_model_evaluation.py`：提供 CLI、正式子进程 fixture smoke、
+  缺凭据 blocker、唯一目录、脱敏元数据、重复 key 拒绝和启动错误终态测试。
+
+代码审查发现并关闭两个 Major：评估模块原先反向依赖 Agent 层；子进程启动异常可能把 manifest 留在 `running`。当前通用校验已
+下沉，启动异常会写入 terminal `error` manifest/metrics。fixture 即使指标满分也固定
+`quality_gate_eligible=false`，不能冒充真实模型门禁。
+
+### 指标边界
+
+评估报告 contract validity、verdict/criterion accuracy、recovery-context validity、非 success 的 success false-positive rate、
+confusion matrix，以及把 `inconclusive` 当作 abstention 的 coverage/selective accuracy/abstention precision/recall。当前 verdict
+没有概率 confidence，因此明确记录 `probability_calibration_supported=false`，不伪造 ECE 或 Brier score。
+
+代码审查进一步关闭了两个门禁资格漏洞：`evaluation_mode=real_model` 仅是声明，运行还必须精确匹配版本化
+`quality_gate_provider` identity binding；`custom` endpoint 与 `--max-cases` 部分运行无论分数如何都不能成为正式质量证据。
+
+### 当前运行证据
+
+fixture runner smoke 已通过正式 Verification Service 子进程，但仅作为实现测试。真实模型预检运行写入
+`artifacts/evals/verification/20260903T154750.788123Z-30249a45/`，状态为 `blocked`：当前没有 PAOS provider API key，现有
+Codex OAuth 也不能由 `oauth-cli-kit` 读取。该运行没有模型请求、没有质量分数，`quality_gate_eligible=false`。
+
+因此，真实模型语义质量门禁尚未关闭。下一步必须先提供可被 PAOS provider 读取的凭据，再执行完整 held-out + hazard run，审核
+逐 case verdict 和阈值；在此之前继续后置 Gateway/Dora 和抓取放置闭环。

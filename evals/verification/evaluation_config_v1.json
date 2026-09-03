@@ -1,0 +1,23 @@
+{
+  "version": "verification_semantic_eval_config_v1",
+  "dataset": "semantic_verifier_v1.json",
+  "output_root": "../../artifacts/evals/verification",
+  "splits": ["held_out", "hazard"],
+  "repetitions": 1,
+  "seed": 20260903,
+  "timeout_s": 180.0,
+  "startup_timeout_s": 10.0,
+  "quality_gate_provider": {
+    "provider_name": "openai_codex",
+    "model": "openai-codex/gpt-5.1-codex",
+    "api_base": null
+  },
+  "thresholds": {
+    "contract_valid_rate_min": 1.0,
+    "verdict_accuracy_min": 0.8,
+    "criterion_status_accuracy_min": 0.85,
+    "recovery_context_valid_rate_min": 1.0,
+    "success_false_positive_rate_max": 0.0,
+    "abstention_recall_min": 0.8
+  }
+}

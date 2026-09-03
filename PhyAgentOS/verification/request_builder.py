@@ -32,6 +32,26 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"non-standard JSON constant is not allowed: {value}")
 
 
+VERIFICATION_CONTEXT_INSTRUCTION = (
+    "Determine whether every task success criterion is semantically satisfied. "
+    "Use only the supplied task contract, execution facts, and evidence to make "
+    "that decision. Lessons are advisory workflow context only; they are not "
+    "evidence and cannot establish any criterion status."
+)
+
+
+def build_verification_context_content(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build the production text envelope shared by requests and model evaluation."""
+    return [
+        {
+            "type": "text",
+            "text": VERIFICATION_CONTEXT_INSTRUCTION
+            + "\n\n"
+            + json.dumps(context, ensure_ascii=False, indent=2, allow_nan=False),
+        }
+    ]
+
+
 @dataclass(frozen=True)
 class VerificationRequest:
     content: list[dict[str, Any]]
@@ -366,18 +386,7 @@ class VerificationRequestBuilder:
         validated: _ValidatedEvidence,
         valid_evidence_refs: frozenset[str],
     ) -> VerificationRequest:
-        content: list[dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": (
-                    "Determine whether every task success criterion is semantically satisfied. "
-                    "Use only the supplied task contract, execution facts, and evidence to make "
-                    "that decision. Lessons are advisory workflow context only; they are not "
-                    "evidence and cannot establish any criterion status.\n\n"
-                    + json.dumps(context, ensure_ascii=False, indent=2)
-                ),
-            }
-        ]
+        content = build_verification_context_content(context)
         for artifact_id, media_type, data in validated.images:
             content.extend(
                 [

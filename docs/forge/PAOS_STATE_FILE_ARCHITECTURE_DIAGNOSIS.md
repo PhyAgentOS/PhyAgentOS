@@ -315,8 +315,8 @@ pick-place 示例测试 `241 passed`；没有把这些测试中的 Fake Store/pr
 
 当前仍只实现必要的受限文件边界：`TARGETS.md` 是 shadow candidate，`SESSIONS.md` 是经人工确认后通过
 Coordinator 的意图输入，`ENVIRONMENT.md` 是带 provenance 的 projection；`SKILLRUNTIME.md` 没有生产 producer，
-Skill-scoped `LESSONS.md` 由 Experience ledger 生成。provider 子进程、真实模型语义质量、真实 Gateway 和抓取放置闭环
-仍需独立门禁，不能因为文件适配测试通过而提前启动。
+Skill-scoped `LESSONS.md` 由 Experience ledger 生成。provider-spec 生产子进程门禁已完成；真实模型语义质量、真实 Gateway 和
+抓取放置闭环仍需独立门禁，不能因为文件适配或 fixture smoke 通过而提前启动。
 
 最终复审另外确认：AgentTask 的可变更新现在必须重新通过完整 record schema；robot-state 与 verifier structured JSON
 拒绝非标准数值；Evidence retention 只在终态通过持久化 Bundle 身份和 RequestBuilder 已验证路径集合后执行，recovery

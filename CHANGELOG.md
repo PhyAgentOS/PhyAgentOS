@@ -7,6 +7,36 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.7.0] - 2026-09-03
+
+建立可复现的 Verification Service 真实模型语义质量评估基础设施，并在代码审查后关闭跨层依赖、非终态错误、fixture 身份冒充和部分 case 误过完整门禁的问题。真实模型凭据当前不可用，因此质量门禁保持 blocked；未连接 Gateway、Dora、Action 或硬件。
+
+Established reproducible real-model semantic-quality evaluation infrastructure for Verification Service, then closed reverse-layer dependencies, non-terminal errors, fixture identity masquerading, and partial-case gate bypasses during code review. Real-model credentials remain unavailable, so the quality gate is blocked; no Gateway, Dora, Action, or hardware was connected.
+
+### Detailed changes
+
+- `PhyAgentOS/verification/evaluation.py:L1-L675`: adds strict dataset/config/provider schemas, immutable provider gate binding, unique UTC run directories, provenance/digests, production subprocess execution, fsynced per-attempt records, metrics, threshold decisions, and terminal blocked/error artifacts.
+- `PhyAgentOS/verification/validation.py:L1-L34`, `PhyAgentOS/agent/session_verifier.py:L29-L32,L178-L192`: moves criteria/evidence-reference authority validation into the Verification layer while preserving the Agent-facing error contract.
+- `PhyAgentOS/verification/request_builder.py:L35-L52,L389`: shares the production verification prompt envelope with the evaluator.
+- `scripts/evaluate_verification_model.py:L1-L37`, `evals/verification/semantic_verifier_v1.json:L1-L299`, `evals/verification/evaluation_config_v1.json:L1-L23`, `evals/verification/provider.openai_codex.example.json:L1-L11`: adds the CLI, 10-case development/held-out/hazard corpus, thresholds, and credential-safe provider example.
+- `tests/test_verification_model_evaluation.py:L1-L449`: covers strict loading, production subprocess fixture replay, credential blockers, terminal startup errors, provider identity binding, and partial-case ineligibility.
+- `docs/forge/VERIFICATION_MODEL_EVALUATION.md:L1-L75`, `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L214-L250`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L315-L320`: records the quality/evaluation boundary and preserves the approved execution order.
+
+### Key diff
+
+```text
+Before: fixture smoke and partial runs could self-declare real_model eligibility; evaluation reused an Agent-private validator; startup failure could leave a running manifest.
+After:  a versioned non-custom provider identity and full case set are mandatory; validation is owned by Verification; every blocked/error path writes terminal fail-closed artifacts.
+```
+
+### Validation
+
+- Verification/evaluation focused suite: `57 passed`.
+- Repository suite: `136 passed`.
+- Pick-place workflow and RoboTwin adapter suites: `310 passed` using the existing PAOS packages plus system NumPy; the unmodified PAOS environment alone currently lacks NumPy.
+- Ruff, compileall, `git diff --check`, reverse-dependency scan, and credential/artifact review passed.
+- Real-model preflight remains blocked by unavailable Codex OAuth credentials; fixture metrics are explicitly not quality-gate evidence.
+
 ## [v3.6.0] - 2026-09-03
 
 完成真实 `VerificationServiceProcess` provider-spec 子进程门禁：父进程启动正式子进程，独立 OpenAI-compatible HTTP stub 验证配置传递、私有 readiness、鉴权请求、结构化 verdict、provider 失败、超时和 stop 清理；未连接外部模型、Gateway、Watchdog、Action 或硬件。

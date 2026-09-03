@@ -26,3 +26,4 @@ test
 tests/*
 plan/
 external/
+artifacts/evals/
