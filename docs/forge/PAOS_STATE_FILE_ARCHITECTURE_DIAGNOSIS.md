@@ -159,39 +159,53 @@ scene.observe
 
 不需要先完成五个 Markdown 文件，也不应在此阶段实现独立 Markdown queue Runtime。
 
-## 7. 推荐下一步实现方向（供审核）
+## 7. 推荐下一步实现方向（审核后调整）
 
-### 推荐方案：先冻结最小上层契约，再继续抓取放置纵向链路
+### 审核结论：先做受限文件适配，符合 PAOS 扩展原则
 
-#### 阶段 A：架构冻结，不新增执行代码
+“文件适配先于抓取放置闭环”本身不违反 PAOS 原则，反而能在低风险阶段暴露上层契约问题。成立的
+前提是：适配器只解析、投影、dry-run、shadow validation 和 drift，不拥有 Watchdog、Gateway、
+AgentTask 生命周期或 Action admission。Markdown 仍不是第二事实源，也不能直接触发物理执行。
+
+#### 阶段 A：冻结最小上层与文件契约
 
 - 建立权威源和所有权表；
-- 固定状态、身份、provenance 和 projection 规则；
-- 定义 Capability Profile 的最小 schema；
-- 定义 `SESSIONS.md` 仅作为输入，不作为状态事实；
-- 定义 `ENVIRONMENT.md` 只投影可信 snapshot；
+- 固定状态、身份、revision、provenance、幂等和 projection 规则；
+- 定义 Capability Profile 的最小 schema，并规定 `TARGETS.md` 只能先做 shadow validation；
+- 定义 `SESSIONS.md` 仅作为声明式意图输入，不作为状态事实；
+- 定义 `ENVIRONMENT.md` 只能投影带 revision/provenance 的可信 snapshot；
 - 确定 Evolution 可修改和不可修改边界。
 
-#### 阶段 B：继续抓取放置
+#### 阶段 B：实现无副作用文件适配与回放验证
+
+- `SKILLRUNTIME.md`：从 manifest/Profile/Runtime 状态生成只读 projection；
+- `ENVIRONMENT.md`：从 snapshot/Evidence 引用生成带来源和时间戳的 projection；
+- `LESSONS.md`：从 `experience.sqlite3` 按 Skill 作用域生成 projection；
+- `TARGETS.md`：解析、schema 校验、单位/范围检查和 Capability Profile shadow 对比，不改变 admission；
+- `SESSIONS.md`：先实现 parse/validate 和 AgentTask dry-run preview，不写入生命周期或调度状态；
+- 用 Fake Store、Fake Gateway、回放样例覆盖幂等、未知字段、失败回滚、projection drift 和 no-motion；
+- 任一解析失败均不得创建任务、更新事实源或启动执行。
+
+#### 阶段 C：提升已验证的输入边界
+
+- 在人工确认和幂等校验后，才允许 `SESSIONS.md` 编译为 `AgentTaskRecord`；
+- 只有通过 schema/profile 校验的 `TARGETS.md` 结构化结果，才可作为未来 admission 的候选输入；
+- 保持 SQLite、Gateway、Evidence 和 Experience 各自的唯一权威，不把 Markdown 写回为事实源；
+- 在此阶段仍不创建 Markdown queue Runtime，也不授权任何物理动作。
+
+#### 阶段 D：继续抓取放置纵向闭环
 
 - 让 `grasp.propose` 消费正式绑定的定位/点云 artifact；
 - 让 `manipulation.prepare` 消费能力约束并保持 no-motion；
 - 完成 `object.acquire` / `object.place` 的真实 provider-neutral Action admission；
 - 将 before/after evidence 与放置语义验收接通；
-- 保持 Fake Gateway、无动作和 fail-closed 测试；
-- 将失败分类为可学习 workflow failure 或 diagnostic-only failure。
+- 保持 Fake Gateway、无动作和 fail-closed 测试，并将失败分类为 workflow failure 或 diagnostic-only failure。
 
-#### 阶段 C：实现文件适配层
+#### 阶段 E：接入受控自主进化
 
-- `TARGETS.md`：能力 schema 的人类投影；
-- `SKILLRUNTIME.md`：manifest/profile 的说明投影；
-- `SESSIONS.md`：声明式任务输入编译器；
-- `ENVIRONMENT.md`：环境 snapshot projection；
-- `LESSONS.md`：Experience ledger 的 Skill-scoped projection。
-
-#### 阶段 D：接入受控自主进化
-
-只有当抓取放置产生稳定的 AgentTask、Evidence、VerificationVerdict 和 failure-owner 后，才纳入 LessonCluster 或 SkillCandidate 晋升。
+只有当文件适配和抓取放置都产生稳定的 AgentTask、Evidence、VerificationVerdict 和 failure-owner 后，
+才纳入 LessonCluster 或 SkillCandidate 晋升。文件解析成功、projection 更新或 dry-run 预览本身都不能
+成为进化证据。
 
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
@@ -235,6 +249,8 @@ scene.observe
 3. 是否同意先冻结最小上层契约，再继续 `pick-place-workflow`；
 4. 是否同意 `TARGETS` 的物理限制必须由 schema/profile/admission 确定性执行；
 5. 是否同意自主进化只改变 Skill workflow/Lesson，不直接修改安全边界和执行事实；
-6. 是否同意先完成 `grasp.propose → manipulation.prepare → acquire/place` 的证据闭环，再做 Markdown 适配层。
+6. 是否同意先完成受限文件适配（projection、shadow validation、dry-run 和回放验证），再推进
+   `grasp.propose → manipulation.prepare → acquire/place` 的证据闭环。
 
-审核通过后，下一阶段应以“上层契约冻结 + 抓取放置证据闭环”为实施目标，而不是以“创建五个 Markdown 文件”为目标。
+审核通过后，下一阶段应以“上层契约冻结 + 无副作用文件适配验证”为实施目标；抓取放置闭环在该验证
+通过后推进，且任何阶段都不创建第二套 Markdown 执行协议。

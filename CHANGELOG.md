@@ -33,6 +33,31 @@ closure, then add file input/projection adapters” for review.
 - Markdown headings, cross-document links, line references, and bilingual changelog entries were inspected.
 - No source code, runtime behavior, or execution contract was changed by this documentation decision.
 
+## [v2.9.1] - 2026-09-03
+
+审核并确认“先做受限文件适配、后做抓取放置闭环”符合 PAOS 扩展原则。执行顺序调整为：冻结最小上层与文件契约，
+实现只读 projection、`TARGETS.md` shadow validation、`SESSIONS.md` dry-run 及回放验证，人工确认后再提升输入边界，
+最后推进抓取放置和受控自主进化。适配层不得拥有 Watchdog、AgentTask 生命周期、Gateway 或 Action admission，
+也不得建立 Markdown queue Runtime。
+
+Reviewed and confirmed that “restricted file adapters before the pick-place closure” conforms to PAOS extension principles.
+The execution order now freezes the minimal upper-layer and file contracts, implements read-only projections,
+`TARGETS.md` shadow validation, `SESSIONS.md` dry-runs, and replay validation, promotes inputs only after human approval,
+and then advances pick-place and guarded evolution. Adapters do not own Watchdog, AgentTask lifecycle, Gateway, or Action
+admission, and no Markdown queue Runtime is introduced.
+
+### Detailed changes
+
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L162-L208,L249-L257` records the review conclusion and revised five-stage order.
+- `docs/forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md:L398-L414` synchronizes the RoboTwin execution order and explicitly approves restricted file adapters first.
+- `changelog/2026-09_part2.md:L55-L103` records the bilingual plan, actual changes, validation, and commit references.
+
+### Validation
+
+- `git diff --check` passed.
+- PAOS extension principles were checked against ownership, provider-neutral boundary, no-second-protocol, projection authority, and no-motion requirements.
+- No source code, runtime behavior, hardware IO, or motion authorization changed.
+
 ## [v2.8.17] - 2026-09-03
 
 Implemented the provider-neutral grasp proposal extension: `grasp.propose`

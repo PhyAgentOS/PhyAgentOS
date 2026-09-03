@@ -397,16 +397,19 @@ Runtime 视为已移除。Markdown 文件可以作为人工输入、工作区上
 
 因此，RoboTwin 和 `pick-place-workflow` 的后续实现采用以下顺序：
 
-1. 先冻结 Capability Profile、AgentTask、Gateway invocation、Evidence Snapshot 和 Experience ledger 的
-   权威边界、身份、revision、provenance 与 unknown/no-blind-retry 语义；
-2. 继续实现 `grasp.propose → manipulation.prepare → object.acquire → object.place` 的 provider-neutral
+1. 先冻结 Capability Profile、AgentTask、Gateway invocation、Evidence Snapshot、Experience ledger 和
+   五类文件的权威边界、身份、revision、provenance、幂等与 unknown/no-blind-retry 语义；
+2. 先实现无副作用的文件适配：`SKILLRUNTIME.md`、`ENVIRONMENT.md`、`LESSONS.md` 只读 projection，
+   `TARGETS.md` shadow validation，`SESSIONS.md` parse/validate 与 AgentTask dry-run；
+3. 用 Fake Store、Fake Gateway 和回放样例验证未知字段、失败回滚、projection drift、幂等和 no-motion；
+4. 只有人工确认且通过幂等校验后，`SESSIONS.md` 才能编译为 AgentTask，`TARGETS.md` 才能作为未来
+   Capability Profile/admission 的候选输入；此时仍不得建立 Markdown queue Runtime 或触发物理动作；
+5. 再继续实现 `grasp.propose → manipulation.prepare → object.acquire → object.place` 的 provider-neutral
    证据闭环，保持 Query/Action 分层和 `motion_authorized=false` 的 no-motion 门禁；
-3. 再增加五类 Markdown 的输入/投影适配，其中 `SESSIONS.md` 只能编译为 AgentTask，`ENVIRONMENT.md` 只能
-   投影可信 snapshot，`LESSONS.md` 继续由 `experience.sqlite3` 按 Skill 作用域生成；
-4. 只有稳定的 AgentTask、Evidence、VerificationVerdict 和 failure-owner 进入 Experience 后，才允许
-   LessonCluster 或 SkillCandidate 的受控晋升。
+6. 只有文件适配和抓取放置都产生稳定的 AgentTask、Evidence、VerificationVerdict 和 failure-owner 后，
+   才允许 LessonCluster 或 SkillCandidate 的受控晋升。
 
-本节不批准新增 Markdown queue Runtime，也不改变 PAOS 当前唯一物理执行路径。若后续实现需要主动移动采集、
+本节批准“受限文件适配先行”，但不批准新增 Markdown queue Runtime，也不改变 PAOS 当前唯一物理执行路径。若后续实现需要主动移动采集、
 新的目标能力约束或多视角输入，必须先扩展相应 provider-neutral contract、Fake Gateway conformance 和
 审计证据，再接入具体 adapter。
 
@@ -536,3 +539,9 @@ a separate environment adapter selected by profile. Simulation actor/entity trut
 `check_success()` are comparison/acceptance facts, not real-world perception. Real deployment must use sensor
 artifacts and replaceable perception providers. The same Skill and ToolSpecs must remain usable with RoboTwin,
 ManiSkill, replay, or future hardware profiles.
+
+The reviewed execution order deliberately starts with restricted file adapters: freeze the upper-layer and file
+contracts, generate read-only projections, run `TARGETS.md` shadow validation, compile `SESSIONS.md` in dry-run mode,
+and exercise replay/failure gates. Only after explicit approval and idempotent validation may file input be promoted
+to AgentTask or future admission input. The pick-place evidence closure and guarded evolution follow afterwards;
+these adapters never become a second execution protocol or a motion authority.
