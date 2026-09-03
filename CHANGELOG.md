@@ -26,7 +26,15 @@ Completed the production `VerificationServiceProcess` provider-spec subprocess g
 - Ruff, compileall, and `git diff --check` passed.
 - Real-model semantic quality, Gateway/Dora wiring, and pick-place closure remain pending.
 
-Git commit: pending.
+Git commit: `cfef665` on `feature/long-horizon-workflow`.
+
+## [v3.6.1] - 2026-09-03
+
+维护 v3.6.0 实现提交日志，记录 provider-spec 子进程门禁提交 hash。
+
+Maintained the v3.6.0 implementation log and recorded the provider-spec subprocess gate commit hash.
+
+Git commit: `cfef665` on `feature/long-horizon-workflow`.
 
 ## [v3.5.2] - 2026-09-03
 
