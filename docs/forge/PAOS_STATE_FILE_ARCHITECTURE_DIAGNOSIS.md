@@ -277,6 +277,16 @@ reference，并拒绝调用方提供的不匹配值。writer 现在拒绝同一 
 作为 verdict evidence reference。完整 Evidence 语义验收、跨环境 replay/failure conformance 仍未完成，
 因此阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
 
+本轮进一步补充了文件适配的 Fake Store/Fake Gateway replay、未知字段失败前置、编译失败无残留、
+projection drift 保留旧内容和 no-motion conformance。这里的 replay 只证明适配器输入/投影的确定性和
+失败边界，不把 Fake Gateway 变成生产执行路径，也不把 Markdown 提升为事实源。
+
+需要明确：阶段 B 清单中的 `SKILLRUNTIME.md` 和 `LESSONS.md` producer 是可选的可观测性 projection，
+不是 PAOS 核心生命周期或执行权限的前置条件。本项目当前只保留通用 renderer，暂不实现第二套 Runtime
+或 Experience 配置源；后续只有在运维审阅需求明确时才补充由 manifest/Runtime state 或
+`experience.sqlite3` 生成的只读 projection。阶段 B 的必要关闭条件应优先看 Evidence 语义验收和
+跨环境 replay/failure 覆盖，而不是“五个 Markdown 文件是否全部有 producer”。
+
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
 该方案短期看起来结构完整，但会造成：
