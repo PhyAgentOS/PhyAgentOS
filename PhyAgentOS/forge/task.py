@@ -153,6 +153,8 @@ class AgentTaskRecord(BaseModel):
     cancellation_requested: bool = False
     replan_deadline: datetime | None = None
     origin_session_key: str | None = None
+    parent_task_id: str | None = None
+    retry_limit: int = Field(default=0, ge=0)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     terminal_at: datetime | None = None
@@ -163,6 +165,16 @@ class AgentTaskRecord(BaseModel):
         normalized = value.strip()
         if not normalized or normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
             raise ValueError("AgentTask identifiers must be non-empty and path-safe")
+        return normalized
+
+    @field_validator("parent_task_id")
+    @classmethod
+    def validate_parent_identity(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized or normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
+            raise ValueError("parent_task_id must be non-empty and path-safe")
         return normalized
 
     @property
@@ -288,6 +300,20 @@ class AgentTaskStore:
             ).fetchone()
         return None if row is None else AgentTaskRecord.model_validate_json(row["record_json"])
 
+    def find_by_origin_session_key(self, origin_session_key: str) -> list[AgentTaskRecord]:
+        """Return tasks compiled from one immutable source/session identity."""
+
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT record_json FROM agent_tasks ORDER BY created_at"
+            ).fetchall()
+        matches: list[AgentTaskRecord] = []
+        for row in rows:
+            record = AgentTaskRecord.model_validate_json(row["record_json"])
+            if record.origin_session_key == origin_session_key:
+                matches.append(record)
+        return matches
+
     def find_invocation(self, invocation_id: str) -> tuple[AgentTaskRecord, ToolExecutionRecord] | None:
         with self._lock, self._connection() as connection:
             rows = connection.execute("SELECT record_json FROM agent_tasks").fetchall()
@@ -398,6 +424,8 @@ class AgentTaskCoordinator:
         verification: TaskVerificationContract,
         activation_id: str | None = None,
         origin_session_key: str | None = None,
+        parent_task_id: str | None = None,
+        retry_limit: int = 0,
     ) -> AgentTaskRecord | Any:
         """Create synchronously only for an explicitly unbound coordinator.
 
@@ -411,6 +439,8 @@ class AgentTaskCoordinator:
                 verification=verification,
                 activation_id=activation_id,
                 origin_session_key=origin_session_key,
+                parent_task_id=parent_task_id,
+                retry_limit=retry_limit,
             )
         if verification.mode != "off" and self.verifier is None:
             raise AgentTaskError(
@@ -422,6 +452,8 @@ class AgentTaskCoordinator:
             task_id=task_id,
             task_description=task_description.strip(),
             verification=verification,
+            parent_task_id=parent_task_id,
+            retry_limit=retry_limit,
             revisions=[PlanRevision(revision_id=revision_id, number=1, reason="initial plan")],
             active_revision_id=revision_id,
             origin_session_key=origin_session_key,
@@ -441,6 +473,8 @@ class AgentTaskCoordinator:
         verification: TaskVerificationContract,
         activation_id: str | None = None,
         origin_session_key: str | None = None,
+        parent_task_id: str | None = None,
+        retry_limit: int = 0,
     ) -> AgentTaskRecord:
         if verification.mode != "off" and self.verifier is None:
             raise AgentTaskError(
@@ -474,6 +508,8 @@ class AgentTaskCoordinator:
             task_id=task_id,
             task_description=task_description.strip(),
             verification=verification,
+            parent_task_id=parent_task_id,
+            retry_limit=retry_limit,
             revisions=[
                 PlanRevision(
                     revision_id=revision_id,

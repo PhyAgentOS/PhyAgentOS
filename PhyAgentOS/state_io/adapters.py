@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from PhyAgentOS.state_io.protocol import (
     ParsedStateFile,
@@ -34,6 +38,81 @@ class SessionPreview:
 
     source: ParsedStateFile
     previews: tuple[dict[str, Any], ...]
+
+
+class SessionCompileError(StateFileError):
+    """Raised when an approved session cannot be promoted safely."""
+
+
+class SessionCompileApproval(BaseModel):
+    """Human approval bound to one immutable SESSIONS.md content digest."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    approval_id: str = Field(min_length=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved_by: str = Field(min_length=1)
+    confirmed_at: str = Field(min_length=1)
+    decision: str = "approve"
+
+    @field_validator("approval_id", "approved_by")
+    @classmethod
+    def normalize_identity(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or any(char in normalized for char in "/\\"):
+            raise ValueError("approval identity must be non-empty and path-safe")
+        return normalized
+
+    @field_validator("confirmed_at")
+    @classmethod
+    def validate_timestamp(cls, value: str) -> str:
+        normalized = value.strip()
+        try:
+            parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("confirmed_at must be ISO-8601") from exc
+        if parsed.tzinfo is None:
+            raise ValueError("confirmed_at must include a timezone")
+        return normalized
+
+    @field_validator("decision")
+    @classmethod
+    def require_approval(cls, value: str) -> str:
+        if value != "approve":
+            raise ValueError("decision must be 'approve'")
+        return value
+
+
+@dataclass(frozen=True)
+class SessionCompileResult:
+    """Promotion result; it contains no execution or motion authorization."""
+
+    source_sha256: str
+    compiled: tuple[Any, ...]
+    reused: tuple[Any, ...]
+    motion_authorized: bool = False
+
+
+def _state_origin_key(source_sha256: str, session_id: str) -> str:
+    return f"statefile+sessions://{source_sha256}/{session_id}"
+
+
+def _approval_for_source(
+    approval: SessionCompileApproval | Mapping[str, Any], source_sha256: str
+) -> SessionCompileApproval:
+    try:
+        normalized = (
+            approval
+            if isinstance(approval, SessionCompileApproval)
+            else SessionCompileApproval.model_validate(approval)
+        )
+    except Exception as exc:
+        raise SessionCompileError("invalid human approval credential") from exc
+    if normalized.source_sha256 != source_sha256:
+        raise SessionCompileError(
+            "human approval is bound to a different SESSIONS.md content digest"
+        )
+    return normalized
 
 
 def _require_keys(value: Mapping[str, Any], required: set[str], label: str) -> list[str]:
@@ -140,9 +219,11 @@ def _session_preview(parsed: ParsedStateFile) -> SessionPreview:
         if not isinstance(item, dict):
             raise StateFileError(f"{parsed.path}: sessions[{index}] must be an object")
         required = {"session_id", "intent", "acceptance_criteria", "retry_limit"}
-        errors = _require_keys(item, required, f"sessions[{index}]")
-        if errors:
-            raise StateFileError("; ".join(errors))
+        missing = sorted(required - set(item))
+        if missing:
+            raise StateFileError(
+                f"sessions[{index}] missing field(s): {', '.join(missing)}"
+            )
         session_id = item["session_id"]
         if not isinstance(session_id, str) or not session_id.strip() or any(char in session_id for char in "/\\"):
             raise StateFileError(f"{parsed.path}: sessions[{index}].session_id must be path-safe")
@@ -169,6 +250,7 @@ def _session_preview(parsed: ParsedStateFile) -> SessionPreview:
         if parent_task_id is not None and (
             not isinstance(parent_task_id, str)
             or not parent_task_id.strip()
+            or parent_task_id.strip() in {".", ".."}
             or any(char in parent_task_id for char in "/\\")
         ):
             raise StateFileError(f"{parsed.path}: sessions[{index}].parent_task_id must be path-safe")
@@ -194,6 +276,100 @@ def parse_sessions_preview(path: str | Path) -> SessionPreview:
     """Return deterministic AgentTask previews without writing lifecycle state."""
 
     return _session_preview(parse_state_file(path, expected_kind="sessions"))
+
+
+async def compile_sessions_to_agent_tasks(
+    path: str | Path,
+    *,
+    coordinator: Any,
+    approval: SessionCompileApproval | Mapping[str, Any],
+    session_id: str | None = None,
+    activation_id: str | None = None,
+) -> SessionCompileResult:
+    """Promote one approved declaration through the public AgentTask coordinator.
+
+    The compiler deliberately accepts one declaration per call.  This avoids a
+    partial batch when the global AgentTask slot is occupied and keeps the
+    Markdown adapter from becoming a queue or scheduler.  Repeated compilation
+    of the same source/session identity returns the existing task record.
+    """
+
+    preview = parse_sessions_preview(path)
+    _approval_for_source(approval, preview.source.data_sha256)
+    selected = list(preview.previews)
+    if session_id is not None:
+        selected = [item for item in selected if item["session_id"] == session_id.strip()]
+        if not selected:
+            raise SessionCompileError(f"session_id not found: {session_id!r}")
+    elif len(selected) != 1:
+        raise SessionCompileError(
+            "SESSIONS.md compilation requires exactly one session; pass session_id explicitly"
+        )
+
+    store = getattr(coordinator, "store", None)
+    if store is None or not hasattr(store, "find_by_origin_session_key"):
+        raise SessionCompileError("coordinator does not expose the AgentTaskStore authority")
+    compiled: list[Any] = []
+    reused: list[Any] = []
+    for item in selected:
+        origin_key = _state_origin_key(preview.source.data_sha256, item["session_id"])
+        existing = store.find_by_origin_session_key(origin_key)
+        if len(existing) > 1:
+            raise SessionCompileError(
+                f"multiple AgentTasks already exist for session {item['session_id']!r}"
+            )
+        if existing:
+            reused.append(existing[0])
+            continue
+
+        active = store.active()
+        if active is not None:
+            raise SessionCompileError(
+                f"AgentTask {active.task_id} is still non-terminal; compilation is deferred"
+            )
+        parent_task_id = item["parent_task_id"]
+        if parent_task_id is not None:
+            try:
+                parent = store.get(parent_task_id)
+            except Exception as exc:
+                raise SessionCompileError(
+                    f"parent AgentTask not found: {parent_task_id}"
+                ) from exc
+            if not parent.terminal:
+                raise SessionCompileError(
+                    f"parent AgentTask {parent_task_id} is still non-terminal"
+                )
+
+        from PhyAgentOS.verification.contracts import TaskVerificationContract
+
+        verification = TaskVerificationContract(
+            mode="off",
+            goal=item["task_description"],
+            success_criteria=item["acceptance_criteria"],
+            constraints=[f"retry_limit={item['retry_limit']}"],
+        )
+        try:
+            task = coordinator.create_task(
+                task_description=item["task_description"],
+                verification=verification,
+                activation_id=activation_id,
+                origin_session_key=origin_key,
+                parent_task_id=parent_task_id,
+                retry_limit=item["retry_limit"],
+            )
+            if inspect.isawaitable(task):
+                task = await task
+        except Exception as exc:
+            raise SessionCompileError(
+                f"AgentTask compilation failed for session {item['session_id']!r}: {exc}"
+            ) from exc
+        compiled.append(task)
+    return SessionCompileResult(
+        source_sha256=preview.source.data_sha256,
+        compiled=tuple(compiled),
+        reused=tuple(reused),
+        motion_authorized=False,
+    )
 
 
 def _projection(kind: str, path: str | Path, data: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:

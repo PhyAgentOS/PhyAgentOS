@@ -225,6 +225,18 @@ AgentTask 生命周期或 Action admission。Markdown 仍不是第二事实源�
 `SESSIONS.md` 编译为 `AgentTaskRecord`，必须另行增加人工确认、幂等 compiler、公开 Coordinator 调用和
 事务 conformance；不能直接扩展当前 dry-run 函数的副作用。
 
+### 7.2 阶段 C 首个受限 promotion 实现（v3.0.0）
+
+已增加一个仍位于 `state_io` 适配边界内的 promotion 入口：
+
+- `SessionCompileApproval` 是不可变、`extra=forbid` 的人工确认凭据，必须携带源文件 canonical SHA-256、审批人、审批编号和带时区的 ISO-8601 时间；文件 digest 变化会使审批失效。
+- `compile_sessions_to_agent_tasks()` 默认只编译一个 session；多 session 文件必须显式选择 `session_id`，从而避免在全局单一非终态 AgentTask 约束下产生部分写入。
+- 编译前通过 `AgentTaskStore.active()` 检查全局非终态任务，并以 `statefile+sessions://<digest>/<session_id>` 作为稳定 origin identity；重复编译返回已有记录，不创建重复任务。
+- 真正创建只调用 `AgentTaskCoordinator.create_task()`；`parent_task_id` 与 `retry_limit` 作为 AgentTaskRecord 的声明式字段保存，且父任务必须已存在并处于终态。
+- 该 promotion 仍不调用 Gateway、Watchdog 或 Action admission，结果固定 `motion_authorized=false`；因此它提升的是“任务意图输入边界”，不是执行权限。
+
+该阶段的 promotion gate 是人工凭据、源 digest、全局活动任务、父任务身份和幂等性测试全部通过。抓取放置动作、证据闭环和自主进化仍保持在后续阶段。
+
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
 该方案短期看起来结构完整，但会造成：

@@ -3,7 +3,7 @@
 ## Feature
 
 - Name: PAOS State File Adapter v1
-- User-visible capability: 解析五类 Markdown 状态文件，生成受限 projection，并提供 `TARGETS.md` shadow validation 与 `SESSIONS.md` dry-run 预览。
+- User-visible capability: 解析五类 Markdown 状态文件，生成受限 projection，并提供 `TARGETS.md` shadow validation、`SESSIONS.md` dry-run 预览与人工确认后的受限 AgentTask 编译。
 - Baseline commit: `c5740a5`
 - Documentation version: PAOS v1.0.0
 
@@ -24,7 +24,7 @@
 - Protocol: `paos.state-file.v1`; one fenced JSON/YAML object with exactly `paos` and `data` keys
 - Metadata: `kind`, `mode`, `revision`, `source`, optional ISO-8601 `generated_at`
 - `TARGETS.md`: `input` mode; strict capability matrix validation; shadow-only report with `motion_authorized=false`
-- `SESSIONS.md`: `input` mode; deterministic dry-run previews only
+- `SESSIONS.md`: `input` mode; deterministic dry-run previews; one-session-at-a-time promotion only after digest-bound human approval
 - `SKILLRUNTIME.md`, `ENVIRONMENT.md`, `LESSONS.md`: `projection` mode; atomic writes and digest-based drift checks
 
 ## Ownership
@@ -41,6 +41,9 @@
 - Projection drift is explicit; `expected_sha256` mismatch raises `StateFileDriftError`
 - Parse failures never write stores, enqueue Watchdog work, call Gateway, or authorize motion
 - Dry-run previews use stable content-derived IDs but are not AgentTask IDs and are never persisted
+- Promotion requires `SessionCompileApproval` bound to the parsed source digest; repeated source/session compilation reuses the existing AgentTask record
+- Promotion calls only `AgentTaskCoordinator.create_task()` and is rejected when another non-terminal AgentTask occupies the global slot
+- Managed Forge runtimes may additionally require the current turn's `activation_id`; the adapter forwards it but never creates a Skill activation itself
 
 ## Acceptance
 
@@ -59,3 +62,4 @@
 - no Watchdog queue or Session state machine
 - no direct SQLite writes
 - no automatic motion authorization
+- no multi-session batch promotion (prevents partial writes under the single-task invariant)

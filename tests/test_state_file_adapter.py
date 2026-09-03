@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
 
+from PhyAgentOS.config.schema import ForgeConfig
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
 from PhyAgentOS.state_io import (
+    SessionCompileApproval,
+    SessionCompileError,
     StateFileDriftError,
     StateFileError,
+    compile_sessions_to_agent_tasks,
     parse_sessions_preview,
     parse_state_file,
     parse_targets_shadow,
@@ -196,3 +202,121 @@ def test_projection_source_must_be_an_opaque_reference(tmp_path):
             revision="scene-1",
             source="/tmp/environment.json",
         )
+
+
+def _write_session_file(path, sessions):
+    write_state(path, kind="sessions", mode="input", data={"sessions": sessions})
+    return parse_sessions_preview(path).source.data_sha256
+
+
+def _coordinator(tmp_path):
+    return AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+    )
+
+
+def _approval(source_sha256):
+    return SessionCompileApproval(
+        approval_id="approval-1",
+        source_sha256=source_sha256,
+        approved_by="operator",
+        confirmed_at="2026-09-03T09:00:00+00:00",
+    )
+
+
+def test_sessions_compile_requires_digest_bound_human_approval(tmp_path):
+    path = tmp_path / "SESSIONS.md"
+    digest = _write_session_file(
+        path,
+        [{"session_id": "pick-001", "intent": "Pick", "acceptance_criteria": ["done"], "retry_limit": 1}],
+    )
+    coordinator = _coordinator(tmp_path)
+    with pytest.raises(SessionCompileError, match="different SESSIONS.md"):
+        asyncio.run(
+            compile_sessions_to_agent_tasks(
+                path,
+                coordinator=coordinator,
+                approval=_approval("0" * 64),
+            )
+        )
+    assert coordinator.store.active() is None
+    assert digest
+
+
+def test_sessions_compile_is_idempotent_and_uses_coordinator(tmp_path):
+    path = tmp_path / "SESSIONS.md"
+    digest = _write_session_file(
+        path,
+        [{
+            "session_id": "pick-001",
+            "intent": "Pick the red cup",
+            "acceptance_criteria": ["cup is in gripper"],
+            "retry_limit": 2,
+        }],
+    )
+    coordinator = _coordinator(tmp_path)
+    first = asyncio.run(
+        compile_sessions_to_agent_tasks(path, coordinator=coordinator, approval=_approval(digest))
+    )
+    second = asyncio.run(
+        compile_sessions_to_agent_tasks(path, coordinator=coordinator, approval=_approval(digest))
+    )
+    assert len(first.compiled) == 1
+    assert second.compiled == ()
+    assert len(second.reused) == 1
+    task = second.reused[0]
+    assert task.origin_session_key == f"statefile+sessions://{digest}/pick-001"
+    assert task.retry_limit == 2
+    assert task.verification.success_criteria == ["cup is in gripper"]
+    assert task.status == AgentTaskStatus.EXECUTING
+    assert second.motion_authorized is False
+
+
+def test_sessions_compile_rejects_active_task_and_multi_session_batch(tmp_path):
+    path = tmp_path / "SESSIONS.md"
+    digest = _write_session_file(
+        path,
+        [
+            {"session_id": "pick-001", "intent": "Pick", "acceptance_criteria": ["done"], "retry_limit": 0},
+            {"session_id": "place-001", "intent": "Place", "acceptance_criteria": ["done"], "retry_limit": 0},
+        ],
+    )
+    coordinator = _coordinator(tmp_path)
+    with pytest.raises(SessionCompileError, match="exactly one session"):
+        asyncio.run(
+            compile_sessions_to_agent_tasks(path, coordinator=coordinator, approval=_approval(digest))
+        )
+    one_path = tmp_path / "ONE.md"
+    one_digest = _write_session_file(
+        one_path,
+        [{"session_id": "single", "intent": "Single", "acceptance_criteria": ["done"], "retry_limit": 0}],
+    )
+    asyncio.run(
+        compile_sessions_to_agent_tasks(one_path, coordinator=coordinator, approval=_approval(one_digest))
+    )
+    with pytest.raises(SessionCompileError, match="non-terminal"):
+        asyncio.run(
+            compile_sessions_to_agent_tasks(path, session_id="place-001", coordinator=coordinator, approval=_approval(digest))
+        )
+
+
+def test_sessions_compile_rejects_unknown_parent_before_creation(tmp_path):
+    path = tmp_path / "SESSIONS.md"
+    digest = _write_session_file(
+        path,
+        [{
+            "session_id": "child",
+            "intent": "Place",
+            "acceptance_criteria": ["placed"],
+            "retry_limit": 0,
+            "parent_task_id": "missing-parent",
+        }],
+    )
+    coordinator = _coordinator(tmp_path)
+    with pytest.raises(SessionCompileError, match="parent AgentTask not found"):
+        asyncio.run(
+            compile_sessions_to_agent_tasks(path, coordinator=coordinator, approval=_approval(digest))
+        )
+    assert coordinator.store.active() is None

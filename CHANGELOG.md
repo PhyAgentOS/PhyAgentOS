@@ -7,6 +7,34 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.0.0] - 2026-09-03
+
+在人工确认边界内提升 `SESSIONS.md` 输入：新增 digest 绑定审批凭据、单会话幂等编译器，并通过
+`AgentTaskCoordinator.create_task()` 写入既有 AgentTask SQLite 事实源；新增 `parent_task_id` 与
+`retry_limit` 声明式字段。编译前检查全局非终态任务，重复编译复用既有记录；不直接写 SQLite、不调度
+Watchdog、不调用 Gateway、不授权运动。
+
+Promoted `SESSIONS.md` within an explicit human-approval boundary: added digest-bound approval credentials,
+single-session idempotent compilation, and writes through the existing `AgentTaskCoordinator.create_task()`
+to the AgentTask SQLite authority. Added declarative `parent_task_id` and `retry_limit` fields. Compilation
+checks the global non-terminal slot and reuses repeated source/session records; it does not write SQLite directly,
+dispatch Watchdog, call Gateway, or authorize motion.
+
+### Detailed changes
+
+- `PhyAgentOS/state_io/adapters.py:L43-L372` adds approval validation, one-session compiler, stable origin identity, parent/active-task checks, and no-motion result semantics.
+- `PhyAgentOS/forge/task.py:L153-L181,L300-L315,L420-L527` persists optional parent/retry metadata and adds origin-key lookup used for idempotency.
+- `PhyAgentOS/state_io/__init__.py:L3-L39` exports the bounded promotion API.
+- `tests/test_state_file_adapter.py:L207-L322` covers approval digest binding, idempotent reuse, active-task and multi-session conflicts, unknown parents, and no-motion.
+- `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L6-L58` and `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L228-L244` record the promotion boundary and remaining non-goals.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_state_file_adapter.py` → `13 passed`.
+- `ruff check PhyAgentOS/state_io PhyAgentOS/forge/task.py tests/test_state_file_adapter.py` passed.
+- `python -m compileall -q PhyAgentOS/state_io PhyAgentOS/forge/task.py tests/test_state_file_adapter.py` and `git diff --check` passed.
+- Existing pick-place task tests remain un-runnable in this environment because `pick_place_workflow` is not on `PYTHONPATH`; this is reported separately and is not treated as a pass.
+
 ## [v2.9.0] - 2026-09-03
 
 新增 PAOS 状态文件架构诊断文档，汇总 `TARGETS.md`、`SKILLRUNTIME.md`、`SESSIONS.md`、
