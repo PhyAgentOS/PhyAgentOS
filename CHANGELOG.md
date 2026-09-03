@@ -2,6 +2,29 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.14] - 2026-09-03
+
+整理两条 provider-neutral 感知接入方案：单视角
+`LocateAnything → SAM2 → RGB-D localization`，以及多视角
+`MultiViewObservationSet → cross-view segmentation/identity/geometry fusion`。
+明确多视角不是 RoboTwin Skill 或模型 Tool；融合实体几何可供
+`scene.understand` / `grasp.propose`，Global SceneGeometry 仅作为独立可选输出，
+所有结果仍须经过 PAOS provenance、frame/calibration 和 fail-closed 门禁。
+
+Consolidated two provider-neutral perception paths: single-view
+`LocateAnything → SAM2 → RGB-D localization`, and multi-view
+`MultiViewObservationSet → cross-view segmentation/identity/geometry fusion`.
+Clarified that multi-view is neither a RoboTwin Skill nor a model Tool; fused
+entity geometry may feed `scene.understand` / `grasp.propose`, while Global
+SceneGeometry remains a separate optional output under PAOS provenance,
+frame/calibration, and fail-closed gates.
+
+### Validation
+
+- `git diff --check` passed.
+- Execution document audit confirms no direct Agent-to-model/Dora/SDK path and no implicit camera motion.
+- `.codegraph/` and `.cursor/` remain untracked and were not staged.
+
 ## [v2.8.13] - 2026-09-03
 
 Fixed the GPT Responses strict JSON schema by declaring `spatial_envelopes.unit`

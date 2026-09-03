@@ -225,6 +225,163 @@ robotwin_grasp_propose
 9. **添加 Dora profile 和 locked Node**：Bundle 只冻结 wiring、profile、Node artifact 和 digest。
 10. **完整仿真验收**：记录 RoboTwin commit、SAPIEN/Dora 版本、Bundle/Node digest、profile 和环境摘要。
 
+### 9.1 两条感知接入方案的统一决策
+
+前述单视角链路和多视角融合不是两个 Skill，也不是两个 RoboTwin 专属 Tool。它们共享 PAOS 的
+`scene.observe`、`scene.understand`、`grasp.propose` 和 `manipulation.prepare` contract；差异只由
+adapter/provider profile 和 capability negotiation 表达。Agent 不传 `LocateAnything`、`SAM2`、
+`NVBlox` 或具体模型名，也不直接选择摄像头实现。
+
+#### 方案 A：单视角局部感知（默认首个实现）
+
+```text
+scene.observe(sensor_ref, max_age_ms)
+  -> entity binding / semantic query
+  -> LocateAnything proposal (2D boxes)
+  -> SAM2 mask materialization (当前 RGB)
+  -> depth + intrinsics/extrinsics localization
+  -> entity spatial envelope / optional pose artifact
+  -> grasp.propose
+  -> manipulation.prepare
+```
+
+适用条件：目标主要可见、单个 RGB-D 视角足够、需要较低延迟或 GPU 资源有限。它在一个 observation
+  上完成局部实体证据，输出 `entities`、`relations`、`spatial_envelopes`；派生 mask/pose artifact
+  目前只能作为 adapter 内部引用，待 generic runtime 的 derived-artifact contract 冻结后再作为公共
+  结果投影。不输出仿真 actor identity，不直接产生抓取动作。
+
+adapter 需要实现三个独立 port：
+
+```python
+class ProposalProvider(Protocol):
+    def propose(self, request: ProposalRequest) -> ProposalBatch: ...
+
+class SegmentationProvider(Protocol):
+    def segment(self, request: SegmentationRequest) -> MaskBatch: ...
+
+class MetricLocalizationProvider(Protocol):
+    def localize(self, request: LocalizationRequest) -> SpatialEstimate: ...
+```
+
+LocateAnything 和 SAM2 的 worker 生命周期、Torch/CUDA、模型 revision、license、临时文件和 cleanup
+只在 adapter 中管理。PAOS 只校验 artifact、frame、calibration、provenance 和结果 schema。
+
+#### 方案 B：多视角观测集与几何融合（遮挡/覆盖需要时启用）
+
+```text
+scene.observe(observation_set_ref, max_age_ms)
+  -> MultiViewObservationSet
+  -> per-view proposal/mask (可复用方案 A provider)
+  -> cross-view identity / mask correspondence gate
+  -> fused entity mask + RGB-D geometry
+  -> scene.understand projects entity evidence
+  -> grasp.propose consumes fused entity geometry
+  -> optional global SceneGeometry for manipulation.prepare
+```
+
+适用条件：单视角遮挡、视野覆盖不足、需要更完整的目标分割、实体点云、抓取几何或全局碰撞/unknown-space
+几何。多视角不仅可以改善全局地图，也可以直接改善目标分割感知：每个视角可独立产生 proposal/mask，
+或由一个视角的已绑定 proposal 投影到其他视角，再通过跨视角 identity/correspondence gate 合并为同一实体
+的 mask 与 RGB-D 几何。多视角必须先形成 provider-neutral `MultiViewObservationSet`，每个 view 绑定同一
+`scene_revision`、reset/control-step identity、timestamp、camera frame、intrinsics、extrinsics 和 artifact digest。
+
+多视角 provider 至少可以产生两类可分别消费的输出：
+
+| 输出 | 消费者 | 语义 |
+|---|---|---|
+| `FusedEntityPerceptionArtifact` | `scene.understand`、`grasp.propose` | 某个已绑定实体的跨视角 mask、对应关系和融合 RGB-D 点云；可用于抓取候选，但不能升级为全局碰撞图 |
+| `GlobalSceneGeometryReference` | `manipulation.prepare` / planner | 完整 RGB-D 视图积分后的场景几何、自由空间和 unknown-space 证据；不是目标分割结果 |
+
+上述两个名称是拟议的 provider-neutral artifact 类型，不是当前已发布的 Tool 输入字段。当前
+`scene.understand` 没有 `derived_artifacts`，`grasp.propose` 只接受带 `spatial_envelope` 的 target，
+`manipulation.prepare` 也没有 `GlobalSceneGeometryReference` 输入；在这些 generic contract 扩展前，
+融合结果只能留在 adapter/provider 内部，不能伪装成现有 ToolResult 或私自增加请求字段。
+
+多视角感知 provider 可以复用方案 A 的 LocateAnything/SAM2：LocateAnything 仍只产生 proposal，SAM2
+仍只产生当前视角 mask；跨视角的实体 correspondence、mask 合并、深度投影和点云融合由 adapter-side
+composition provider 负责。不能把每个实体 mask 的并集当成全局 SceneGeometry；全局几何必须消费完整
+depth frames 和标定后的射线。provider 需实现有序
+`begin_session → process(view_i) → fuse_entity → (optional) freeze_global_snapshot → close_session`
+生命周期，任何 view 丢失、revision/calibration 不一致、identity/mask correspondence 不确定、
+session/digest/count 不匹配都必须 fail-closed。
+
+#### 方案选择与迁移顺序
+
+1. 先实现方案 A 的 Fake provider 和单视角真实 adapter，验证 proposal、mask、depth localization、
+   provenance 和 `scene.understand` 投影。
+2. 当单视角在遮挡、分割质量或 coverage gate 上不足时，再增加方案 B 的 `MultiViewObservationSet`
+   contract；保持单视角调用兼容，不复制 ToolEndpoint。
+3. 先实现跨视角 identity/mask correspondence 和 `FusedEntityPerceptionArtifact`，供
+   `scene.understand` / `grasp.propose` 使用；再按需要实现全局 SceneGeometry 供 `manipulation.prepare`
+   使用，二者分别验收，不能用一个 artifact 代替另一个。
+4. 若多视角需要移动相机或机器人采集新视角，该动作必须另行经过 Gateway/Runtime safety admission；
+   provider 不能隐式移动硬件。
+5. 两个方案都必须保持 `motion_authorized=false`，直到标准 `manipulation.prepare` 和后续 Action
+   admission 完成；模型成功、mask 成功或融合成功本身都不是抓取成功。
+
+#### 方案对照与验收门禁
+
+| 维度 | 方案 A：单视角 | 方案 B：多视角 |
+|---|---|---|
+| PAOS 对外入口 | 现有 `scene.observe` + `scene.understand` | 未来扩展同一入口为 capability-gated observation set；当前尚未注册多视角字段 |
+| 主要结果 | 当前视角实体/mask/空间包络 | 跨视角实体分割/几何 + 可选全局 SceneGeometry |
+| 主要风险 | 遮挡、深度空洞、单视角身份歧义 | 跨视角身份漂移、mask correspondence 错配、标定/时间不一致、资源占用 |
+| 必须证明 | RGB/depth 对齐、mask shape、frame/calibration/provenance | view identity、顺序、digest、integration count、单次 freeze |
+| 失败语义 | provider unavailable/invalid，不能伪造 3D | typed multi-view unavailable/mismatch，不能静默降级单视角 |
+| 动作权限 | 始终无动作 | 始终无动作 |
+
+本仓库当前应按方案 A 先行：GPT provider 只覆盖 RGB 语义理解，下一步接入真实 mask 和 depth
+localization；方案 B 作为同一 provider-neutral contract 上的增量 capability，待单视角 contract
+和 artifact lineage 稳定后再实现。方案 B 的第一目标是跨视角分割/实体几何可被 `grasp.propose` 消费，
+全局 SceneGeometry 是独立的后续输出。两者都不应命名为 `robotwin.multiview` 或 `multiview-skill`。
+
+### 9.2 按 PAOS 架构与开发者指南的审核结论
+
+**通过项：**
+
+- 两个方案都沿用 `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → adapter/provider`，没有
+  direct Agent-to-model、Agent-to-Dora 或 Agent-to-SDK 路径。
+- 按开发者指南“只有现有通用 Tool 无法表达能力时才新增 Agent tool”的规则，多视角目前可以表达为
+  `scene.observe` 的 capability-gated observation set 和 provider 内部 composition，因此没有新增
+  `multiview` ToolSpec 或 Skill。
+- 多视角没有被命名为 Skill，也没有把 LocateAnything、SAM2、NVBlox、FoundationPose 写入公共
+  `ToolSpec`；环境差异仍由 adapter/profile 和 capability descriptor 表达。
+- 单视角和多视角都把感知、几何、准入、执行分开；mask/点云/融合结果只能作为 Query 证据，不能
+  跳过 `grasp.propose`、`manipulation.prepare` 或 Action admission。
+- 方案 B 明确区分跨视角实体分割/几何与全局 SceneGeometry，前者可以供 `grasp.propose` 生成抓取
+  候选，后者才供规划/准入使用；不能互相替代。
+
+**必须先补齐的 contract 缺口：**
+
+1. 当前 `scene.observe` 只接受单个 `sensor_ref`，尚未实现 `MultiViewObservationSet`。在增加多视角
+   调用前，应先冻结兼容的 provider-neutral schema（ordered view refs、scene/reset/control-step identity、
+   per-view frame/calibration/artifact digests），并通过 Fake Gateway conformance；不能在 adapter 中
+   私自增加未注册字段。
+2. 当前 `scene.understand` 的公共 snapshot 只有 `entities`、`relations`、`spatial_envelopes` 和
+   `ambiguities`，没有 `derived_artifacts` 字段。若要让融合 mask 被后续 `grasp.propose` 审计，必须先
+   在 PAOS generic runtime 定义并校验派生 artifact contract；在此之前，mask 只能作为 adapter 内部输入，
+   不能假装已经是公共 ToolResult。
+3. 当前 `provenance` 正则只接受 `artifact://...`。`calibration://...` 应继续放在顶层
+   `calibration_ref` 或一个明确的 calibration artifact ref 中，不能直接塞进现有 spatial-envelope
+   provenance，否则会被 PAOS validator 拒绝。示例中的 calibration 绑定必须按此规则实现。
+4. `scene.understand`、`grasp.propose` 当前都是 Query；多视角 provider 不得隐式移动相机/机器人。需要
+   主动移动采集时，必须另行定义并审核一个有安全准入的 observation Action/Session。
+5. 当前 `grasp.propose` 的 target 只允许 `spatial_envelope`，`manipulation.prepare` 没有全局场景几何输入。
+   若要让融合实体几何或 `GlobalSceneGeometryReference` 成为公共证据，必须先扩展通用 artifact/reference
+   schema、binding、provenance 和 Fake Gateway conformance；否则只能由 adapter 将已验证结果投影为现有
+   中性 envelope，且不得把全局几何或 mask 并集冒充目标/碰撞事实。
+
+**实施门禁：**
+
+- 先以 Fake provider 证明单视角：proposal→mask→depth localization→entity artifact→grasp candidate
+  的 lineage 和 fail-closed 语义。
+- 再以 Fake provider 证明多视角：两视角以上、稳定顺序、同一 revision/calibration、跨视角 identity/mask
+  correspondence、融合 artifact digest，以及失败时不静默降级为单视角。
+- 然后在独立 RoboTwin adapter 环境接入真实 LocateAnything/SAM2 worker；PAOS 环境不安装 Torch、CUDA、
+  模型或仿真依赖。
+- 只有真实多视角 artifact、provider receipt、资源/cleanup 证据和 Gateway/Dora readiness 全部存在后，
+  才能进行仿真验收；任何阶段都保持 `motion_authorized=false`，不把分割或融合成功称为抓取成功。
+
 ## 10. 验收门禁
 
 ### 公共 contract gate
@@ -310,6 +467,7 @@ robotwin_grasp_propose
 | 目标识别/检测 | `scene.understand` | entity schema、confidence、provenance、observation binding | detector/VLM provider；不能使用 actor truth |
 | 实例分割 | `scene.understand` | 校验并投影 opaque mask artifact 与 provenance | 独立 segmentation provider（YOLO/SAM 等），不使用仿真 segmentation truth |
 | 3D 定位 | `scene.understand` | frame/unit/calibration 约束和 metric envelope 校验 | depth + calibration + mask/点云 localization provider；缺任一项 fail-closed |
+| 多视角分割/实体几何融合 | `scene.understand` → `grasp.propose` | 校验 `MultiViewObservationSet`、跨视角 identity/mask lineage 和派生 artifact 引用 | per-view proposal/segmentation + correspondence/fusion provider；可输出融合 mask、点云和抓取几何 |
 | 抓取位姿估计 | `grasp.propose` | candidate schema、候选集 identity、provenance 与 funnel | 独立 grasp proposal provider（可选 YOLO/GraspGen 等），只产候选，不授权动作 |
 | IK/碰撞/工作空间准入 | `manipulation.prepare` | readiness 编排与 `motion_authorized=false` 边界 | `ReadinessEvaluator`，必须在执行前完成 |
 | 实际抓取/放置 | `object.acquire` / `object.place` | Action admission 与 invocation 生命周期 | `ManipulationExecutor`；仅 Gateway 显式准入后执行 |
