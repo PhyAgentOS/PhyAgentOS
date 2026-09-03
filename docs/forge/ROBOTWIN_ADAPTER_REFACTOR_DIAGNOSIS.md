@@ -387,6 +387,29 @@ provider-neutral contract 上的增量 capability，待单视角 live
 - 只有真实多视角 artifact、provider receipt、资源/cleanup 证据和 Gateway/Dora readiness 全部存在后，
   才能进行仿真验收；任何阶段都保持 `motion_authorized=false`，不把分割或融合成功称为抓取成功。
 
+### 9.3 PAOS 状态文件协议审核与实施方向
+
+近期对 `TARGETS.md`、`SKILLRUNTIME.md`、`SESSIONS.md`、`ENVIRONMENT.md` 和 `LESSONS.md` 的架构诊断已
+单独记录在 [`PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`](PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md)。该诊断
+与本执行文档的结论一致：PAOS v1.0 没有要求用 Markdown 存储事务性中间状态，并明确将旧的 Markdown queue
+Runtime 视为已移除。Markdown 文件可以作为人工输入、工作区上下文或机器事实源的可读 projection，但不得
+成为第二套执行状态机或事实源。
+
+因此，RoboTwin 和 `pick-place-workflow` 的后续实现采用以下顺序：
+
+1. 先冻结 Capability Profile、AgentTask、Gateway invocation、Evidence Snapshot 和 Experience ledger 的
+   权威边界、身份、revision、provenance 与 unknown/no-blind-retry 语义；
+2. 继续实现 `grasp.propose → manipulation.prepare → object.acquire → object.place` 的 provider-neutral
+   证据闭环，保持 Query/Action 分层和 `motion_authorized=false` 的 no-motion 门禁；
+3. 再增加五类 Markdown 的输入/投影适配，其中 `SESSIONS.md` 只能编译为 AgentTask，`ENVIRONMENT.md` 只能
+   投影可信 snapshot，`LESSONS.md` 继续由 `experience.sqlite3` 按 Skill 作用域生成；
+4. 只有稳定的 AgentTask、Evidence、VerificationVerdict 和 failure-owner 进入 Experience 后，才允许
+   LessonCluster 或 SkillCandidate 的受控晋升。
+
+本节不批准新增 Markdown queue Runtime，也不改变 PAOS 当前唯一物理执行路径。若后续实现需要主动移动采集、
+新的目标能力约束或多视角输入，必须先扩展相应 provider-neutral contract、Fake Gateway conformance 和
+审计证据，再接入具体 adapter。
+
 ## 10. 验收门禁
 
 ### 公共 contract gate
@@ -434,8 +457,12 @@ provider-neutral contract 上的增量 capability，待单视角 live
   释放 proposal 进程，再启动 SAM2 box segmentation worker，最后用同帧 depth/intrinsics 生成
   camera-frame point cloud 与 spatial envelope。两个模型保留在独立 Python 环境，路径、revision、
   checkpoint、device 和 timeout 由 `profiles/robotwin20/perception.yaml` 注入；
-- 当前没有 YOLO/Ultralytics 检测器、抓取模型或机器人执行器接入；`grasp.propose` 仍是
-  provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成。真实场景理解的
+- adapter-side 已新增独立 `GraspGenProposalProvider`、JSONL worker 入口和 `graspgen.yaml` profile：它只消费
+  `scene.understand` 产生并绑定到 observation/revision/frame/calibration/entity 的
+  `object_point_cloud` 或 `fused_entity_perception` artifact，校验 4x4 矩阵、四元数、approach vector，
+  生成 provider-neutral candidate funnel，并通过确定性 SE(3) NMS 投影 `grasp.propose`。这仍是 Query 证据，
+  不执行 IK、碰撞准入或动作；模型 checkpoint 和 Torch 环境必须由外部 profile 提供，缺失时 fail-closed。
+  当前尚未在本机验证 GraspGen checkpoint 的 live inference，Fake worker 结果不代表真实抓取完成。真实场景理解的
   adapter-side GPT Responses provider 已按 clean-room 方式实现：它只读取外部 observation artifact，
 输出闭合的 entities/relations/spatial_envelopes/derived_artifacts/ambiguities schema，并由 PAOS Gateway 做最终校验；
   provider 默认沿用 Hephaestus 已验证的 `gpt-5.6-sol`、Responses API 和 relay base URL，但不导入
@@ -458,17 +485,20 @@ provider-neutral contract 上的增量 capability，待单视角 live
   provider conformance 已完成，但尚未启动生产 HTTP Gateway）；
 - 真实 Gateway/ToolEndpoint HTTP server；
 - RoboTwin 对应 Dora flow、locked Node 和 profile；
-- `grasp.propose`、`manipulation.prepare`、`object.acquire`、`object.place` 的真实 provider 接入与六能力
-  PAOS 端到端验证；当前 GPT 语义 provider 与 LocateAnything/SAM2/depth composition 均已分别验收，
-  但尚未在同一次调用中运行 GPT 语义到真实 mask/metric localization 的完整 live 链路。
+- `manipulation.prepare`、`object.acquire`、`object.place` 的真实 provider 接入与六能力 PAOS 端到端验证；
+  `grasp.propose` 已完成 provider port、artifact binding、isolated worker protocol、Fake conformance 和 no-motion
+  candidate projection，但尚未在本机 verified GraspGen checkpoint 上完成 live inference，也未接入模型碰撞筛选、IK
+  或执行链；当前 GPT 语义 provider 与 LocateAnything/SAM2/depth composition 均已分别验收，
+  但尚未在同一次调用中运行 GPT 语义到真实 mask/metric localization/grasp 的完整 live 链路。
 
 因此不能声称“六个 RoboTwin Skill 已接入”，也不能把 RoboTwin 的 ground truth 称为真实感知。准确表述是：
 
 > PAOS 公共能力契约、`pick-place-workflow` 编排、generic capability runtime 基础、RoboTwin
 > `scene.observe` runtime/provider conformance、adapter-side `scene.understand` GPT provider，以及独立环境
-> LocateAnything/SAM2/depth 单视角 composition 的代码与协议验收已完成；Hephaestus 能力只作为
-> clean-room 重构的需求/行为参考。当前尚缺 GPT 到真实分割/定位的同次 live 链路证据、
-> `grasp.propose` 及后续准备/执行 provider、Gateway HTTP/Dora wiring，必须继续按本文顺序独立实现。
+> LocateAnything/SAM2/depth 单视角 composition 的代码与协议验收已完成；GraspGen 目前完成
+> provider-neutral adapter/worker conformance，Hephaestus 能力只作为 clean-room 重构的需求/行为参考。
+> 当前尚缺 verified GraspGen checkpoint 的 live 证据、模型碰撞/后续准备执行 provider、Gateway HTTP/Dora wiring，
+> 必须继续按本文顺序独立实现。
 
 ## 12. 识别、分割、定位与抓取位姿的模块归属
 
@@ -489,9 +519,10 @@ provider-neutral contract 上的增量 capability，待单视角 live
 当前 GPT provider 仍只做 RGB 语义理解；可信分割和 metric 3D 不由 GPT 凭 RGB 猜测，而由
 adapter 中已实现的 LocateAnything proposal、SAM2 box mask 和 depth/calibration localization composition 生成。
 该路径已通过 Fake worker/Gateway 契约和真实 LocateAnything/SAM2 无动作 composition 验收；本次
-composition 使用固定语义实体，仍需补充同次 GPT 语义全链 live 证据。其后应让
-`grasp.propose` 消费已绑定的点云/定位资产；抓取位姿不能塞进 `scene.observe` 或
-`scene.understand` 的输出字段。
+composition 使用固定语义实体，仍需补充同次 GPT 语义全链 live 证据。`grasp.propose` 现在消费显式绑定的
+`geometry_artifacts`（单视角或未来多视角融合点云）；抓取位姿不能塞进 `scene.observe` 或
+`scene.understand` 的语义输出字段，候选只有在 `manipulation.prepare` 完成 workspace/IK/collision/readiness
+后才可能进入 Action admission。
 
 ## 13. English summary
 

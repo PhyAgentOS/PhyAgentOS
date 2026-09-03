@@ -2,6 +2,37 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## Archive
+
+- [2026-09 part 2](changelog/2026-09_part2.md)
+- [2026-09](changelog/2026-09.md)
+
+## [v2.9.0] - 2026-09-03
+
+新增 PAOS 状态文件架构诊断文档，汇总 `TARGETS.md`、`SKILLRUNTIME.md`、`SESSIONS.md`、
+`ENVIRONMENT.md`、`LESSONS.md` 与现有 AgentTask、Gateway、Evidence、Runtime 和 Experience
+权威边界的对应关系；明确 Markdown 不是事务性中间状态的唯一事实源，并提出“先冻结最小上层契约，
+再继续抓取放置证据闭环，最后实现文件输入/投影适配”的审核方向。
+
+Added the PAOS state-file architecture diagnosis documenting how `TARGETS.md`, `SKILLRUNTIME.md`,
+`SESSIONS.md`, `ENVIRONMENT.md`, and `LESSONS.md` map to the existing AgentTask, Gateway, Evidence,
+Runtime, and Experience authorities. It clarifies that Markdown is not the sole source of transactional
+intermediate state and proposes “freeze the minimal upper-layer contract, continue the pick-place evidence
+closure, then add file input/projection adapters” for review.
+
+### Detailed changes
+
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L1-L240` adds the bilingual-domain diagnosis, authority table, Markdown input/projection protocol, pick-place impact analysis, autonomous-evolution boundaries, and six review gates.
+- `docs/forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md:L390-L411` records the state-file protocol decision and preserves the provider-neutral pick-place implementation order.
+- `docs/README.md:L29,L63` adds Chinese and English index links to the diagnosis.
+- `changelog/2026-09_part2.md:L1-L61` records the detailed bilingual change, actual line ranges, key diffs, and validation in the split monthly archive.
+
+### Validation
+
+- `git diff --check` passed.
+- Markdown headings, cross-document links, line references, and bilingual changelog entries were inspected.
+- No source code, runtime behavior, or execution contract was changed by this documentation decision.
+
 ## [v2.8.16] - 2026-09-03
 
 Implemented the clean-room, adapter-side single-view perception composition:
@@ -107,15 +138,14 @@ and enables the GPT scene-understanding provider to consume real runtime
 captures without exposing paths or assets to PAOS.
 
 为外部 RoboTwin observation artifact 增加 adapter 侧 `FilesystemArtifactResolver`。它只在显式外部绝对根目录
-下安全解析 opaque RGB artifact 引用，拒绝路径穿越和非图像引用，使 GPT 场景理解 provider 能读取真实 runtime
-capture，同时不向 PAOS 暴露路径或资产。
+下安全解析 opaque RGB artifact 引用，拒绝路径穿越和非图像 refs，使 GPT 场景理解 provider 能消费真实 runtime
+capture，同时不向 PAOS 暴露本地路径或资产。
 
 ### Validation
 
 - `260 passed in 2.62s` for the adapter/workflow suites.
 - Ruff, compileall, and `git diff --check` passed.
-- Complete `ForgeToolClient -> Fake Gateway -> generic endpoint -> RoboTwin provider -> GPT client` route
-  is covered by a fake Responses client test.
+- Complete `ForgeToolClient -> Fake Gateway -> generic endpoint -> RoboTwin provider -> GPT client` route is covered by a fake Responses client test.
 - No live API call was attempted because `HEPHAESTUS_RELAY_API_KEY` remains absent; no real model result is claimed.
 - `.codegraph/` and `.cursor/` remain untracked and were not staged.
 
