@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.15] - 2026-09-03
+
+Extended the provider-neutral `scene.understand` Query with auditable derived
+perception artifacts for instance masks, object point clouds, and metric
+localization. Every artifact is bound to the observation, scene revision,
+entity, frame, calibration, source lineage, and root provenance; no Action or
+motion authorization was added. The independent RoboTwin adapter forwards only
+plain mappings and remains free of PAOS, simulator, Torch, and model imports.
+
+扩展 provider-neutral `scene.understand` Query，增加可审计的实例 mask、目标点云和度量定位
+派生资产。每个资产绑定 observation、scene revision、entity、frame、calibration、source
+lineage 和 root provenance；没有增加 Action 或运动授权。独立 RoboTwin adapter 只转发普通
+mapping，仍不依赖 PAOS、仿真器、Torch 或模型导入。
+
+### Validation
+
+- `268 passed` for the workflow and RoboTwin adapter suites.
+- Ruff, compileall, ToolSpec YAML equality, and `git diff --check` passed.
+- `.codegraph/` and `.cursor/` remain untracked and were not staged.
+
 ## [v2.8.14] - 2026-09-03
 
 整理两条 provider-neutral 感知接入方案：单视角

@@ -26,8 +26,11 @@ calibration result by weakening `max_age_ms`; obtain a new observation or operat
 Use `scene.understand` only after a successful `scene.observe` result. Pass the returned
 `observation_ref`, scene revision, frame, calibration reference, freshness, and artifact
 references unchanged. The understanding Query returns entity/relation claims and spatial
-envelopes with confidence and provenance; it does not authorize grasping, planning, or
-motion. Reject stale, unavailable, ambiguous, or invalid results before any future Action.
+envelopes with confidence and provenance. It may also return opaque derived artifacts for
+instance masks, object point clouds, and metric localization, but only when their observation,
+entity, frame, calibration, source lineage, and root provenance bindings are complete. These
+artifacts are Query evidence, not grasp candidates or motion authorization. Reject stale,
+unavailable, ambiguous, or invalid results before any future Action.
 
 Use `grasp.propose` only after a successful `scene.understand` result, in the fixed
 workflow order:

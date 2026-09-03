@@ -68,7 +68,7 @@ def _setup(tmp_path):
     client = ForgeToolClient("http://fake", transport=transport)
     runtime = ActiveSkillRuntime(
         skill_name="pick-place-workflow",
-        skill_version="0.7.0",
+        skill_version="0.8.0",
         profile="fake",
         runtime_instance_id="runtime-binding",
         gateway_url="http://fake",
@@ -148,7 +148,7 @@ async def test_task_query_is_blocked_before_gateway_when_runtime_binding_drifts(
         registry.replace(
             ActiveSkillRuntime(
                 skill_name="pick-place-workflow",
-                skill_version="0.7.0",
+                skill_version="0.8.0",
                 profile="fake",
                 runtime_instance_id="runtime-drifted",
                 gateway_url="http://fake",
@@ -167,4 +167,3 @@ async def test_task_query_is_blocked_before_gateway_when_runtime_binding_drifts(
             )
     finally:
         await client.close()
-

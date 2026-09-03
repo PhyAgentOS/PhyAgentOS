@@ -1,8 +1,12 @@
+from pathlib import Path
+
 import pytest
+import yaml
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
 from pick_place_workflow.understanding import (
+    UNDERSTANDING_TOOL_SPEC,
     SceneUnderstandingEndpoint,
     UnderstandingSnapshot,
 )
@@ -131,3 +135,111 @@ def test_missing_calibration_and_unknown_provider_fields_fail_closed():
     assert missing["error"]["code"] == "missing_calibration"
     assert unknown["error"]["code"] == "invalid_arguments"
     assert provider.calls == 0
+
+
+def _derived(kind="instance_mask", **overrides):
+    value = {
+        "artifact_ref": "artifact://obs-7/derived/mask-bottle-1",
+        "kind": kind,
+        "media_type": "image/png" if kind == "instance_mask" else "application/json",
+        "observation_ref": "observation://scene-7/camera_front",
+        "scene_revision": "scene-7",
+        "entity_ref": "entity://bottle-1",
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "source_refs": ["artifact://obs-7/rgb"],
+        "provenance": ["artifact://obs-7/rgb"],
+        "descriptor": {
+            "width_px": 640,
+            "height_px": 480,
+            "bbox_xyxy_px": [10, 20, 120, 180],
+            "foreground_pixels": 9000,
+            "point_count": None,
+            "unit": None,
+            "min_xyz_m": None,
+            "max_xyz_m": None,
+            "confidence": None,
+        },
+    }
+    if kind == "object_point_cloud":
+        value["artifact_ref"] = "artifact://obs-7/derived/points-bottle-1"
+        value["source_refs"] = ["artifact://obs-7/rgb", "artifact://obs-7/derived/mask-bottle-1"]
+        value["provenance"] = ["artifact://obs-7/rgb"]
+        value["descriptor"] = {
+            "width_px": None,
+            "height_px": None,
+            "bbox_xyxy_px": None,
+            "foreground_pixels": None,
+            "point_count": 1200,
+            "unit": "m",
+            "min_xyz_m": None,
+            "max_xyz_m": None,
+            "confidence": None,
+        }
+    elif kind == "metric_localization":
+        value["artifact_ref"] = "artifact://obs-7/derived/localization-bottle-1"
+        value["source_refs"] = ["artifact://obs-7/derived/points-bottle-1"]
+        value["provenance"] = ["artifact://obs-7/rgb"]
+        value["descriptor"] = {
+            "width_px": None,
+            "height_px": None,
+            "bbox_xyxy_px": None,
+            "foreground_pixels": None,
+            "point_count": None,
+            "unit": "m",
+            "min_xyz_m": [0.1, -0.2, 0.0],
+            "max_xyz_m": [0.2, -0.1, 0.3],
+            "confidence": 0.8,
+        }
+    value.update(overrides)
+    return value
+
+
+def test_derived_artifacts_are_projected_and_contract_matches_yaml():
+    snapshot = understanding_snapshot(
+        derived_artifacts=(_derived(),),
+    )
+    output = SceneUnderstandingEndpoint(Provider(snapshot)).invoke(request_payload())
+    assert output["status"] == "available"
+    assert output["derived_artifacts"][0]["kind"] == "instance_mask"
+    contract = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "contracts" / "scene.understand.tool.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert contract == UNDERSTANDING_TOOL_SPEC
+
+
+@pytest.mark.parametrize(
+    ("artifact", "code"),
+    [
+        (
+            _derived(
+                descriptor={
+                    **_derived()["descriptor"],
+                    "bbox_xyxy_px": [10, 20, 10, 180],
+                }
+            ),
+            "invalid_derived_artifact_descriptor",
+        ),
+        (_derived(source_refs=["artifact://obs-7/unknown/depth"]), "invalid_derived_artifact_lineage"),
+        (_derived(entity_ref="entity://other"), "invalid_derived_artifact_binding"),
+        (_derived(kind="not-a-provider"), "invalid_derived_artifact_kind"),
+    ],
+)
+def test_derived_artifact_validation_fails_closed(artifact, code):
+    output = SceneUnderstandingEndpoint(
+        Provider(understanding_snapshot(derived_artifacts=(artifact,)))
+    ).invoke(request_payload())
+    assert output["status"] == "invalid"
+    assert output["error"]["code"] == code
+
+
+def test_derived_artifact_chain_requires_declared_prior_artifact():
+    mask = _derived()
+    points = _derived("object_point_cloud")
+    points["source_refs"] = ["artifact://obs-7/derived/localization-bottle-1"]
+    output = SceneUnderstandingEndpoint(
+        Provider(understanding_snapshot(derived_artifacts=(mask, points)))
+    ).invoke(request_payload())
+    assert output["error"]["code"] == "invalid_derived_artifact_lineage"

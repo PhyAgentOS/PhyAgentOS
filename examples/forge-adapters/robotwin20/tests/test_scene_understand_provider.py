@@ -116,6 +116,43 @@ async def test_claim_provenance_must_bind_to_requested_observation_artifacts():
     assert result["error"]["code"] == "invalid_entity_claim"
 
 
+@pytest.mark.asyncio
+async def test_provider_passes_neutral_derived_artifacts_without_importing_paos_types():
+    derived = {
+        "artifact_ref": "artifact://obs-7/capture-1/mask-red-block",
+        "kind": "instance_mask",
+        "media_type": "image/png",
+        "observation_ref": OBSERVE_INPUT["observation_ref"],
+        "scene_revision": OBSERVE_INPUT["scene_revision"],
+        "entity_ref": "entity://red_block",
+        "frame_id": OBSERVE_INPUT["frame_id"],
+        "calibration_ref": OBSERVE_INPUT["calibration_ref"],
+        "source_refs": [OBSERVE_INPUT["artifacts"][0]],
+        "provenance": [OBSERVE_INPUT["artifacts"][0]],
+        "descriptor": {
+            "width_px": 640,
+            "height_px": 480,
+            "bbox_xyxy_px": [10, 20, 120, 180],
+            "foreground_pixels": 9000,
+            "point_count": None,
+            "unit": None,
+            "min_xyz_m": None,
+            "max_xyz_m": None,
+            "confidence": None,
+        },
+    }
+
+    class DerivedInference(Inference):
+        def infer(self, request):
+            result = super().infer(request)
+            result["derived_artifacts"] = [derived]
+            return result
+
+    result = await invoke(RoboTwinSceneUnderstandingProvider(DerivedInference()))
+    assert result["status"] == "available"
+    assert result["derived_artifacts"][0]["artifact_ref"] == derived["artifact_ref"]
+
+
 def test_paos_import_boundary_remains_clean():
     forbidden = {"robotwin", "sapien", "torch", "ultralytics", "dora", "openai"}
     assert not any(name.split(".", 1)[0].lower() in forbidden for name in sys.modules)

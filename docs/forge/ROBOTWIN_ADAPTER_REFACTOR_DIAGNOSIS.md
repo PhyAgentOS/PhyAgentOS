@@ -292,10 +292,10 @@ scene.observe(observation_set_ref, max_age_ms)
 | `FusedEntityPerceptionArtifact` | `scene.understand`、`grasp.propose` | 某个已绑定实体的跨视角 mask、对应关系和融合 RGB-D 点云；可用于抓取候选，但不能升级为全局碰撞图 |
 | `GlobalSceneGeometryReference` | `manipulation.prepare` / planner | 完整 RGB-D 视图积分后的场景几何、自由空间和 unknown-space 证据；不是目标分割结果 |
 
-上述两个名称是拟议的 provider-neutral artifact 类型，不是当前已发布的 Tool 输入字段。当前
-`scene.understand` 没有 `derived_artifacts`，`grasp.propose` 只接受带 `spatial_envelope` 的 target，
-`manipulation.prepare` 也没有 `GlobalSceneGeometryReference` 输入；在这些 generic contract 扩展前，
-融合结果只能留在 adapter/provider 内部，不能伪装成现有 ToolResult 或私自增加请求字段。
+上述两个名称是 provider-neutral artifact 类型。其中 `scene.understand` 现已发布并校验
+`derived_artifacts`；但多视角 `MultiViewObservationSet` 尚未注册，`grasp.propose` 仍只接受带
+`spatial_envelope` 的 target，`manipulation.prepare` 也没有 `GlobalSceneGeometryReference` 输入。
+因此跨视角融合结果和全局场景几何在对应 generic contract 扩展前不能私自增加请求字段。
 
 多视角感知 provider 可以复用方案 A 的 LocateAnything/SAM2：LocateAnything 仍只产生 proposal，SAM2
 仍只产生当前视角 mask；跨视角的实体 correspondence、mask 合并、深度投影和点云融合由 adapter-side
@@ -357,10 +357,9 @@ localization；方案 B 作为同一 provider-neutral contract 上的增量 capa
    调用前，应先冻结兼容的 provider-neutral schema（ordered view refs、scene/reset/control-step identity、
    per-view frame/calibration/artifact digests），并通过 Fake Gateway conformance；不能在 adapter 中
    私自增加未注册字段。
-2. 当前 `scene.understand` 的公共 snapshot 只有 `entities`、`relations`、`spatial_envelopes` 和
-   `ambiguities`，没有 `derived_artifacts` 字段。若要让融合 mask 被后续 `grasp.propose` 审计，必须先
-   在 PAOS generic runtime 定义并校验派生 artifact contract；在此之前，mask 只能作为 adapter 内部输入，
-   不能假装已经是公共 ToolResult。
+2. `scene.understand` 现已增加并校验 provider-neutral `derived_artifacts`（实例 mask、目标点云、度量定位）
+   及其 observation/entity/frame/calibration/source/provenance 绑定。多视角 `MultiViewObservationSet` 和
+   `GlobalSceneGeometryReference` 仍未注册；融合结果在对应 contract 扩展前不能私自增加请求字段。
 3. 当前 `provenance` 正则只接受 `artifact://...`。`calibration://...` 应继续放在顶层
    `calibration_ref` 或一个明确的 calibration artifact ref 中，不能直接塞进现有 spatial-envelope
    provenance，否则会被 PAOS validator 拒绝。示例中的 calibration 绑定必须按此规则实现。
@@ -373,8 +372,8 @@ localization；方案 B 作为同一 provider-neutral contract 上的增量 capa
 
 **实施门禁：**
 
-- 先以 Fake provider 证明单视角：proposal→mask→depth localization→entity artifact→grasp candidate
-  的 lineage 和 fail-closed 语义。
+- 已以 Fake provider 证明单视角派生 artifact：proposal→mask→depth localization 的 lineage 和
+  fail-closed 语义；下一步应让 `grasp.propose` 消费正式绑定的几何 artifact。
 - 再以 Fake provider 证明多视角：两视角以上、稳定顺序、同一 revision/calibration、跨视角 identity/mask
   correspondence、融合 artifact digest，以及失败时不静默降级为单视角。
 - 然后在独立 RoboTwin adapter 环境接入真实 LocateAnything/SAM2 worker；PAOS 环境不安装 Torch、CUDA、
@@ -422,10 +421,13 @@ localization；方案 B 作为同一 provider-neutral contract 上的增量 capa
 - v1.0 所要求的独立 generic capability runtime 基础实现：ToolEndpoint 注册、发现/context、Query 分发、
   bounded Action invocation bookkeeping 和 provider-port 协议；该实现不依赖仿真器、YOLO、机器人 SDK、Dora
   或硬件，且不执行物理运动；
+- `scene.understand` 的 provider-neutral `derived_artifacts` contract：支持 instance mask、object point cloud
+  和 metric localization 的类型、绑定、派生 lineage、descriptor 校验与 Fake Gateway conformance；该 Query
+  仍不授权运动；
 - 当前没有 YOLO/Ultralytics 检测器、抓取模型或机器人执行器接入；`grasp.propose` 仍是
   provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成。真实场景理解的
   adapter-side GPT Responses provider 已按 clean-room 方式实现：它只读取外部 observation artifact，
-  输出闭合的 entities/relations/spatial_envelopes/ambiguities schema，并由 PAOS Gateway 做最终校验；
+输出闭合的 entities/relations/spatial_envelopes/derived_artifacts/ambiguities schema，并由 PAOS Gateway 做最终校验；
   provider 默认沿用 Hephaestus 已验证的 `gpt-5.6-sol`、Responses API 和 relay base URL，但不导入
   Hephaestus。当前已用外部 `CUSTOM_API_KEY` 完成真实 GPT 路径验收；RGB-only 输入返回了语义实体/关系，
   没有生成 metric spatial envelope，且不确定性标记被保留。由于请求没有 depth/calibration，metric 几何仍按

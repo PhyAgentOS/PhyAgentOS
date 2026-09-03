@@ -1,5 +1,22 @@
 # Change Log
 
+## v0.8.0 (2026-09-03) - codex
+
+- [sense] [feat] [completed] Extended the provider-neutral `scene.understand` result with
+  auditable derived perception artifacts for instance masks, object point clouds, and metric
+  localization, including strict observation/entity/frame/calibration/source/provenance binding.
+- [sense] [feat] [完成] 扩展 provider-neutral `scene.understand` 结果，增加可审计的实例
+  mask、目标点云和度量定位派生资产，并严格绑定 observation、entity、frame、calibration、
+  source 与 provenance。
+
+### Verification
+
+- Generic runtime and Fake Gateway reject unknown kinds, duplicate/unbound/out-of-order lineage,
+  mismatched observation/entity/frame/calibration, malformed descriptors, and provider-private
+  fields without creating an Action or authorizing motion.
+- RoboTwin adapter only forwards plain provider-neutral mappings; model, CUDA, simulator, and
+  artifact materialization remain outside the PAOS package.
+
 ## v0.7.0 (2026-09-02) - codex
 
 - [policy] [feat] [completed] Added a replayable long-horizon pick-and-place workflow

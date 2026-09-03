@@ -1,6 +1,6 @@
 manifest_version: 2
 name: pick-place-workflow
-version: "0.7.0"
+version: "0.8.0"
 description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020

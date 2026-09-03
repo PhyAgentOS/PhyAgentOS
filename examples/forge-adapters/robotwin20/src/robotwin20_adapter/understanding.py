@@ -43,7 +43,14 @@ class RoboTwinSceneUnderstandingProvider:
         }
     )
     _RESULT_KEYS = frozenset(
-        {"entities", "relations", "spatial_envelopes", "ambiguities", "provider_available"}
+        {
+            "entities",
+            "relations",
+            "spatial_envelopes",
+            "derived_artifacts",
+            "ambiguities",
+            "provider_available",
+        }
     )
 
     def __init__(self, inference: SceneUnderstandingInference | Callable[[Mapping[str, Any]], Any]) -> None:
@@ -72,6 +79,9 @@ class RoboTwinSceneUnderstandingProvider:
             "relations": _tuple_of_mappings(raw.get("relations", ()), "relations"),
             "spatial_envelopes": _tuple_of_mappings(
                 raw.get("spatial_envelopes", ()), "spatial_envelopes"
+            ),
+            "derived_artifacts": _tuple_of_mappings(
+                raw.get("derived_artifacts", ()), "derived_artifacts"
             ),
             "ambiguities": _tuple_of_mappings(raw.get("ambiguities", ()), "ambiguities"),
             "provider_available": raw.get("provider_available", True),

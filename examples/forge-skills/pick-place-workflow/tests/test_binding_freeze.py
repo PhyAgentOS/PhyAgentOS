@@ -57,7 +57,7 @@ class Catalog:
 def _runtime(client, *, instance="runtime_fixture", identity="gateway_fixture"):
     return ActiveSkillRuntime(
         skill_name=SKILL_NAME,
-        skill_version="0.7.0",
+        skill_version="0.8.0",
         profile="fake",
         runtime_instance_id=instance,
         gateway_url="http://fake",
@@ -98,7 +98,7 @@ async def test_preview_and_freeze_capture_immutable_runtime_and_tool_hashes(tmp_
         binding = await resolver.freeze(candidate.candidate_id, task_id="task_fixture")
 
         assert candidate.skill_name == binding.skill_name == SKILL_NAME
-        assert candidate.skill_version == binding.skill_version == "0.7.0"
+        assert candidate.skill_version == binding.skill_version == "0.8.0"
         assert candidate.runtime_profile == binding.runtime_profile == "fake"
         assert candidate.runtime_instance_id == binding.runtime_instance_id == "runtime_fixture"
         assert candidate.gateway_identity == binding.gateway_identity == "gateway_fixture"
