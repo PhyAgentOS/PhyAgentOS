@@ -12,14 +12,17 @@ from PhyAgentOS.state_io import (
     SessionCompileError,
     StateFileDriftError,
     StateFileError,
+    TargetProfileApproval,
     compile_sessions_to_agent_tasks,
     parse_sessions_preview,
     parse_state_file,
     parse_targets_shadow,
+    promote_targets_candidate,
     render_environment_projection,
     render_lessons_projection,
     render_skillruntime_projection,
 )
+from PhyAgentOS.state_io.protocol import canonical_sha256
 
 
 def write_state(path, *, kind, mode, data, revision="r1", source="workspace://test"):
@@ -74,6 +77,51 @@ def test_targets_reject_invalid_limit_and_unknown_field(tmp_path):
     assert any("unknown field" in error for error in report.errors)
     assert any("min exceeds max" in error for error in report.errors)
     assert report.motion_authorized is False
+
+
+def test_targets_candidate_requires_source_and_baseline_bound_approval(tmp_path):
+    path = tmp_path / "TARGETS.md"
+    baseline = {
+        "profile_id": "panda-lab",
+        "observation_modalities": ["rgb"],
+        "action_space": ["object.place"],
+        "limits": {"cartesian_speed_m_s": {"value": 0.2}},
+    }
+    write_state(path, kind="targets", mode="input", data=baseline)
+    source_digest = parse_targets_shadow(path, baseline=baseline).candidate_sha256
+    approval = TargetProfileApproval(
+        approval_id="targets-approval-1",
+        source_sha256=source_digest,
+        baseline_sha256=canonical_sha256(baseline),
+        approved_by="operator",
+        confirmed_at="2026-09-03T09:00:00+00:00",
+    )
+    candidate = promote_targets_candidate(path, baseline=baseline, approval=approval)
+    assert candidate.profile_id == "panda-lab"
+    assert candidate.differences == ()
+    assert candidate.motion_authorized is False
+    assert candidate.data == baseline
+
+
+def test_targets_candidate_rejects_baseline_drift(tmp_path):
+    path = tmp_path / "TARGETS.md"
+    baseline = {
+        "profile_id": "panda-lab",
+        "observation_modalities": ["rgb"],
+        "action_space": ["object.place"],
+        "limits": {"cartesian_speed_m_s": {"value": 0.2}},
+    }
+    write_state(path, kind="targets", mode="input", data=baseline)
+    source_digest = parse_targets_shadow(path, baseline=baseline).candidate_sha256
+    approval = {
+        "approval_id": "targets-approval-1",
+        "source_sha256": source_digest,
+        "baseline_sha256": "0" * 64,
+        "approved_by": "operator",
+        "confirmed_at": "2026-09-03T09:00:00+00:00",
+    }
+    with pytest.raises(StateFileError, match="baseline digest"):
+        promote_targets_candidate(path, baseline=baseline, approval=approval)
 
 
 def test_parser_rejects_missing_or_malformed_structured_block(tmp_path):

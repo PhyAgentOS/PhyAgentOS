@@ -32,6 +32,58 @@ class TargetShadowReport:
     motion_authorized: bool = False
 
 
+class TargetProfileApproval(BaseModel):
+    """Human approval bound to TARGETS content and its comparison baseline."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    approval_id: str = Field(min_length=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    baseline_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved_by: str = Field(min_length=1)
+    confirmed_at: str = Field(min_length=1)
+    decision: str = "approve"
+
+    @field_validator("approval_id", "approved_by")
+    @classmethod
+    def normalize_identity(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or any(char in normalized for char in "/\\"):
+            raise ValueError("approval identity must be non-empty and path-safe")
+        return normalized
+
+    @field_validator("confirmed_at")
+    @classmethod
+    def validate_timestamp(cls, value: str) -> str:
+        normalized = value.strip()
+        try:
+            parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("confirmed_at must be ISO-8601") from exc
+        if parsed.tzinfo is None:
+            raise ValueError("confirmed_at must include a timezone")
+        return normalized
+
+    @field_validator("decision")
+    @classmethod
+    def require_approval(cls, value: str) -> str:
+        if value != "approve":
+            raise ValueError("decision must be 'approve'")
+        return value
+
+
+@dataclass(frozen=True)
+class TargetProfileCandidate:
+    """Approved capability candidate; never an Action-admission decision."""
+
+    source_sha256: str
+    baseline_sha256: str
+    profile_id: str
+    data: Mapping[str, Any]
+    differences: tuple[str, ...]
+    motion_authorized: bool = False
+
+
 @dataclass(frozen=True)
 class SessionPreview:
     """Dry-run task previews produced without touching AgentTaskStore."""
@@ -205,6 +257,47 @@ def parse_targets_shadow(path: str | Path, *, baseline: Mapping[str, Any] | None
     if parsed.mode != "input":
         raise StateFileError(f"{parsed.path}: TARGETS.md must use paos.mode=input")
     return _validate_targets(parsed.data, baseline)
+
+
+def promote_targets_candidate(
+    path: str | Path,
+    *,
+    baseline: Mapping[str, Any],
+    approval: TargetProfileApproval | Mapping[str, Any],
+) -> TargetProfileCandidate:
+    """Return an explicitly approved TARGETS candidate without changing admission."""
+
+    parsed = parse_state_file(path, expected_kind="targets")
+    if parsed.mode != "input":
+        raise StateFileError(f"{parsed.path}: TARGETS.md must use paos.mode=input")
+    if not isinstance(baseline, Mapping) or not baseline:
+        raise StateFileError("TARGETS promotion requires a non-empty baseline mapping")
+    report = _validate_targets(parsed.data, baseline)
+    if not report.valid or report.candidate_sha256 is None:
+        raise StateFileError(
+            f"{parsed.path}: invalid TARGETS candidate: {'; '.join(report.errors)}"
+        )
+    try:
+        normalized = (
+            approval
+            if isinstance(approval, TargetProfileApproval)
+            else TargetProfileApproval.model_validate(approval)
+        )
+    except Exception as exc:
+        raise StateFileError("invalid TARGETS human approval credential") from exc
+    baseline_sha256 = canonical_sha256(dict(baseline))
+    if normalized.source_sha256 != parsed.data_sha256:
+        raise StateFileError("TARGETS approval is bound to a different source digest")
+    if normalized.baseline_sha256 != baseline_sha256:
+        raise StateFileError("TARGETS approval is bound to a different baseline digest")
+    return TargetProfileCandidate(
+        source_sha256=parsed.data_sha256,
+        baseline_sha256=baseline_sha256,
+        profile_id=str(parsed.data["profile_id"]).strip(),
+        data=dict(parsed.data),
+        differences=report.differences,
+        motion_authorized=False,
+    )
 
 
 def _session_preview(parsed: ParsedStateFile) -> SessionPreview:

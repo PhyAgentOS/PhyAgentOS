@@ -237,6 +237,14 @@ AgentTask 生命周期或 Action admission。Markdown 仍不是第二事实源�
 
 该阶段的 promotion gate 是人工凭据、源 digest、全局活动任务、父任务身份和幂等性测试全部通过。抓取放置动作、证据闭环和自主进化仍保持在后续阶段。
 
+#### TARGETS candidate 边界
+
+阶段 C 同时增加 `promote_targets_candidate()`：它要求 `TARGETS.md` 通过严格 shadow validation，并要求
+`TargetProfileApproval` 同时绑定候选源 digest 与当前 baseline digest。返回值只是不可用于 admission 的
+Capability Profile candidate，固定 `motion_authorized=false`，不写 Runtime/Profile 权威配置，也不改变任何
+Action 限幅。baseline 漂移、审批不匹配或 schema 失败均 fail-closed；真正的 Runtime/Profile admission 仍需
+另行设计并审核。
+
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
 该方案短期看起来结构完整，但会造成：

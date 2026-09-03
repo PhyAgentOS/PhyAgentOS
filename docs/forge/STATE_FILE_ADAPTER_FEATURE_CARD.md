@@ -23,7 +23,7 @@
 
 - Protocol: `paos.state-file.v1`; one fenced JSON/YAML object with exactly `paos` and `data` keys
 - Metadata: `kind`, `mode`, `revision`, `source`, optional ISO-8601 `generated_at`
-- `TARGETS.md`: `input` mode; strict capability matrix validation; shadow-only report with `motion_authorized=false`
+- `TARGETS.md`: `input` mode; strict capability matrix validation; explicitly approved candidate with `motion_authorized=false`; never direct admission
 - `SESSIONS.md`: `input` mode; deterministic dry-run previews; one-session-at-a-time promotion only after digest-bound human approval
 - `SKILLRUNTIME.md`, `ENVIRONMENT.md`, `LESSONS.md`: `projection` mode; atomic writes and digest-based drift checks
 
@@ -44,6 +44,7 @@
 - Promotion requires `SessionCompileApproval` bound to the parsed source digest; repeated source/session compilation reuses the existing AgentTask record
 - Promotion calls only `AgentTaskCoordinator.create_task()` and is rejected when another non-terminal AgentTask occupies the global slot
 - Managed Forge runtimes may additionally require the current turn's `activation_id`; the adapter forwards it but never creates a Skill activation itself
+- `TargetProfileApproval` binds both source and baseline digests; candidate data is a copy and remains a non-authoritative admission proposal
 
 ## Acceptance
 

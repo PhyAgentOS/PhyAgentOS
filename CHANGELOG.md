@@ -7,6 +7,29 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.1.0] - 2026-09-03
+
+新增 `TARGETS.md` 的已验证 Capability Profile candidate：候选必须通过严格 shadow validation，并由
+`TargetProfileApproval` 同时绑定源文件 digest 与 baseline digest。candidate 仅用于比较和回放，固定
+`motion_authorized=false`，不写 Runtime/Profile 权威配置，不改变 Action admission 或运动限幅。
+
+Added a validated Capability Profile candidate for `TARGETS.md`: candidates must pass strict shadow validation
+and carry a `TargetProfileApproval` bound to both source and baseline digests. Candidates are limited to comparison
+and replay, always expose `motion_authorized=false`, and cannot write Runtime/Profile authorities or alter Action
+admission or motion limits.
+
+### Detailed changes
+
+- `PhyAgentOS/state_io/adapters.py:L24-L145,L253-L300` adds `TargetProfileApproval`, `TargetProfileCandidate`, and `promote_targets_candidate()`.
+- `PhyAgentOS/state_io/__init__.py:L3-L42` exports the bounded candidate API.
+- `tests/test_state_file_adapter.py:L61-L130` covers approved candidates, baseline drift, and no-motion behavior.
+- `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L24-L47` and `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L240-L247` document the non-admission boundary.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_state_file_adapter.py` → `15 passed`.
+- `ruff check ...`, `python -m compileall ...`, and `git diff --check` passed.
+
 ## [v3.0.0] - 2026-09-03
 
 在人工确认边界内提升 `SESSIONS.md` 输入：新增 digest 绑定审批凭据、单会话幂等编译器，并通过
