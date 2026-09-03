@@ -119,46 +119,6 @@ capture，同时不向 PAOS 暴露路径或资产。
 - No live API call was attempted because `HEPHAESTUS_RELAY_API_KEY` remains absent; no real model result is claimed.
 - `.codegraph/` and `.cursor/` remain untracked and were not staged.
 
-## [v2.8.11] - 2026-09-02
-
-Added the clean-room, adapter-owned GPT-5.6-sol Responses provider for
-`scene.understand`. It follows the existing Hephaestus relay configuration
-shape (`gpt-5.6-sol`, Responses API, configurable relay base URL) without
-importing or reusing Hephaestus code. Images are resolved through an injected
-opaque-artifact resolver, credentials are read only at invocation time, and
-the adapter emits only the provider-neutral scene-understanding fields.
-
-收录独立 adapter 自有的 GPT-5.6-sol Responses `scene.understand` provider。它参考 Hephaestus 已验证的
-relay 配置格式（`gpt-5.6-sol`、Responses API、可配置 base URL），但不导入或复用 Hephaestus 代码。图像通过
-注入式 opaque-artifact resolver 解析，凭据只在调用时读取，adapter 只输出 provider-neutral 场景理解字段。
-
-### Detailed changes
-
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/openai_scene_understanding.py:L1-L350` adds the
-  isolated provider, closed JSON schema, data-URL conversion, and fail-closed credential/artifact/response paths.
-- `PhyAgentOS/forge/capability_runtime/understanding.py:L15-L285` normalizes plain mappings at the Gateway edge
-  and binds claim provenance to requested observation artifacts; PAOS still has no RoboTwin/SAPIEN/Torch/OpenAI
-  dependency.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/understanding.py:L14-L86` keeps the Python 3.10
-  adapter independent from PAOS's Python 3.11+ runtime.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/__init__.py:L12-L42` exports the provider seam and
-  schema while keeping the OpenAI SDK lazy; `pyproject.toml:L8-L9` makes OpenAI an adapter-only optional extra.
-- `examples/forge-adapters/robotwin20/tests/test_openai_scene_understanding.py:L1-L158` and
-  `tests/test_scene_understand_provider.py:L85-L116` cover fake Responses payloads, closed schema, missing
-  credentials/artifacts, provider-specific fields, and unbound provenance.
-- `docs/forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md:L268-L298` now records that the provider is implemented but
-  no live GPT result is claimed without the external API key; Gateway/Dora and the remaining five providers are
-  still pending.
-
-### Validation
-
-- Adapter/workflow tests: `258 passed in 2.60s`.
-- Ruff, compileall, and `git diff --check` passed.
-- RoboTwin20 Python `3.10.21` imported the adapter successfully.
-- The live desktop-tidy invocation failed closed before network transmission because
-  `HEPHAESTUS_RELAY_API_KEY` was absent; no real model result is claimed.
-- `.codegraph/` and `.cursor/` remain untracked and were not staged.
-
 ## [v2.8.10] - 2026-09-02
 
 Removed the duplicate provider-neutral `RoboTwinUnderstandingSnapshot` from
