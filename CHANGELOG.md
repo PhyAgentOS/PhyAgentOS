@@ -15,8 +15,8 @@ Completed the production `VerificationServiceProcess` provider-spec subprocess g
 
 ### Detailed changes
 
-- `PhyAgentOS/verification/service.py:L28,L282-L306,L403-L418`: added a stable service identifier and token-protected `/readyz` readiness probe with strict JSON/service identity checks; retained `/healthz` as liveness.
-- `tests/test_verification_service_process.py:L1-L239`: covers formal subprocess startup, provider-spec propagation, external HTTP provider stub, failure/timeout mapping, readiness authentication, and process cleanup.
+- `PhyAgentOS/verification/service.py:L28,L282-L314,L405-L418`: added a stable service identifier and token-protected `/readyz` readiness probe with strict JSON/service identity checks; retained `/healthz` as liveness.
+- `tests/test_verification_service_process.py:L1-L230`: covers formal subprocess startup, provider-spec propagation, external HTTP provider stub, failure/timeout mapping, readiness authentication, and process cleanup.
 - `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L161-L212`: records implementation review, validation evidence, and remaining gates.
 
 ### Validation
