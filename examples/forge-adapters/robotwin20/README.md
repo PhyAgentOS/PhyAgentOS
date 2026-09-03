@@ -2,9 +2,11 @@
 
 This is an independently installable adapter workspace. It is not part of the
 `PhyAgentOS` wheel and must not be installed into the PAOS control-plane
-environment. The adapter package itself has no third-party dependency; a
-deployment-specific backend may be installed in a separate RoboTwin runtime
-environment and injected through the `RoboTwinSensorBackend` protocol.
+environment. The base adapter package has no third-party dependency; optional
+OpenAI and perception dependencies are installed only in adapter/provider
+environments. A deployment-specific backend is installed in a separate
+RoboTwin runtime environment and injected through the `RoboTwinSensorBackend`
+protocol.
 
 RoboTwin/SAPIEN packages, Torch/YOLO models, simulator assets, task files,
 embodiment configuration, and benchmark data stay outside PAOS and outside this
@@ -21,9 +23,12 @@ observation only; action providers remain a later, separately reviewed seam.
 Example isolated setup:
 
 ```text
-paos-robotwin20-adapter/       # this package, installed in adapter env
-robotwin20-runtime/            # RoboTwin/SAPIEN/Torch/YOLO dependencies
-robotwin-assets/               # external assets, mounted by profile
+paos                           # ToolSpec/Gateway/generic validation only
+paos-robotwin20-adapter        # composition, artifact IO, process clients
+RoboTwin20                     # simulator and RGB/depth/state capture only
+hephaestus-locateanything      # LocateAnything/Torch/Transformers worker env
+seg                            # SAM2/Torch worker env
+robotwin-assets                # external assets, mounted by profile
 ```
 
 Run the fail-closed runtime preflight before implementing or starting a
@@ -120,11 +125,48 @@ The perception boundary is intentionally split by PAOS use case:
 | Grasp pose proposal | `grasp.propose` | Emit candidate poses and provenance only; it does not authorize motion. |
 | IK/collision/workspace readiness | `manipulation.prepare` | Evaluate candidates before any bounded Action. |
 
-The current GPT Responses provider covers RGB semantic recognition and relations.
-It does not implement segmentation or metric localization, and it does not
-implement `grasp.propose`. Those providers must be added behind their PAOS
-ports; they must not be folded into `scene.observe` or exposed as RoboTwin-
-named Skills.
+The GPT Responses provider covers RGB semantic recognition and relations. The
+adapter now also contains a single-view composition that binds each semantic
+entity to a LocateAnything proposal, releases that model process, invokes SAM2
+with the exact box, and deterministically localizes the mask with aligned depth
+and calibration. It materializes provider-neutral `instance_mask`,
+`object_point_cloud`, and `metric_localization` records through the existing
+`scene.understand` contract. It does not implement `grasp.propose` and does not
+fold any of these providers into `scene.observe` or a RoboTwin-named Skill.
+
+The perception models retain their existing isolated environments. Configure
+them through the adapter profile without importing either environment into
+PAOS or RoboTwin20:
+
+```bash
+export PAOS_ROBOTWIN20_ADAPTER_ROOT=/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20
+export ROBOTWIN20_ARTIFACT_ROOT=/home/yanxu/robotwin20-runtime/artifacts
+export LOCATEANYTHING_PYTHON=/home/yanxu/.hephaestus/envs/hephaestus-locateanything/bin/python
+export LOCATEANYTHING_CACHE_DIR=/home/yanxu/.hephaestus/cache/huggingface/hub
+export LOCATEANYTHING_MODULES_CACHE_DIR=/home/yanxu/.hephaestus/cache/huggingface/modules
+export SAM2_PYTHON=/home/yanxu/miniconda3/envs/seg/bin/python
+export SAM2_REPO_ROOT=/home/yanxu/Grounded-SAM-2
+export SAM2_CHECKPOINT=/home/yanxu/Grounded-SAM-2/checkpoints/sam2.1_hiera_large.pt
+```
+
+Load `profiles/robotwin20/perception.yaml`, then pass the mapping and the
+semantic inference provider to `build_single_view_perception`. Inject the
+resulting inference object into `RoboTwinSceneUnderstandingProvider`; PAOS
+continues to call it only through the generic Gateway endpoint. Worker startup,
+request, shutdown, model revision, checkpoint, device, and timeout settings are
+profile-owned. Commands never use a shell. The proposal process exits before
+the SAM2 process starts, so the two existing model environments remain
+independently replaceable.
+
+The shipped unit/conformance path remains reproducible with fake model workers.
+A no-motion live run has also exercised the configured LocateAnything revision
+and SAM2 checkpoint against an existing `320x240` RoboTwin RGB-D observation.
+LocateAnything returned one `red block` proposal, SAM2 materialized an aligned
+mask, and the complete Fake Gateway route returned all three derived artifacts
+plus a camera-frame metric envelope with `motion_authorized=false`. The run used
+a fixed semantic entity as composition input; it was not a fresh GPT invocation
+and does not validate grasp proposal or execution. Both model processes exited
+after their bounded stage and no worker remained resident.
 
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,

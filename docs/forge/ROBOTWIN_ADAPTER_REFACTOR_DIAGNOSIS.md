@@ -246,9 +246,9 @@ scene.observe(sensor_ref, max_age_ms)
 ```
 
 适用条件：目标主要可见、单个 RGB-D 视角足够、需要较低延迟或 GPU 资源有限。它在一个 observation
-  上完成局部实体证据，输出 `entities`、`relations`、`spatial_envelopes`；派生 mask/pose artifact
-  目前只能作为 adapter 内部引用，待 generic runtime 的 derived-artifact contract 冻结后再作为公共
-  结果投影。不输出仿真 actor identity，不直接产生抓取动作。
+上完成局部实体证据，输出 `entities`、`relations`、`spatial_envelopes` 和已绑定的
+`derived_artifacts`。generic runtime 已冻结 instance mask、object point cloud 和 metric localization
+的中性契约；adapter 可以投影这些引用，但不输出仿真 actor identity，不直接产生抓取动作。
 
 adapter 需要实现三个独立 port：
 
@@ -330,10 +330,16 @@ session/digest/count 不匹配都必须 fail-closed。
 | 失败语义 | provider unavailable/invalid，不能伪造 3D | typed multi-view unavailable/mismatch，不能静默降级单视角 |
 | 动作权限 | 始终无动作 | 始终无动作 |
 
-本仓库当前应按方案 A 先行：GPT provider 只覆盖 RGB 语义理解，下一步接入真实 mask 和 depth
-localization；方案 B 作为同一 provider-neutral contract 上的增量 capability，待单视角 contract
-和 artifact lineage 稳定后再实现。方案 B 的第一目标是跨视角分割/实体几何可被 `grasp.propose` 消费，
-全局 SceneGeometry 是独立的后续输出。两者都不应命名为 `robotwin.multiview` 或 `multiview-skill`。
+本仓库已按方案 A 实现 adapter-side composition 和三类派生资产投影：GPT provider
+提供 RGB 语义实体，LocateAnything 和 SAM2 由各自独立环境通过 profile 指定的 JSONL
+worker 协议调用，depth localization 在 adapter 中确定性执行。代码、Fake Gateway、worker 协议和一次
+无动作 live composition 均已验收：LocateAnything 在已有 RoboTwin RGB 上返回唯一 `red block`
+proposal，SAM2 返回同尺寸 mask，depth localization 生成 788 个 camera-frame 点。本次以固定语义
+实体作为 composition 上游，不代表再次验收 GPT 调用，也不代表抓取成功。方案 B 作为同一
+provider-neutral contract 上的增量 capability，待单视角 live
+证据稳定后再实现。它的第一目标是跨视角分割/实体几何可被 `grasp.propose`
+消费，全局 SceneGeometry 是独立后续输出。两者都不应命名为 `robotwin.multiview` 或
+`multiview-skill`。
 
 ### 9.2 按 PAOS 架构与开发者指南的审核结论
 
@@ -424,6 +430,10 @@ localization；方案 B 作为同一 provider-neutral contract 上的增量 capa
 - `scene.understand` 的 provider-neutral `derived_artifacts` contract：支持 instance mask、object point cloud
   和 metric localization 的类型、绑定、派生 lineage、descriptor 校验与 Fake Gateway conformance；该 Query
   仍不授权运动；
+- adapter-side 单视角感知 composition：按语义实体调用 LocateAnything proposal worker，先关闭并
+  释放 proposal 进程，再启动 SAM2 box segmentation worker，最后用同帧 depth/intrinsics 生成
+  camera-frame point cloud 与 spatial envelope。两个模型保留在独立 Python 环境，路径、revision、
+  checkpoint、device 和 timeout 由 `profiles/robotwin20/perception.yaml` 注入；
 - 当前没有 YOLO/Ultralytics 检测器、抓取模型或机器人执行器接入；`grasp.propose` 仍是
   provider-neutral 候选契约，Fake provider 结果不代表检测或抓取完成。真实场景理解的
   adapter-side GPT Responses provider 已按 clean-room 方式实现：它只读取外部 observation artifact，
@@ -449,13 +459,15 @@ localization；方案 B 作为同一 provider-neutral contract 上的增量 capa
 - 真实 Gateway/ToolEndpoint HTTP server；
 - RoboTwin 对应 Dora flow、locked Node 和 profile；
 - `grasp.propose`、`manipulation.prepare`、`object.acquire`、`object.place` 的真实 provider 接入与六能力
-  PAOS 端到端验证；当前 GPT provider 只覆盖 RGB 语义理解，尚未覆盖真实分割和 metric 3D 定位。
+  PAOS 端到端验证；当前 GPT 语义 provider 与 LocateAnything/SAM2/depth composition 均已分别验收，
+  但尚未在同一次调用中运行 GPT 语义到真实 mask/metric localization 的完整 live 链路。
 
 因此不能声称“六个 RoboTwin Skill 已接入”，也不能把 RoboTwin 的 ground truth 称为真实感知。准确表述是：
 
 > PAOS 公共能力契约、`pick-place-workflow` 编排、generic capability runtime 基础、RoboTwin
-> `scene.observe` runtime/provider conformance，以及 adapter-side `scene.understand` GPT provider
-> 已完成；Hephaestus 的真实能力只作为 clean-room 重构的需求/行为参考。当前尚缺真实分割/深度定位、
+> `scene.observe` runtime/provider conformance、adapter-side `scene.understand` GPT provider，以及独立环境
+> LocateAnything/SAM2/depth 单视角 composition 的代码与协议验收已完成；Hephaestus 能力只作为
+> clean-room 重构的需求/行为参考。当前尚缺 GPT 到真实分割/定位的同次 live 链路证据、
 > `grasp.propose` 及后续准备/执行 provider、Gateway HTTP/Dora wiring，必须继续按本文顺序独立实现。
 
 ## 12. 识别、分割、定位与抓取位姿的模块归属
@@ -474,10 +486,12 @@ localization；方案 B 作为同一 provider-neutral contract 上的增量 capa
 | IK/碰撞/工作空间准入 | `manipulation.prepare` | readiness 编排与 `motion_authorized=false` 边界 | `ReadinessEvaluator`，必须在执行前完成 |
 | 实际抓取/放置 | `object.acquire` / `object.place` | Action admission 与 invocation 生命周期 | `ManipulationExecutor`；仅 Gateway 显式准入后执行 |
 
-当前 GPT provider 只做 RGB 语义理解：它能生成实体和关系，但不能凭 RGB 生成可信分割 mask 或 metric
-3D 坐标。下一步应先扩展 adapter-side typed artifact resolver 和真实 segmentation/depth localization
-provider，再通过同一个 `scene.understand` contract 接入；抓取位姿单独接入 `grasp.propose`，不能塞进
-`scene.observe` 或 `scene.understand` 的输出字段。
+当前 GPT provider 仍只做 RGB 语义理解；可信分割和 metric 3D 不由 GPT 凭 RGB 猜测，而由
+adapter 中已实现的 LocateAnything proposal、SAM2 box mask 和 depth/calibration localization composition 生成。
+该路径已通过 Fake worker/Gateway 契约和真实 LocateAnything/SAM2 无动作 composition 验收；本次
+composition 使用固定语义实体，仍需补充同次 GPT 语义全链 live 证据。其后应让
+`grasp.propose` 消费已绑定的点云/定位资产；抓取位姿不能塞进 `scene.observe` 或
+`scene.understand` 的输出字段。
 
 ## 13. English summary
 

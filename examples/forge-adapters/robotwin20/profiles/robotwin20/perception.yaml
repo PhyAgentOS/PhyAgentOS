@@ -1,0 +1,56 @@
+schema_version: paos-robotwin20-perception/v1
+artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
+worker_artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}/workers/sam2
+depth_scale_to_m: 0.001
+max_points: 200000
+
+proposal_worker:
+  python: ${LOCATEANYTHING_PYTHON}
+  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/locateanything_worker.py
+  cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  startup_timeout_s: 300
+  request_timeout_s: 120
+  shutdown_timeout_s: 15
+  environment:
+    PYTHONUNBUFFERED: "1"
+    TOKENIZERS_PARALLELISM: "false"
+  arguments:
+    - --model-id
+    - nvidia/LocateAnything-3B
+    - --revision
+    - c32291ca5e996f5a7a485845b4f57a233936bba0
+    - --device
+    - cuda:0
+    - --cache-dir
+    - ${LOCATEANYTHING_CACHE_DIR}
+    - --modules-cache-dir
+    - ${LOCATEANYTHING_MODULES_CACHE_DIR}
+    - --generation-mode
+    - fast
+    - --max-new-tokens
+    - "2048"
+    - --decode-seed
+    - "0"
+
+segmentation_worker:
+  python: ${SAM2_PYTHON}
+  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/sam2_worker.py
+  cwd: ${SAM2_REPO_ROOT}
+  startup_timeout_s: 240
+  request_timeout_s: 60
+  shutdown_timeout_s: 15
+  environment:
+    PYTHONUNBUFFERED: "1"
+  arguments:
+    - --repo-root
+    - ${SAM2_REPO_ROOT}
+    - --model-config
+    - configs/sam2.1/sam2.1_hiera_l.yaml
+    - --checkpoint
+    - ${SAM2_CHECKPOINT}
+    - --device
+    - cuda:0
+    - --source-artifact-root
+    - ${ROBOTWIN20_ARTIFACT_ROOT}
+    - --worker-artifact-root
+    - ${ROBOTWIN20_ARTIFACT_ROOT}/workers/sam2

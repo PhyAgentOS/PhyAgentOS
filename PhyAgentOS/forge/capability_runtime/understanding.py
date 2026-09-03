@@ -461,6 +461,10 @@ def validate_snapshot(
     snapshot: UnderstandingSnapshot | Mapping[str, Any],
     *,
     artifact_refs: list[str] | tuple[str, ...] | set[str] | None = None,
+    observation_ref: str | None = None,
+    scene_revision: str | None = None,
+    frame_id: str | None = None,
+    calibration_ref: str | None = None,
 ) -> str | None:
     snapshot = normalize_snapshot(snapshot)
     if snapshot is None:
@@ -484,18 +488,22 @@ def validate_snapshot(
         if artifact_refs is None:
             return "invalid_artifact_ref"
         first = snapshot.derived_artifacts[0]
-        observation_ref = first.get("observation_ref") if isinstance(first, dict) else ""
-        scene_revision = first.get("scene_revision") if isinstance(first, dict) else ""
-        frame_id = first.get("frame_id") if isinstance(first, dict) else ""
-        calibration_ref = first.get("calibration_ref") if isinstance(first, dict) else ""
-        if not all(isinstance(value, str) and value for value in (observation_ref, scene_revision, frame_id, calibration_ref)):
+        expected = (observation_ref, scene_revision, frame_id, calibration_ref)
+        if any(value is None for value in expected):
+            expected = (
+                first.get("observation_ref") if isinstance(first, dict) else "",
+                first.get("scene_revision") if isinstance(first, dict) else "",
+                first.get("frame_id") if isinstance(first, dict) else "",
+                first.get("calibration_ref") if isinstance(first, dict) else "",
+            )
+        if not all(isinstance(value, str) and value for value in expected):
             return "invalid_derived_artifact_binding"
         derived_error = _validate_derived_artifacts(
             snapshot.derived_artifacts,
-            observation_ref=observation_ref,
-            scene_revision=scene_revision,
-            frame_id=frame_id,
-            calibration_ref=calibration_ref,
+            observation_ref=expected[0],
+            scene_revision=expected[1],
+            frame_id=expected[2],
+            calibration_ref=expected[3],
             entity_refs=entity_refs,
             source_artifacts=allowed_artifacts,
         )
@@ -579,7 +587,14 @@ class SceneUnderstandingEndpoint:
         normalized = normalize_snapshot(snapshot)
         if normalized is None or not normalized.provider_available:
             return _error("understanding_unavailable", "scene understanding provider is unavailable", observation_ref=observation_ref)
-        snapshot_error = validate_snapshot(normalized, artifact_refs=arguments["artifacts"])
+        snapshot_error = validate_snapshot(
+            normalized,
+            artifact_refs=arguments["artifacts"],
+            observation_ref=arguments["observation_ref"],
+            scene_revision=arguments["scene_revision"],
+            frame_id=arguments["frame_id"],
+            calibration_ref=arguments["calibration_ref"],
+        )
         if snapshot_error:
             return _error(snapshot_error, "understanding provider result failed contract validation", observation_ref=observation_ref)
         return {

@@ -2,6 +2,39 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v2.8.16] - 2026-09-03
+
+Implemented the clean-room, adapter-side single-view perception composition:
+semantic entity binding to LocateAnything proposals, bounded proposal-worker
+shutdown, SAM2 box segmentation in its separate environment, deterministic
+RGB-D localization, transactional derived artifacts, and projection through
+the existing provider-neutral `scene.understand` Gateway contract. PAOS and
+RoboTwin20 remain free of model-environment dependencies, and every result is
+Query evidence with `motion_authorized=false`.
+
+实现 clean-room、adapter-side 单视角感知 composition：语义实体绑定
+LocateAnything proposal，关闭 proposal worker 后再在独立环境运行 SAM2 box
+segmentation，然后确定性生成 RGB-D 定位和事务式派生资产，最终通过既有
+provider-neutral `scene.understand` Gateway 契约投影。PAOS 和 RoboTwin20 不引入模型
+环境依赖，所有结果仍是 `motion_authorized=false` 的 Query 证据。
+
+### Detailed changes
+
+- `PhyAgentOS/forge/capability_runtime/understanding.py:L461-L601` binds every derived artifact to the current request's observation, revision, frame, and calibration.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py:L1-L707` composes proposal, segmentation, localization, artifact materialization, rollback, and ambiguity handling.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/process_worker.py:L1-L212` and `perception_profile.py:L1-L153` add bounded JSONL process lifecycle and profile-only environment wiring.
+- `examples/forge-adapters/robotwin20/runtime/locateanything_worker.py:L1-L242`, `sam2_worker.py:L1-L186`, and `worker_protocol.py:L1-L60` are adapter-owned entrypoints for the two existing isolated model environments.
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/perception.yaml:L1-L56` externalizes interpreters, model revision, checkpoint, CUDA device, caches, artifact roots, and timeouts.
+- Adapter/workflow tests cover worker protocol failures, request binding, proposal ambiguity, mask/depth/calibration validation, artifact traversal and rollback, and the no-motion Gateway route.
+
+### Validation
+
+- PAOS/workflow/adapter suite: `281 passed, 2 skipped`; model-side tests skip because PAOS intentionally has no NumPy/Pillow.
+- Isolated adapter numerical/worker suite: `27 passed`.
+- Real no-motion composition on an existing RoboTwin RGB-D capture returned one LocateAnything proposal, an aligned SAM2 mask, 788 camera-frame points, all three derived artifacts, and `motion_authorized=false`; both worker processes exited.
+- Ruff, compileall, and `git diff --check` passed. A system-Python whole-suite attempt was not accepted because that interpreter lacks PAOS `loguru` and asyncio test dependencies.
+- `.codegraph/` and `.cursor/` remain untracked and are not staged.
+
 ## [v2.8.15] - 2026-09-03
 
 Extended the provider-neutral `scene.understand` Query with auditable derived

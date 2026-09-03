@@ -235,6 +235,23 @@ def test_derived_artifact_validation_fails_closed(artifact, code):
     assert output["error"]["code"] == code
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("observation_ref", "observation://other/camera_front"),
+        ("scene_revision", "scene-other"),
+        ("frame_id", "other_camera"),
+        ("calibration_ref", "calibration://other/v1"),
+    ],
+)
+def test_derived_artifacts_must_bind_to_the_current_request(field, value):
+    output = SceneUnderstandingEndpoint(
+        Provider(understanding_snapshot(derived_artifacts=(_derived(**{field: value}),)))
+    ).invoke(request_payload())
+    assert output["status"] == "invalid"
+    assert output["error"]["code"] == "invalid_derived_artifact_binding"
+
+
 def test_derived_artifact_chain_requires_declared_prior_artifact():
     mask = _derived()
     points = _derived("object_point_cloud")
