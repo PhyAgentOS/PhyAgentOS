@@ -55,6 +55,7 @@
 - valid and invalid contract cases, approval failures, baseline drift, environment provenance/revision, strict SceneGraph consumption, and no-motion boundaries: covered by `tests/test_state_file_adapter.py`
 - binding and identity checks: revision/source and deterministic preview identity are tested
 - evidence and verification: no evidence/verdict is produced by this adapter
+- verifier boundary conformance: `ENVIRONMENT.md` cannot be parsed as an Evidence Bundle, and projection URIs are rejected as verifier evidence references
 - Fake Gateway/conformance: not applicable; no Gateway route is created
 - simulation or hardware proof: not applicable; implementation is no-motion
 - no-motion boundary: every TARGETS report and session preview exposes `motion_authorized=false`

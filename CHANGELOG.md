@@ -7,6 +7,26 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.4.1] - 2026-09-03
+
+增加 Verifier/Evidence boundary conformance：`ENVIRONMENT.md` projection 不能被解析为 Evidence Bundle，
+verifier verdict 不能以 projection URI 冒充 evidence reference。未修改 Verifier 的事实源或语义判定逻辑。
+
+Added Verifier/Evidence boundary conformance proving that an `ENVIRONMENT.md` projection cannot be parsed as an
+Evidence Bundle and a verifier verdict cannot use a projection URI as an evidence reference. No verifier fact
+source or semantic decision logic was changed.
+
+### Detailed changes
+
+- `tests/test_verifier_evidence_boundary.py:L1-L59` adds projection-as-evidence rejection and unknown projection-reference verdict tests.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L271-L283` records the completed boundary conformance and remaining full semantic/replay work.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `38 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No Gateway, Watchdog, Action, AgentTask, or motion authorization was produced.
+
 ## [v3.4.0] - 2026-09-03
 
 增加 `ForgeEvidenceWriter` 到 `EnvironmentProjectionProducer` 的受限关联。writer 校验自身生成的

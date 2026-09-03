@@ -272,8 +272,10 @@ EnvironmentAdapter 的 sanitized `snapshot()` 身份并校验 revision；不会�
 为 writer-owned snapshot 生成稳定 opaque `evidence://` URI；producer 可由该 manifest 自动注入 phase 与
 reference，并拒绝调用方提供的不匹配值。writer 现在拒绝同一 phase 的不同内容覆盖，保持 snapshot 不可变。
 
-仍未完成的上层链路：Verifier 对 Evidence 的语义验收，以及跨环境 replay/failure conformance。因此
-阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
+已增加基础 Verifier/Evidence boundary conformance：`VerificationRequestBuilder` 不能把
+`ENVIRONMENT.md` projection 解析为 Evidence Bundle，`ForgeTaskVerifier` 也会拒绝将 projection URI
+作为 verdict evidence reference。完整 Evidence 语义验收、跨环境 replay/failure conformance 仍未完成，
+因此阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
 
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
