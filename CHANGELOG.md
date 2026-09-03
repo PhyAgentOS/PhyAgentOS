@@ -7,6 +7,25 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.4.4] - 2026-09-03
+
+校正执行顺序文档：明确 `SKILLRUNTIME.md`/`LESSONS.md` 是可选 projection，记录受限 promotion 先于
+后续 replay conformance 的历史顺序，并确认抓取放置和自主进化尚未启动。未修改运行时代码。
+
+Corrected execution-order documentation: `SKILLRUNTIME.md`/`LESSONS.md` are optional projections, the historical
+ordering of bounded promotion before later replay conformance is recorded, and pick-place plus autonomous evolution
+remain unstarted. No runtime code was changed.
+
+### Detailed changes
+
+- `docs/forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md:L400-L420` aligns required versus optional file adapters and records the bounded-promotion ordering review.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L275-L283` distinguishes request-level Evidence conformance from remaining semantic/live replay work.
+
+### Validation
+
+- Documentation-only change; `git diff --check` passed.
+- No Gateway, Watchdog, Action, AgentTask, or motion authorization was used.
+
 ## [v3.4.3] - 2026-09-03
 
 增加 Evidence request-level conformance：不可变 Evidence Bundle 在跨工作区 replay 时重新校验

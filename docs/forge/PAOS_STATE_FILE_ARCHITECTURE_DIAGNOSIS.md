@@ -274,7 +274,7 @@ reference，并拒绝调用方提供的不匹配值。writer 现在拒绝同一 
 
 已增加基础 Verifier/Evidence boundary conformance：`VerificationRequestBuilder` 不能把
 `ENVIRONMENT.md` projection 解析为 Evidence Bundle，`ForgeTaskVerifier` 也会拒绝将 projection URI
-作为 verdict evidence reference。完整 Evidence 语义验收、跨环境 replay/failure conformance 仍未完成，
+作为 verdict evidence reference。完整 LLM 语义 verdict、真实 Gateway replay/failure conformance 仍未完成，
 因此阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
 
 随后补充了 Evidence request-level conformance：完整 bundle 的 capture window、必需 kind/source、
