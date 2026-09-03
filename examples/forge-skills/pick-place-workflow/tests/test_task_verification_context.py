@@ -66,6 +66,7 @@ class ContextVerifier:
     def __init__(self, workspace):
         self.workspace = Path(workspace)
         self.requests = []
+        self.retention_calls = []
 
     async def verify_agent_task(self, task, *, events, lessons, source, mode):
         request = VerificationRequestBuilder(self.workspace).build_agent_task(
@@ -92,6 +93,10 @@ class ContextVerifier:
                 verdict="success",
             ),
         )
+
+    def apply_retention(self, request, *, final_status):
+        self.retention_calls.append((request, final_status))
+        return {"status": "retained", "errors": []}
 
 
 def _write_empty_capture(coordinator, task_id, phase, *, before_ref=None):
@@ -244,6 +249,7 @@ async def test_bound_execution_facts_reach_generic_verifier_without_authorizing_
         await client.close()
 
     assert finalized.status is AgentTaskStatus.SUCCEEDED
+    assert verifier.retention_calls == [(request, "succeeded")]
     assert context["tool_execution_records"][-1]["tool_id"] == "object.acquire"
     assert context["tool_execution_records"][-1]["skill_binding_id"]
     assert context["tool_execution_records"][-1]["revision_id"]

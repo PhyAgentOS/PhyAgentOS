@@ -33,7 +33,7 @@ def _environment_projection(path):
 def test_request_builder_never_treats_environment_projection_as_evidence(tmp_path):
     _environment_projection(tmp_path / "ENVIRONMENT.md")
     builder = VerificationRequestBuilder(tmp_path)
-    with pytest.raises(VerificationEvidenceError, match="invalid Evidence Bundle"):
+    with pytest.raises(VerificationEvidenceError, match="not writer-owned"):
         builder._load_evidence(
             "ENVIRONMENT.md",
             expected_session_id="task-1",

@@ -160,13 +160,18 @@ def test_publish_from_evidence_writer_derives_phase_and_opaque_reference(tmp_pat
     )
     parsed = parse_environment_projection(output)
     assert parsed.data.phase == "after"
-    assert parsed.data.snapshot_ref == "evidence://forge/task-4/after_snapshot"
+    assert parsed.data.snapshot_ref.startswith(
+        "evidence://forge/task-4/after_snapshot/"
+    )
+    assert len(parsed.data.snapshot_ref.rsplit("/", 1)[1]) == 64
 
 
 def test_evidence_writer_rejects_snapshot_rewrite_and_projection_mismatch(tmp_path):
     writer = ForgeEvidenceWriter(tmp_path, "task-4", "command-1")
     reference = writer.write_snapshot("before", _snapshot())
-    assert writer.snapshot_projection_ref(reference) == "evidence://forge/task-4/before_snapshot"
+    projection_ref = writer.snapshot_projection_ref(reference)
+    assert projection_ref.startswith("evidence://forge/task-4/before_snapshot/")
+    assert len(projection_ref.rsplit("/", 1)[1]) == 64
     writer.write_snapshot("before", _snapshot())
     changed = replace(
         _snapshot().images["camera/front"],

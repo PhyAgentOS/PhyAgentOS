@@ -111,7 +111,8 @@ Markdown
 
 ### 5.2 Projection 型文件
 
-`SKILLRUNTIME.md`、`ENVIRONMENT.md` 和 Skill-scoped `LESSONS.md` 可以由机器事实源原子生成：
+`ENVIRONMENT.md` 和 Skill-scoped `LESSONS.md` 可以由机器事实源原子生成；`SKILLRUNTIME.md` 当前没有生产
+producer：
 
 ```text
 Manifest / Evidence / Experience Store
@@ -217,8 +218,9 @@ AgentTask 生命周期或 Action admission。Markdown 仍不是第二事实源�
   和数值限幅，但固定返回 `motion_authorized=false`；
 - `SESSIONS.md` 只生成确定性的 dry-run preview，不创建 `.paos/agent_tasks/tasks.sqlite3`，不调用
   AgentTaskCoordinator，不调度 Watchdog；
-- `SKILLRUNTIME.md`、`ENVIRONMENT.md`、`LESSONS.md` 目前只提供通用 projection 写入入口，事实源仍由
-  RuntimeState、Evidence/Snapshot 和 `experience.sqlite3` 持有；
+- `ENVIRONMENT.md` 由严格的 snapshot/provenance producer 生成，Skill-scoped `LESSONS.md` 继续由
+  `experience.sqlite3` 的 Evolution producer 生成；`SKILLRUNTIME.md` 暂无生产 producer，通用 renderer 已不再作为
+  `state_io` 公共 API。事实源仍由 RuntimeState、Evidence/Snapshot 和 `experience.sqlite3` 持有；
 - 测试覆盖结构化块缺失、未知字段、非法限幅、projection drift、确定性 preview 和 no-motion 边界。
 
 本阶段没有把文件适配器接入 AgentLoop、Watchdog、Gateway 或 Action admission。下一阶段若要允许
@@ -298,11 +300,27 @@ provider failure。该测试覆盖真实 HTTP handler 与 `VerificationEngine` �
 projection drift 保留旧内容和 no-motion conformance。这里的 replay 只证明适配器输入/投影的确定性和
 失败边界，不把 Fake Gateway 变成生产执行路径，也不把 Markdown 提升为事实源。
 
-需要明确：阶段 B 清单中的 `SKILLRUNTIME.md` 和 `LESSONS.md` producer 是可选的可观测性 projection，
-不是 PAOS 核心生命周期或执行权限的前置条件。本项目当前只保留通用 renderer，暂不实现第二套 Runtime
-或 Experience 配置源；后续只有在运维审阅需求明确时才补充由 manifest/Runtime state 或
+需要明确：阶段 B 清单中的 `SKILLRUNTIME.md` producer 和额外的 `LESSONS.md` producer 是可选的可观测性
+projection，不是 PAOS 核心生命周期或执行权限的前置条件。本项目当前不把 generic renderer 暴露为已实现模块，
+也不实现第二套 Runtime 或 Experience 配置源；后续只有在运维审阅需求明确时才补充由 manifest/Runtime state 或
 `experience.sqlite3` 生成的只读 projection。阶段 B 的必要关闭条件应优先看 Evidence 语义验收和
 跨环境 replay/failure 覆盖，而不是“五个 Markdown 文件是否全部有 producer”。
+
+### 7.4 v3.5.0 修复与第二轮审查结论
+
+本轮修复与代码审查的逐文件记录见 [`STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`](STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md)。
+审查已关闭 AgentTask origin/migration/update validation、Evidence manifest/bundle/retention、ENVIRONMENT prompt、TARGETS/SESSIONS schema、
+provider/service configuration 和 HTTP failure-path 的已知缺口。验证结果为仓库测试 `105 passed`，并另行通过
+pick-place 示例测试 `241 passed`；没有把这些测试中的 Fake Store/provider 当作生产实现证据。
+
+当前仍只实现必要的受限文件边界：`TARGETS.md` 是 shadow candidate，`SESSIONS.md` 是经人工确认后通过
+Coordinator 的意图输入，`ENVIRONMENT.md` 是带 provenance 的 projection；`SKILLRUNTIME.md` 没有生产 producer，
+Skill-scoped `LESSONS.md` 由 Experience ledger 生成。provider 子进程、真实模型语义质量、真实 Gateway 和抓取放置闭环
+仍需独立门禁，不能因为文件适配测试通过而提前启动。
+
+最终复审另外确认：AgentTask 的可变更新现在必须重新通过完整 record schema；robot-state 与 verifier structured JSON
+拒绝非标准数值；Evidence retention 只在终态通过持久化 Bundle 身份和 RequestBuilder 已验证路径集合后执行，recovery
+中间态保留证据。上述修复不改变 Markdown、Evidence、Runtime、Gateway 和 Experience 各自的事实 owner。
 
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 

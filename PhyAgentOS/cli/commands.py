@@ -416,6 +416,8 @@ def _make_forge_verifier(config: Config, provider):
         service_host=settings.service_host,
         service_port=settings.service_port,
         service_provider_spec=provider_spec,
+        service_startup_timeout_s=settings.service_startup_timeout_s,
+        service_max_request_bytes=settings.service_max_request_bytes,
         max_calls=settings.max_verifier_calls_per_run,
         write_legacy_lessons=not config.agents.evolution.enabled,
     )

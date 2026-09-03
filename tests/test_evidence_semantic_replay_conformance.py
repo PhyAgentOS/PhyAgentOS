@@ -45,7 +45,7 @@ def _bundle(tmp_path, *, before_at=NOW, terminal_at=NOW, after_at=NOW, retained=
         tmp_path,
         artifact_id="before_rgb",
         phase="before",
-        uri="artifacts/before.jpg",
+        uri="artifacts/task-replay-1/evidence/before.jpg",
         data=b"\xff\xd8\xffbefore",
         retained=retained,
     )
@@ -53,7 +53,7 @@ def _bundle(tmp_path, *, before_at=NOW, terminal_at=NOW, after_at=NOW, retained=
         tmp_path,
         artifact_id="after_rgb",
         phase="after",
-        uri="artifacts/after.jpg",
+        uri="artifacts/task-replay-1/evidence/after.jpg",
         data=b"\xff\xd8\xffafter",
         retained=retained,
     )
@@ -72,7 +72,8 @@ def _bundle(tmp_path, *, before_at=NOW, terminal_at=NOW, after_at=NOW, retained=
             association_quality="authoritative",
         ),
     )
-    path = tmp_path / "evidence_bundle.json"
+    path = tmp_path / "artifacts" / "task-replay-1" / "evidence_bundle.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(bundle.model_dump_json(), encoding="utf-8")
     return path, bundle
 
@@ -92,7 +93,7 @@ def test_complete_bundle_replays_across_workspaces_with_same_artifact_facts(tmp_
     second.mkdir()
     first_path, first_bundle = _bundle(first)
     shutil.copytree(first, second, dirs_exist_ok=True)
-    second_path = second / "evidence_bundle.json"
+    second_path = second / "artifacts" / "task-replay-1" / "evidence_bundle.json"
 
     first_validated = VerificationRequestBuilder(first)._validate_evidence(
         first_path, first_bundle, policy=_policy()
@@ -139,6 +140,24 @@ def test_capture_window_ordering_and_association_policy_fail_closed(tmp_path):
         )
 
 
+def test_evidence_timestamps_and_numeric_capture_values_require_strict_schema():
+    with pytest.raises(ValueError, match="timezone"):
+        EvidenceCaptureWindow(before_command_at=datetime(2026, 9, 3, 0, 0))
+    with pytest.raises(ValueError, match="finite number"):
+        EvidenceArtifact(
+            artifact_id="invalid_capture",
+            phase="before",
+            kind="rgb_image",
+            source_id="camera/front",
+            captured_at=float("inf"),
+            received_at=NOW,
+            media_type="image/jpeg",
+            sha256="0" * 64,
+            byte_size=0,
+            uri="artifacts/task-replay-1/evidence/invalid.jpg",
+        )
+
+
 def test_digest_retention_and_required_source_fail_closed(tmp_path):
     path, bundle = _bundle(tmp_path)
     bundle.artifacts[0].sha256 = "0" * 64
@@ -170,7 +189,7 @@ def test_structured_artifact_json_is_replayed_as_data_not_verdict(tmp_path):
         tmp_path,
         artifact_id="after_state",
         phase="after",
-        uri="artifacts/after_state.json",
+        uri="artifacts/task-replay-1/evidence/after_state.json",
         data=data,
         media_type="application/json",
         source="ws/state",
@@ -182,3 +201,21 @@ def test_structured_artifact_json_is_replayed_as_data_not_verdict(tmp_path):
     )
     assert validated.structured == {"after_state": {"object": "cup", "placed": True}}
     assert "after_state" in validated.artifact_ids
+
+
+def test_structured_artifact_rejects_non_standard_json_constants(tmp_path):
+    path, bundle = _bundle(tmp_path)
+    artifact = bundle.artifacts[0]
+    artifact.media_type = "application/json"
+    data = b'{"joint_position":NaN}'
+    artifact_path = tmp_path / artifact.uri
+    artifact_path.write_bytes(data)
+    artifact.byte_size = len(data)
+    artifact.sha256 = hashlib.sha256(data).hexdigest()
+
+    with pytest.raises(VerificationEvidenceError, match="verification JSON is invalid"):
+        VerificationRequestBuilder(tmp_path)._validate_evidence(
+            path,
+            bundle,
+            policy=_policy(),
+        )

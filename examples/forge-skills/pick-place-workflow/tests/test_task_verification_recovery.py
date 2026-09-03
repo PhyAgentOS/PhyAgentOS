@@ -30,6 +30,7 @@ class Provider:
 class Verifier:
     def __init__(self):
         self.calls = 0
+        self.retention_calls = []
 
     async def verify_agent_task(self, task, *, events, lessons, source, mode):
         self.calls += 1
@@ -60,6 +61,10 @@ class Verifier:
             mode="apply",
             verdict=verdict.verdict,
         )
+
+    def apply_retention(self, request, *, final_status):
+        self.retention_calls.append((request, final_status))
+        return {"status": "retained", "errors": []}
 
 
 @pytest.mark.asyncio
@@ -94,6 +99,7 @@ async def test_recovery_appends_revision_and_preserves_failure_success_lineage(t
         )
         awaiting = await coordinator.finalize_task(task.task_id)
         assert awaiting.status is AgentTaskStatus.AWAITING_REPLAN
+        assert verifier.retention_calls == []
         revised = coordinator.begin_revision(task.task_id, reason="refresh observation")
         assert revised.task_id == task.task_id
         assert len(revised.revisions) == 2
@@ -108,6 +114,7 @@ async def test_recovery_appends_revision_and_preserves_failure_success_lineage(t
 
     assert completed.status is AgentTaskStatus.SUCCEEDED
     assert verifier.calls == 2
+    assert verifier.retention_calls == [({"request": "fixture"}, "succeeded")]
     assert len(completed.revisions) == 2
     assert len(completed.execution_records) == 2
     assert [item.revision_id for item in completed.execution_records] == [

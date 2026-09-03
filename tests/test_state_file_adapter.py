@@ -21,10 +21,8 @@ from PhyAgentOS.state_io import (
     parse_targets_shadow,
     promote_targets_candidate,
     render_environment_projection,
-    render_lessons_projection,
-    render_skillruntime_projection,
 )
-from PhyAgentOS.state_io.protocol import canonical_sha256
+from PhyAgentOS.state_io.protocol import canonical_sha256, write_projection
 
 
 def write_state(path, *, kind, mode, data, revision="r1", source="workspace://test"):
@@ -39,6 +37,42 @@ def write_state(path, *, kind, mode, data, revision="r1", source="workspace://te
         "data": data,
     }
     path.write_text("# state\n\n```json\n" + json.dumps(payload) + "\n```\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("language", "body"),
+    [
+        (
+            "json",
+            '{"paos":{"protocol":"paos.state-file.v1","kind":"sessions",'
+            '"mode":"input","revision":"r1","source":"workspace://test"},'
+            '"data":{"sessions":[],"sessions":[{"session_id":"session-1",'
+            '"intent":"move","acceptance_criteria":["done"],"retry_limit":0}]}}',
+        ),
+        (
+            "yaml",
+            "paos:\n"
+            "  protocol: paos.state-file.v1\n"
+            "  kind: sessions\n"
+            "  mode: input\n"
+            "  revision: r1\n"
+            "  source: workspace://test\n"
+            "data:\n"
+            "  sessions: []\n"
+            "  sessions:\n"
+            "    - session_id: session-1\n"
+            "      intent: move\n"
+            "      acceptance_criteria: [done]\n"
+            "      retry_limit: 0",
+        ),
+    ],
+)
+def test_state_protocol_rejects_duplicate_mapping_keys(tmp_path, language, body):
+    path = tmp_path / "SESSIONS.md"
+    path.write_text(f"# state\n\n```{language}\n{body}\n```\n", encoding="utf-8")
+
+    with pytest.raises(StateFileError, match="structured state block is invalid"):
+        parse_state_file(path, expected_kind="sessions")
 
 
 def test_targets_shadow_validation_is_strict_and_no_motion(tmp_path):
@@ -81,6 +115,46 @@ def test_targets_reject_invalid_limit_and_unknown_field(tmp_path):
     assert report.motion_authorized is False
 
 
+def test_targets_reject_ambiguous_limit_shape_and_empty_arrays(tmp_path):
+    path = tmp_path / "TARGETS.md"
+    write_state(
+        path,
+        kind="targets",
+        mode="input",
+        data={
+            "profile_id": "panda-lab",
+            "observation_modalities": ["rgb"],
+            "action_space": ["object.place"],
+            "limits": {
+                "speed_m_s": {"value": 0.2, "min": 0.0},
+                "joint_rad": {"min": [], "max": []},
+            },
+        },
+    )
+    report = parse_targets_shadow(path)
+    assert report.valid is False
+    assert any("exactly value or exactly min and max" in error for error in report.errors)
+    assert any("arrays must be non-empty" in error for error in report.errors)
+
+
+def test_targets_rejects_bare_limit_values(tmp_path):
+    path = tmp_path / "TARGETS.md"
+    write_state(
+        path,
+        kind="targets",
+        mode="input",
+        data={
+            "profile_id": "panda-lab",
+            "observation_modalities": ["rgb"],
+            "action_space": ["object.place"],
+            "limits": {"speed_m_s": 0.2, "joint_rad": [-1.0, 1.0]},
+        },
+    )
+    report = parse_targets_shadow(path)
+    assert report.valid is False
+    assert len([error for error in report.errors if "must contain exactly" in error]) == 2
+
+
 def test_targets_candidate_requires_source_and_baseline_bound_approval(tmp_path):
     path = tmp_path / "TARGETS.md"
     baseline = {
@@ -102,7 +176,8 @@ def test_targets_candidate_requires_source_and_baseline_bound_approval(tmp_path)
     assert candidate.profile_id == "panda-lab"
     assert candidate.differences == ()
     assert candidate.motion_authorized is False
-    assert candidate.data == baseline
+    assert candidate.data["profile_id"] == baseline["profile_id"]
+    assert candidate.data["limits"]["cartesian_speed_m_s"]["value"] == 0.2
 
 
 def test_targets_candidate_rejects_baseline_drift(tmp_path):
@@ -126,6 +201,31 @@ def test_targets_candidate_rejects_baseline_drift(tmp_path):
         promote_targets_candidate(path, baseline=baseline, approval=approval)
 
 
+def test_targets_candidate_rejects_invalid_baseline_schema(tmp_path):
+    path = tmp_path / "TARGETS.md"
+    candidate = {
+        "profile_id": "panda-lab",
+        "observation_modalities": ["rgb"],
+        "action_space": ["object.place"],
+        "limits": {"cartesian_speed_m_s": {"value": 0.2}},
+    }
+    write_state(path, kind="targets", mode="input", data=candidate)
+    source_digest = parse_targets_shadow(path).candidate_sha256
+    invalid_baseline = {"profile_id": "missing-required-fields"}
+    with pytest.raises(StateFileError, match="valid baseline capability matrix"):
+        promote_targets_candidate(
+            path,
+            baseline=invalid_baseline,
+            approval={
+                "approval_id": "targets-approval-invalid-baseline",
+                "source_sha256": source_digest,
+                "baseline_sha256": canonical_sha256(invalid_baseline),
+                "approved_by": "operator",
+                "confirmed_at": "2026-09-03T09:00:00+00:00",
+            },
+        )
+
+
 def test_targets_candidate_rejects_path_unsafe_profile_id_fail_closed(tmp_path):
     path = tmp_path / "TARGETS.md"
     data = {
@@ -138,7 +238,7 @@ def test_targets_candidate_rejects_path_unsafe_profile_id_fail_closed(tmp_path):
     report = parse_targets_shadow(path, baseline=data)
     assert report.valid is False
     assert any("profile_id must be path-safe" in error for error in report.errors)
-    with pytest.raises(StateFileError, match="invalid TARGETS candidate"):
+    with pytest.raises(StateFileError, match="valid baseline capability matrix"):
         promote_targets_candidate(path, baseline=data, approval={})
 
 
@@ -163,9 +263,12 @@ def test_targets_candidate_preserves_explicit_baseline_difference_without_writin
     before = path.read_bytes()
     candidate = promote_targets_candidate(path, baseline=baseline, approval=approval)
     assert candidate.differences == ("limits",)
-    assert candidate.data == candidate_data
+    assert candidate.data["limits"]["cartesian_speed_m_s"]["value"] == 0.3
     assert path.read_bytes() == before
-    candidate_data["profile_id"] = "mutated-after-promotion"
+    with pytest.raises(TypeError):
+        candidate.data["profile_id"] = "mutated-after-promotion"
+    with pytest.raises(TypeError):
+        candidate.data["limits"]["cartesian_speed_m_s"]["value"] = 0.9
     assert candidate.data["profile_id"] == "panda-lab"
 
 
@@ -191,8 +294,12 @@ def test_parser_rejects_missing_or_malformed_structured_block(tmp_path):
 
 def test_projection_renderers_are_atomic_and_drift_checked(tmp_path):
     path = tmp_path / "SKILLRUNTIME.md"
-    result = render_skillruntime_projection(
-        path, {"skill_name": "pick-place", "status": "stopped"}, revision="runtime-1", source="runtime://state"
+    result = write_projection(
+        path,
+        kind="skillruntime",
+        data={"skill_name": "pick-place", "status": "stopped"},
+        revision="runtime-1",
+        source="runtime://state",
     )
     assert result.changed is True
     parsed = parse_state_file(path, expected_kind="skillruntime")
@@ -216,8 +323,6 @@ def test_projection_renderers_are_atomic_and_drift_checked(tmp_path):
     )
     assert second.changed is True
     with pytest.raises(StateFileDriftError):
-        from PhyAgentOS.state_io.protocol import write_projection
-
         write_projection(
             path,
             kind="skillruntime",
@@ -226,19 +331,6 @@ def test_projection_renderers_are_atomic_and_drift_checked(tmp_path):
             data={"skill_name": "other"},
             expected_sha256="0" * 64,
         )
-
-
-def test_lessons_projection_uses_projection_mode(tmp_path):
-    path = tmp_path / "LESSONS.md"
-    result = render_lessons_projection(
-        path,
-        {"skill_name": "pick-place", "lessons": [{"lesson_id": "l1", "status": "active"}]},
-        revision="exp-1",
-        source="experience://ledger",
-    )
-    parsed = parse_state_file(path, expected_kind="lessons")
-    assert parsed.mode == "projection"
-    assert parsed.data_sha256 == result.data_sha256
 
 
 def _environment_data(**overrides):
@@ -381,6 +473,46 @@ def test_sessions_rejects_status_field_as_second_state_machine(tmp_path):
         parse_sessions_preview(path)
 
 
+def test_sessions_rejects_unknown_root_state_and_control_characters(tmp_path):
+    path = tmp_path / "SESSIONS.md"
+    write_state(
+        path,
+        kind="sessions",
+        mode="input",
+        data={
+            "sessions": [
+                {
+                    "session_id": "pick-001",
+                    "intent": "Pick",
+                    "acceptance_criteria": ["done"],
+                    "retry_limit": 1,
+                }
+            ],
+            "pending": True,
+        },
+    )
+    with pytest.raises(StateFileError, match="data unknown field"):
+        parse_sessions_preview(path)
+
+    write_state(
+        path,
+        kind="sessions",
+        mode="input",
+        data={
+            "sessions": [
+                {
+                    "session_id": "pick-001",
+                    "intent": "Pick\u0007",
+                    "acceptance_criteria": ["done"],
+                    "retry_limit": 1,
+                }
+            ]
+        },
+    )
+    with pytest.raises(StateFileError, match="control characters"):
+        parse_sessions_preview(path)
+
+
 def test_sessions_rejects_duplicate_or_unsafe_parent_identity(tmp_path):
     path = tmp_path / "SESSIONS.md"
     write_state(
@@ -423,6 +555,7 @@ def _coordinator(tmp_path):
         workspace=tmp_path,
         config=ForgeConfig(),
         client=object(),
+        verifier=object(),
     )
 
 
@@ -479,6 +612,9 @@ def test_sessions_compile_is_idempotent_and_uses_coordinator(tmp_path):
     assert task.origin_session_key == f"statefile+sessions://{digest}/pick-001"
     assert task.retry_limit == 2
     assert task.verification.success_criteria == ["cup is in gripper"]
+    assert task.verification.mode == "enforce"
+    assert task.origin_approval is not None
+    assert task.origin_approval.approval_id == "approval-1"
     assert task.status == AgentTaskStatus.EXECUTING
     assert second.motion_authorized is False
 

@@ -2,45 +2,31 @@
 
 import json
 import re
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 try:
     import tiktoken
 except ModuleNotFoundError:  # pragma: no cover - depends on optional install extras
     tiktoken = None
 
-_YAML_BLOCK_RE = re.compile(
-    r"(?P<fence>`{3,}|~{3,})\s*(?P<lang>json|yaml|yml)\s*\n(?P<body>.*?)(?:\n(?P=fence)\s*)",
-    re.DOTALL | re.IGNORECASE,
-)
-
-
 def load_environment_doc(path: Path) -> dict[str, Any]:
-    """Load ENVIRONMENT.md and extract the fenced YAML/JSON block as a dict.
+    """Load the strict environment projection or fail closed.
 
-    Supports both the v2 format (fenced JSON/YAML block) and falls back
-    gracefully to an empty dict if the file is missing or unparseable.
+    This compatibility entry point is deprecated. New callers should use
+    ``parse_environment_projection`` directly.
     """
-    if not path.exists():
-        return {}
-    text = path.read_text(encoding="utf-8")
-    match = _YAML_BLOCK_RE.search(text)
-    if match is None:
-        return {}
-    body = match.group("body")
-    try:
-        lang = match.group("lang").lower()
-        if lang == "json":
-            data = json.loads(body)
-        else:
-            data = yaml.safe_load(body) or {}
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
+
+    from PhyAgentOS.state_io import parse_environment_projection
+
+    warnings.warn(
+        "load_environment_doc() is deprecated; use parse_environment_projection()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return parse_environment_projection(path).data.model_dump(mode="json")
 
 
 def detect_image_mime(data: bytes) -> str | None:

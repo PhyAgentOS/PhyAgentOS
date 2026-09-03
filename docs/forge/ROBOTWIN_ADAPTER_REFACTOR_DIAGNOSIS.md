@@ -400,8 +400,8 @@ Runtime 视为已移除。Markdown 文件可以作为人工输入、工作区上
 1. 先冻结 Capability Profile、AgentTask、Gateway invocation、Evidence Snapshot、Experience ledger 和
    五类文件的权威边界、身份、revision、provenance、幂等与 unknown/no-blind-retry 语义；
 2. 先实现必要的无副作用文件边界：`ENVIRONMENT.md` 严格 projection，`TARGETS.md` shadow validation，
-   `SESSIONS.md` parse/validate 与 AgentTask dry-run；`SKILLRUNTIME.md`、`LESSONS.md` 只读 projection
-   仅在明确的运维/审阅需求下补充，不是 PAOS 核心生命周期的前置条件；
+   `SESSIONS.md` parse/validate 与 AgentTask dry-run；`SKILLRUNTIME.md` 无生产 producer，Skill-scoped
+   `LESSONS.md` 只由 Experience ledger 生成，均不是 PAOS 核心生命周期的前置条件；
 3. 用 Fake Store、Fake Gateway 和回放样例验证未知字段、失败回滚、projection drift、幂等和 no-motion；
 4. 只有人工确认且通过幂等校验后，`SESSIONS.md` 才能编译为 AgentTask，`TARGETS.md` 才能作为未来
    Capability Profile/admission 的候选输入；此时仍不得建立 Markdown queue Runtime 或触发物理动作；
@@ -413,7 +413,9 @@ Runtime 视为已移除。Markdown 文件可以作为人工输入、工作区上
 当前顺序审查状态：`SESSIONS.md` 的人工确认 promotion 和 `TARGETS.md` candidate promotion 已在
 `v3.0.0`/阶段 C 落地，晚于它们的 replay/failure conformance 在 `v3.4.2` 才补齐。该历史先后没有
 突破权限边界（promotion 仍受 digest、人工凭据、幂等、全局任务占用和 `motion_authorized=false`
-约束），但后续不得在 replay/Evidence gate 完整关闭前扩大 promotion 范围。抓取放置步骤 5 和自主
+约束），但后续不得在 replay/Evidence gate 完整关闭前扩大 promotion 范围。当前第二轮实现审查已记录在
+[`STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`](STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md)，并确认 generic
+SKILLRUNTIME/LESSONS renderer 不属于已完成的生产模块。抓取放置步骤 5 和自主
 进化步骤 6 当前均未启动。
 
 本节批准“受限文件适配先行”，但不批准新增 Markdown queue Runtime，也不改变 PAOS 当前唯一物理执行路径。若后续实现需要主动移动采集、

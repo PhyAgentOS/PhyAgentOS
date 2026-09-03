@@ -15,7 +15,6 @@ from PhyAgentOS.state_io import (
     parse_state_file,
     parse_targets_shadow,
     render_environment_projection,
-    render_skillruntime_projection,
 )
 from PhyAgentOS.state_io.protocol import write_projection
 
@@ -39,17 +38,8 @@ def _write_state(path, *, kind, mode, data, revision="r1", source="workspace://r
     )
 
 
-class _RecordingGateway:
-    def __init__(self):
-        self.calls: list[tuple[str, dict]] = []
-
-    def invoke(self, operation: str, arguments: dict):
-        self.calls.append((operation, arguments))
-        raise AssertionError("state-file adapter must not call a Gateway")
-
-
 class _EmptyStore:
-    def find_by_origin_session_key(self, origin_key):
+    def find_by_origin_dedup_key(self, origin_key):
         return []
 
     def active(self):
@@ -106,7 +96,7 @@ def _environment():
     }
 
 
-def test_replay_is_deterministic_across_workspaces_and_has_no_gateway_side_effect(tmp_path):
+def test_replay_is_deterministic_across_workspaces_without_lifecycle_side_effect(tmp_path):
     first = tmp_path / "first"
     second = tmp_path / "second"
     first.mkdir()
@@ -121,8 +111,6 @@ def test_replay_is_deterministic_across_workspaces_and_has_no_gateway_side_effec
     assert first_preview.source.data_sha256 == second_preview.source.data_sha256
     assert first_preview.previews == second_preview.previews
 
-    gateway = _RecordingGateway()
-    assert gateway.calls == []
     assert not (first / ".paos").exists()
     assert not (second / ".paos").exists()
 
@@ -131,12 +119,9 @@ def test_unknown_fields_fail_before_fake_store_or_gateway_can_be_touched(tmp_pat
     path = tmp_path / "SESSIONS.md"
     _session(path, unknown=True)
     coordinator = _FailingCoordinator()
-    gateway = _RecordingGateway()
-
     with pytest.raises(StateFileError, match="unknown field"):
         parse_sessions_preview(path)
     assert coordinator.calls == 0
-    assert gateway.calls == []
     assert not (tmp_path / ".paos").exists()
 
 
@@ -166,9 +151,10 @@ def test_store_failure_is_wrapped_and_does_not_leave_partial_lifecycle_state(tmp
 
 def test_projection_drift_rejects_update_and_preserves_previous_bytes(tmp_path):
     path = tmp_path / "SKILLRUNTIME.md"
-    render_skillruntime_projection(
+    write_projection(
         path,
-        {"skill_name": "replay-skill", "status": "running"},
+        kind="skillruntime",
+        data={"skill_name": "replay-skill", "status": "running"},
         revision="runtime-1",
         source="runtime://replay/state",
     )

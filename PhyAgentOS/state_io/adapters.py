@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -83,6 +84,16 @@ class TargetProfileCandidate:
     data: Mapping[str, Any]
     differences: tuple[str, ...]
     motion_authorized: bool = False
+
+
+def _freeze_json(value: Any) -> Any:
+    """Return a recursively immutable representation of validated JSON data."""
+
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    return value
 
 
 class EnvironmentProjectionData(BaseModel):
@@ -248,6 +259,19 @@ def _finite_number(value: Any, label: str) -> str | None:
     return None
 
 
+def _validate_limit_value(value: Any, label: str) -> list[str]:
+    if isinstance(value, list):
+        if not value:
+            return [f"{label} must be a non-empty numeric array"]
+        return [
+            error
+            for index, item in enumerate(value)
+            if (error := _finite_number(item, f"{label}[{index}]")) is not None
+        ]
+    error = _finite_number(value, label)
+    return [] if error is None else [error]
+
+
 def _validate_limits(limits: Any) -> list[str]:
     if not isinstance(limits, dict) or not limits:
         return ["limits must be a non-empty object"]
@@ -256,40 +280,45 @@ def _validate_limits(limits: Any) -> list[str]:
         if not isinstance(name, str) or not name.strip():
             errors.append("limits contains an invalid name")
             continue
-        if isinstance(value, dict):
-            unknown = sorted(set(value) - {"min", "max", "value"})
-            if unknown:
-                errors.append(f"limits.{name} unknown field(s): {', '.join(unknown)}")
+        if not isinstance(value, dict):
+            errors.append(
+                f"limits.{name} must contain exactly value or exactly min and max"
+            )
+            continue
+        fields = set(value)
+        if fields == {"value"}:
+            errors.extend(_validate_limit_value(value["value"], f"limits.{name}"))
+            continue
+        elif fields == {"min", "max"}:
+            lower, upper = value["min"], value["max"]
+            if isinstance(lower, list) != isinstance(upper, list):
+                errors.append(
+                    f"limits.{name} min/max must both be scalars or both be arrays"
+                )
                 continue
-            if "min" in value and "max" in value:
-                lower, upper = value["min"], value["max"]
-                if isinstance(lower, list) and isinstance(upper, list):
-                    if len(lower) != len(upper):
-                        errors.append(f"limits.{name} min/max lengths differ")
-                        continue
-                    pairs = zip(lower, upper)
-                else:
-                    pairs = [(lower, upper)]
-                for index, (left, right) in enumerate(pairs):
-                    left_error = _finite_number(left, f"limits.{name}.min[{index}]")
-                    right_error = _finite_number(right, f"limits.{name}.max[{index}]")
-                    if left_error:
-                        errors.append(left_error)
-                    if right_error:
-                        errors.append(right_error)
-                    if not left_error and not right_error and float(left) > float(right):
-                        errors.append(f"limits.{name} min exceeds max at index {index}")
-                continue
-            value = value.get("value")
-        if isinstance(value, list):
-            for index, item in enumerate(value):
-                error = _finite_number(item, f"limits.{name}[{index}]")
-                if error:
-                    errors.append(error)
-        else:
-            error = _finite_number(value, f"limits.{name}")
-            if error:
-                errors.append(error)
+            if isinstance(lower, list):
+                if not lower or not upper:
+                    errors.append(f"limits.{name} min/max arrays must be non-empty")
+                    continue
+                if len(lower) != len(upper):
+                    errors.append(f"limits.{name} min/max lengths differ")
+                    continue
+                pairs = zip(lower, upper, strict=True)
+            else:
+                pairs = [(lower, upper)]
+            for index, (left, right) in enumerate(pairs):
+                left_error = _finite_number(left, f"limits.{name}.min[{index}]")
+                right_error = _finite_number(right, f"limits.{name}.max[{index}]")
+                if left_error:
+                    errors.append(left_error)
+                if right_error:
+                    errors.append(right_error)
+                if not left_error and not right_error and float(left) > float(right):
+                    errors.append(f"limits.{name} min exceeds max at index {index}")
+            continue
+        errors.append(
+            f"limits.{name} must contain exactly value or exactly min and max"
+        )
     return errors
 
 
@@ -305,8 +334,14 @@ def _validate_targets(data: Mapping[str, Any], baseline: Mapping[str, Any] | Non
                 errors.append(f"targets.{field} must be path-safe")
     for field in ("observation_modalities", "action_space"):
         value = data.get(field)
-        if not isinstance(value, list) or not value or not all(isinstance(item, str) and item.strip() for item in value):
+        if (
+            not isinstance(value, list)
+            or not value
+            or not all(isinstance(item, str) and item.strip() for item in value)
+        ):
             errors.append(f"targets.{field} must be a non-empty list of strings")
+        elif len({item.strip() for item in value}) != len(value):
+            errors.append(f"targets.{field} must not contain duplicate values")
     if "limits" in data:
         errors.extend(_validate_limits(data["limits"]))
     differences: list[str] = []
@@ -357,6 +392,12 @@ def promote_targets_candidate(
         raise StateFileError(f"{parsed.path}: TARGETS.md must use paos.mode=input")
     if not isinstance(baseline, Mapping) or not baseline:
         raise StateFileError("TARGETS promotion requires a non-empty baseline mapping")
+    baseline_report = _validate_targets(baseline, None)
+    if not baseline_report.valid:
+        raise StateFileError(
+            "TARGETS promotion requires a valid baseline capability matrix: "
+            + "; ".join(baseline_report.errors)
+        )
     report = _validate_targets(parsed.data, baseline)
     if not report.valid or report.candidate_sha256 is None:
         raise StateFileError(
@@ -379,7 +420,7 @@ def promote_targets_candidate(
         source_sha256=parsed.data_sha256,
         baseline_sha256=baseline_sha256,
         profile_id=str(parsed.data["profile_id"]).strip(),
-        data=dict(parsed.data),
+        data=_freeze_json(parsed.data),
         differences=report.differences,
         motion_authorized=False,
     )
@@ -388,6 +429,11 @@ def promote_targets_candidate(
 def _session_preview(parsed: ParsedStateFile) -> SessionPreview:
     if parsed.mode != "input":
         raise StateFileError(f"{parsed.path}: SESSIONS.md must use paos.mode=input")
+    unknown = sorted(set(parsed.data) - {"sessions"})
+    if unknown:
+        raise StateFileError(
+            f"{parsed.path}: data unknown field(s): {', '.join(unknown)}"
+        )
     sessions = parsed.data.get("sessions")
     if not isinstance(sessions, list) or not sessions:
         raise StateFileError(f"{parsed.path}: data.sessions must be a non-empty list")
@@ -414,10 +460,18 @@ def _session_preview(parsed: ParsedStateFile) -> SessionPreview:
         criteria = item["acceptance_criteria"]
         if not isinstance(criteria, list) or not criteria or not all(isinstance(value, str) and value.strip() for value in criteria):
             raise StateFileError(f"{parsed.path}: sessions[{index}].acceptance_criteria must be non-empty strings")
+        if len({value.strip() for value in criteria}) != len(criteria):
+            raise StateFileError(
+                f"{parsed.path}: sessions[{index}].acceptance_criteria must not contain duplicates"
+            )
         retry_limit = item["retry_limit"]
         if not isinstance(retry_limit, int) or isinstance(retry_limit, bool) or retry_limit < 0:
             raise StateFileError(f"{parsed.path}: sessions[{index}].retry_limit must be a non-negative integer")
-        allowed = required | {"parent_task_id", "task_description"}
+        allowed = required | {
+            "parent_task_id",
+            "task_description",
+            "verification_mode",
+        }
         unknown = sorted(set(item) - allowed)
         if unknown:
             raise StateFileError(f"{parsed.path}: sessions[{index}] unknown field(s): {', '.join(unknown)}")
@@ -432,6 +486,12 @@ def _session_preview(parsed: ParsedStateFile) -> SessionPreview:
             or any(char in parent_task_id for char in "/\\")
         ):
             raise StateFileError(f"{parsed.path}: sessions[{index}].parent_task_id must be path-safe")
+        verification_mode = item.get("verification_mode", "enforce")
+        if verification_mode not in {"audit", "enforce", "recovery"}:
+            raise StateFileError(
+                f"{parsed.path}: sessions[{index}].verification_mode must be "
+                "audit, enforce, or recovery"
+            )
         seed = {"source_digest": parsed.data_sha256, "session": item}
         previews.append(
             {
@@ -442,6 +502,7 @@ def _session_preview(parsed: ParsedStateFile) -> SessionPreview:
                 "acceptance_criteria": [value.strip() for value in criteria],
                 "parent_task_id": parent_task_id.strip() if isinstance(parent_task_id, str) else None,
                 "retry_limit": retry_limit,
+                "verification_mode": verification_mode,
                 "agent_task_write": False,
                 "watchdog_dispatch": False,
                 "motion_authorized": False,
@@ -473,7 +534,7 @@ async def compile_sessions_to_agent_tasks(
     """
 
     preview = parse_sessions_preview(path)
-    _approval_for_source(approval, preview.source.data_sha256)
+    normalized_approval = _approval_for_source(approval, preview.source.data_sha256)
     selected = list(preview.previews)
     if session_id is not None:
         selected = [item for item in selected if item["session_id"] == session_id.strip()]
@@ -485,13 +546,13 @@ async def compile_sessions_to_agent_tasks(
         )
 
     store = getattr(coordinator, "store", None)
-    if store is None or not hasattr(store, "find_by_origin_session_key"):
+    if store is None or not hasattr(store, "find_by_origin_dedup_key"):
         raise SessionCompileError("coordinator does not expose the AgentTaskStore authority")
     compiled: list[Any] = []
     reused: list[Any] = []
     for item in selected:
         origin_key = _state_origin_key(preview.source.data_sha256, item["session_id"])
-        existing = store.find_by_origin_session_key(origin_key)
+        existing = store.find_by_origin_dedup_key(origin_key)
         if len(existing) > 1:
             raise SessionCompileError(
                 f"multiple AgentTasks already exist for session {item['session_id']!r}"
@@ -518,13 +579,24 @@ async def compile_sessions_to_agent_tasks(
                     f"parent AgentTask {parent_task_id} is still non-terminal"
                 )
 
+        from PhyAgentOS.forge.task import (
+            AgentTaskOriginApproval,
+            AgentTaskOriginConflictError,
+        )
         from PhyAgentOS.verification.contracts import TaskVerificationContract
 
         verification = TaskVerificationContract(
-            mode="off",
+            mode=item["verification_mode"],
             goal=item["task_description"],
             success_criteria=item["acceptance_criteria"],
             constraints=[f"retry_limit={item['retry_limit']}"],
+        )
+        origin_approval = AgentTaskOriginApproval(
+            source_sha256=preview.source.data_sha256,
+            declaration_id=item["session_id"],
+            approval_id=normalized_approval.approval_id,
+            approved_by=normalized_approval.approved_by,
+            confirmed_at=normalized_approval.confirmed_at,
         )
         try:
             task = coordinator.create_task(
@@ -532,11 +604,22 @@ async def compile_sessions_to_agent_tasks(
                 verification=verification,
                 activation_id=activation_id,
                 origin_session_key=origin_key,
+                origin_dedup_key=origin_key,
+                origin_approval=origin_approval,
                 parent_task_id=parent_task_id,
                 retry_limit=item["retry_limit"],
             )
             if inspect.isawaitable(task):
                 task = await task
+        except AgentTaskOriginConflictError:
+            existing_after_failure = store.find_by_origin_dedup_key(origin_key)
+            if len(existing_after_failure) == 1:
+                reused.append(existing_after_failure[0])
+                continue
+            raise SessionCompileError(
+                f"AgentTask origin conflict could not be resolved for "
+                f"session {item['session_id']!r}"
+            )
         except Exception as exc:
             raise SessionCompileError(
                 f"AgentTask compilation failed for session {item['session_id']!r}: {exc}"
@@ -571,10 +654,6 @@ def _projection(
     )
 
 
-def render_skillruntime_projection(path: str | Path, runtime: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:
-    return _projection("skillruntime", path, runtime, revision=revision, source=source)
-
-
 def render_environment_projection(
     path: str | Path,
     snapshot: Mapping[str, Any],
@@ -599,7 +678,3 @@ def render_environment_projection(
         source=source,
         expected_sha256=expected_sha256,
     )
-
-
-def render_lessons_projection(path: str | Path, lessons: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:
-    return _projection("lessons", path, lessons, revision=revision, source=source)

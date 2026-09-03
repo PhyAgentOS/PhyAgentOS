@@ -16,8 +16,6 @@ from PhyAgentOS.state_io.adapters import (
     parse_targets_shadow,
     promote_targets_candidate,
     render_environment_projection,
-    render_lessons_projection,
-    render_skillruntime_projection,
 )
 from PhyAgentOS.state_io.protocol import (
     ParsedStateFile,
@@ -49,7 +47,5 @@ __all__ = [
     "parse_targets_shadow",
     "promote_targets_candidate",
     "render_environment_projection",
-    "render_lessons_projection",
-    "render_skillruntime_projection",
     "write_projection",
 ]

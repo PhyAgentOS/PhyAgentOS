@@ -28,6 +28,33 @@ _PATH_UNSAFE = re.compile(r"(?:^~|^/|^[A-Za-z]:[\\/]|(?:^|[\\/])\.\.(?:[\\/]|$))
 _REF_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
 
 
+def _reject_duplicate_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """YAML safe loader that rejects mapping-key replacement."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        self.flatten_mapping(node)
+        result: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicate = key in result
+            except TypeError as exc:
+                raise ValueError("YAML mapping keys must be hashable") from exc
+            if duplicate:
+                raise ValueError(f"duplicate YAML mapping key: {key!r}")
+            result[key] = self.construct_object(value_node, deep=deep)
+        return result
+
+
 class StateFileError(ValueError):
     """Raised when a state file violates the PAOS file protocol."""
 
@@ -79,6 +106,10 @@ def canonical_sha256(value: Any) -> str:
 
 def _validate_scalar(value: Any, path: str) -> None:
     if value is None or isinstance(value, (str, bool, int, float)):
+        if isinstance(value, str) and any(
+            ord(char) < 32 or ord(char) == 127 for char in value
+        ):
+            raise StateFileError(f"{path} must not contain control characters")
         if isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))):
             raise StateFileError(f"{path} must be finite")
         return
@@ -99,6 +130,8 @@ def _validate_text(value: Any, field: str, *, path_safe: bool = False) -> str:
     if not isinstance(value, str) or not value.strip():
         raise StateFileError(f"{field} must be a non-empty string")
     normalized = value.strip()
+    if any(ord(char) < 32 or ord(char) == 127 for char in normalized):
+        raise StateFileError(f"{field} must not contain control characters")
     if path_safe and _PATH_UNSAFE.search(normalized):
         raise StateFileError(f"{field} must not be a filesystem path")
     return normalized
@@ -113,7 +146,11 @@ def _extract_payload(text: str, path: Path) -> tuple[str, dict[str, Any]]:
     match = matches[0]
     body = match.group("body")
     try:
-        payload = json.loads(body) if match.group("lang").lower() == "json" else yaml.safe_load(body)
+        payload = (
+            json.loads(body, object_pairs_hook=_reject_duplicate_object_pairs)
+            if match.group("lang").lower() == "json"
+            else yaml.load(body, Loader=_UniqueKeySafeLoader)
+        )
     except Exception as exc:
         raise StateFileError(f"{path}: structured state block is invalid") from exc
     if not isinstance(payload, dict):
@@ -160,9 +197,13 @@ def parse_state_file(path: str | Path, *, expected_kind: str | None = None) -> P
     if generated_at is not None:
         generated_at = _validate_text(generated_at, "paos.generated_at")
         try:
-            datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+            parsed_generated_at = datetime.fromisoformat(
+                generated_at.replace("Z", "+00:00")
+            )
         except ValueError as exc:
             raise StateFileError(f"{resolved}: paos.generated_at must be ISO-8601") from exc
+        if parsed_generated_at.tzinfo is None:
+            raise StateFileError(f"{resolved}: paos.generated_at must include a timezone")
     data = payload["data"]
     _validate_scalar(data, "data")
     return ParsedStateFile(

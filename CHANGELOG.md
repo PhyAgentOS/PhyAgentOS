@@ -7,6 +7,59 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.5.1] - 2026-09-03
+
+完成第三轮五维代码审查并修复 Store、状态协议和 Verification HTTP 边界；未启动真实 provider、外部模型、Gateway、Action 或硬件。
+
+Completed the third five-dimension code review and fixed Store, state-protocol, and Verification HTTP boundaries; no real provider, external model, Gateway, Action, or hardware was started.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/task.py:L83-L125,L182-L262,L381-L411,L417-L463,L571-L586`：finite execution/event payload、完整聚合关系校验、create/update pre-commit validation、`task_id`/`created_at`/origin identity immutability。
+- `PhyAgentOS/state_io/protocol.py:L31-L55,L140-L155`：JSON/YAML duplicate-key rejection。
+- `PhyAgentOS/verification/service.py:L33-L51,L197-L239,L341-L351,L372-L421`：strict JSON decoding and strict parent constructor types。
+- `tests/test_state_file_authority_boundaries.py`、`tests/test_state_file_adapter.py`、`tests/test_verification_service_replay.py`、`tests/test_verification_service_config.py`：真实边界回归覆盖。
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L117-L176`：第三轮 review 记录。
+
+### Validation
+
+- Repository tests: `123 passed`.
+- Pick-place example tests: `241 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Provider-spec production subprocess, real-model semantic quality, and pick-place closure remain pending.
+
+## [v3.5.0] - 2026-09-03
+
+完成状态文件适配、Evidence、Verifier 与 Verification Service 的边界修复，并完成第二轮代码审查；未启动真实 provider 子进程、外部模型、Gateway、Watchdog、Action 或硬件。
+
+Completed boundary fixes for state-file adapters, Evidence, Verifier, and Verification Service, followed by a second code review; no real provider subprocess, external model, Gateway, Watchdog, Action, or hardware was started.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/task.py:L45-L56,L190-L244,L286-L361,L393-L445,L1193-L1240`：AgentTask approval binding、SQLite origin migration/backfill/index、immutable origin、full aggregate revalidation、terminal retention wiring。
+- `PhyAgentOS/state_io/adapters.py:L275-L322,L390-L405,L429-L510,L548-L632`：strict TARGETS/SESSIONS schema、bounded promotion、dedup exception handling。
+- `PhyAgentOS/forge/evidence.py:L31-L115,L118-L152,L165-L244,L301-L350,L570-L583`：v2 manifest、writer-owned path、pre-write immutability、strict robot-state JSON、stable bundle identity。
+- `PhyAgentOS/verification/request_builder.py:L27-L32,L198-L227,L253-L318`：AgentTask Bundle binding, same-bundle evidence ownership, strict structured JSON and unique paths。
+- `PhyAgentOS/verification/service.py:L56-L206,L345-L418`、`PhyAgentOS/config/schema.py:L341-L361`：shared provider/service schema and stable HTTP errors。
+- `PhyAgentOS/state_io/__init__.py`：移除无生产 owner 的 generic SKILLRUNTIME/LESSONS renderer 公共导出。
+- `tests/test_state_file_authority_boundaries.py:L1-L476`：真实 Store/writer/request/context/retention 边界审查覆盖。
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L1-L176`：完整审查发现、修复记录和三轮五维复审结论。
+
+### Key diff
+
+```text
+Before: origin migration was incomplete; malformed evidence/provider failures could cross owner boundaries; generic renderers looked production-ready.
+After:  origins migrate and remain immutable; evidence/provider requests fail closed; only owned projections are represented as implemented.
+```
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests` → `105 passed`.
+- Pick-place example suite → `241 passed`.
+- Unguarded pytest is blocked before collection by the system ROS `launch_testing` plugin missing `lark`; validation isolates plugins and explicitly loads `pytest_asyncio.plugin`.
+- Ruff, compileall, and `git diff --check` passed.
+- Provider-spec production subprocess, real-model semantic quality, and pick-place closure remain pending.
+
 ## [v3.4.6] - 2026-09-03
 
 增加 Verification Service HTTP replay/failure conformance：验证授权 token、请求 envelope、重复 replay、

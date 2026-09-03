@@ -338,13 +338,27 @@ class AgentVerificationConfig(Base):
     service_enabled: bool = True
     model: str | None = None
     provider: str | None = None
-    timeout_s: float = Field(default=180.0, gt=0)
+    timeout_s: float = Field(default=180.0, gt=0, le=3600.0)
     evidence_retention: Literal["all", "failed", "none"] = "none"
     max_replans_per_episode: int = Field(default=2, ge=0)
     max_verifier_calls_per_run: int = Field(default=50, ge=0)
     replan_timeout_s: float = Field(default=120.0, gt=0)
     service_host: str = "127.0.0.1"
     service_port: int = Field(default=8100, ge=1, le=65535)
+    service_startup_timeout_s: float = Field(default=5.0, gt=0, le=120.0)
+    service_max_request_bytes: int = Field(
+        default=64 * 1024 * 1024,
+        ge=1024,
+        le=512 * 1024 * 1024,
+    )
+
+    @field_validator("service_host")
+    @classmethod
+    def validate_service_host(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or any(char.isspace() for char in normalized):
+            raise ValueError("agents.verification.serviceHost is invalid")
+        return normalized
 
 
 class AgentEvolutionConfig(Base):
