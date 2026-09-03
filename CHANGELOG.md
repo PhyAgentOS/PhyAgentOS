@@ -7,6 +7,27 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.6.0] - 2026-09-03
+
+完成真实 `VerificationServiceProcess` provider-spec 子进程门禁：父进程启动正式子进程，独立 OpenAI-compatible HTTP stub 验证配置传递、私有 readiness、鉴权请求、结构化 verdict、provider 失败、超时和 stop 清理；未连接外部模型、Gateway、Watchdog、Action 或硬件。
+
+Completed the production `VerificationServiceProcess` provider-spec subprocess gate: the parent starts the formal child process, and an independent OpenAI-compatible HTTP stub verifies config transfer, private readiness, authenticated requests, structured verdicts, provider failure, timeout, and stop cleanup; no external model, Gateway, Watchdog, Action, or hardware was connected.
+
+### Detailed changes
+
+- `PhyAgentOS/verification/service.py:L28,L282-L306,L403-L418`: added a stable service identifier and token-protected `/readyz` readiness probe with strict JSON/service identity checks; retained `/healthz` as liveness.
+- `tests/test_verification_service_process.py:L1-L239`: covers formal subprocess startup, provider-spec propagation, external HTTP provider stub, failure/timeout mapping, readiness authentication, and process cleanup.
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L161-L212`: records implementation review, validation evidence, and remaining gates.
+
+### Validation
+
+- Repository tests: `127 passed`.
+- Pick-place example tests: `241 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Real-model semantic quality, Gateway/Dora wiring, and pick-place closure remain pending.
+
+Git commit: pending.
+
 ## [v3.5.2] - 2026-09-03
 
 维护提交日志：回写 v3.5.0/v3.5.1 的实现提交 hash，并核对当前分支。

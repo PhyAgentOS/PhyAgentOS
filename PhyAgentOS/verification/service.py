@@ -26,6 +26,7 @@ from PhyAgentOS.verification.contracts import VerificationVerdict
 from PhyAgentOS.verification.engine import VerificationEngine
 
 VERIFICATION_CLIENT_TIMEOUT_GRACE_S = 15.0
+VERIFICATION_SERVICE_ID = "paos-verification-service-v1"
 _HTTP_HEADER_NAME_RE = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 logger = logging.getLogger(__name__)
 
@@ -281,10 +282,33 @@ class VerificationServiceProcess:
             if process is None or process.poll() is not None:
                 raise RuntimeError("Verification Service exited before readiness")
             try:
-                with opener.open(self._url("/healthz"), timeout=0.2) as response:  # noqa: S310
-                    if response.status == 200:
+                readiness_request = url_request.Request(
+                    self._url("/readyz"),
+                    headers={"X-PAOS-Admin-Token": self.session_token},
+                    method="GET",
+                )
+                with opener.open(readiness_request, timeout=0.2) as response:  # noqa: S310
+                    content_type = (
+                        response.headers.get("Content-Type", "")
+                        .split(";", 1)[0]
+                        .strip()
+                        .lower()
+                    )
+                    readiness = _strict_json_loads(response.read())
+                    if (
+                        response.status == 200
+                        and content_type == "application/json"
+                        and readiness
+                        == {"ok": True, "service": VERIFICATION_SERVICE_ID}
+                    ):
                         return
-            except OSError:
+            except (
+                OSError,
+                TypeError,
+                ValueError,
+                UnicodeError,
+                url_error.URLError,
+            ):
                 time.sleep(0.05)
         self.stop()
         raise TimeoutError("Verification Service readiness timed out")
@@ -385,10 +409,16 @@ def _handler(
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
-            self._send(
-                {"ok": self.path == "/healthz"},
-                200 if self.path == "/healthz" else 404,
-            )
+            if self.path == "/healthz":
+                self._send({"ok": True}, 200)
+                return
+            if self.path != "/readyz":
+                self._send({"error": "not found"}, 404)
+                return
+            if self.headers.get("X-PAOS-Admin-Token") != session_token:
+                self._send({"error": "verification is restricted to the Agent"}, 403)
+                return
+            self._send({"ok": True, "service": VERIFICATION_SERVICE_ID}, 200)
 
         def do_POST(self) -> None:  # noqa: N802
             if self.path != "/v1/verify-task":

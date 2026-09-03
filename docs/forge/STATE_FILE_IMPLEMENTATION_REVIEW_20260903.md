@@ -158,17 +158,17 @@ python -m compileall -q PhyAgentOS tests
 git diff --check
 ```
 
-结果：仓库测试 `123 passed`，pick-place 示例测试 `241 passed`；Ruff、compileall、diff check 通过。显式加载
+结果：仓库测试 `127 passed`，pick-place 示例测试 `241 passed`；Ruff、compileall、diff check 通过。显式加载
 `pytest_asyncio.plugin` 后没有 `asyncio_mode` 警告。直接运行未隔离的 `python -m pytest -q tests` 会在收集前被系统 ROS
 `launch_testing` 插件的缺失依赖 `lark` 阻断；因此验证命令固定关闭第三方插件自动加载，再显式加载项目所需插件。
 
 新增/修复测试使用真实 `AgentTaskStore`、`ForgeEvidenceWriter`、`VerificationRequestBuilder`、`ContextBuilder` 和 HTTP handler
-公开边界。Fake Store/provider 仅用于确定性错误回放；没有启动生产 Verification Service 子进程，没有连接外部模型、Gateway、
-Watchdog 或 Action，没有硬件运动。
+公开边界；新增的 `test_verification_service_process.py` 进一步启动正式 `VerificationServiceProcess` 子进程，并通过外部
+OpenAI-compatible HTTP stub 验证 provider-spec 传递、私有 readiness、鉴权请求、结构化 verdict、provider 失败、超时和 stop
+清理。该 stub 不是进程内 provider，也不连接外部模型、Gateway、Watchdog 或 Action，没有硬件运动。
 
 以下项目仍未实现，也不应由本轮测试推断为已实现：
 
-- provider-spec 的真实生产子进程启动验收；
 - 真实模型的语义质量、校准和 held-out 评估；
 - 真实 Gateway/Dora wiring 与抓取放置动作闭环；
 - `SKILLRUNTIME.md` producer 和 Skill-scoped `LESSONS.md` 之外的第二套 projection 协议；
@@ -178,5 +178,35 @@ Watchdog 或 Action，没有硬件运动。
 不会被静默升级为可信 Evidence；尚未完成的旧任务需要重新捕获 Evidence。空 capture manifest 仍允许持久化，缺失 artifact
 由 Bundle quality 标记为 incomplete，从而保留现有任务失败/诊断路径，而不是在 writer 层伪造观测。
 
-因此，下一步顺序仍是：先由人工审核本记录和上层契约，再单独安排真实 provider 子进程门禁；真实模型语义质量和抓取放置闭环
-继续后置。文件适配完成不等于五个 Markdown 文件全部成为机器事实源，也不改变 PAOS 的自主进化边界。
+因此，provider-spec 的真实生产子进程门禁已完成。下一步是人工审核本次门禁证据后，安排真实模型语义质量、校准和 held-out
+评估；真实 Gateway/Dora wiring 与抓取放置闭环继续后置。文件适配完成不等于五个 Markdown 文件全部成为机器事实源，也不改变
+PAOS 的自主进化边界。
+
+## 6. v3.6.0 provider-spec 子进程门禁
+
+### 实现与代码审查
+
+- [修改] `PhyAgentOS/verification/service.py:L28,L282-L306,L403-L418`：增加稳定服务标识
+  `paos-verification-service-v1`；父进程启动后使用带 session token 的 `/readyz` 私有探针，严格校验 JSON 响应和服务标识，
+  不再把任意占用端口且返回 `/healthz=200` 的 HTTP 服务误认成子进程；保留 `/healthz` 作为公开 liveness。
+- [新增] `tests/test_verification_service_process.py:L1-L239`：启动正式 `python -m PhyAgentOS.verification.service` 子进程，
+  通过独立 OpenAI-compatible HTTP stub 验证 provider-spec 的 model/api key/api base/temperature/max_tokens 传递、请求消息、
+  结构化 verdict、provider 失败映射为稳定 HTTP 500、超时映射为 HTTP 504、私有 readiness 鉴权和进程 stop 清理。
+
+### 代码审查结论
+
+通过。生产 owner 仍是 `VerificationServiceProcess`；测试 stub 只扮演外部 provider，不创建第二套 Verification 协议，不改变
+Gateway、Watchdog、Action、Evidence 或硬件 owner。readiness 现在同时绑定 session token 和服务标识，失败路径保持 fail-closed。
+
+### 验证
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests/test_verification_service_process.py tests/test_verification_service_config.py tests/test_verification_service_replay.py` → `42 passed`。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests` → `127 passed`。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=examples/forge-skills/pick-place-workflow/src python -m pytest -p pytest_asyncio.plugin -q examples/forge-skills/pick-place-workflow/tests` → `241 passed`。
+- `python -m ruff check PhyAgentOS/verification/service.py tests/test_verification_service_process.py`、`python -m compileall -q PhyAgentOS/verification/service.py tests/test_verification_service_process.py`、`git diff --check` → 通过。
+
+### 明确未完成
+
+- 真实模型语义质量、校准和 held-out 评估；
+- 真实 Gateway/Dora wiring、完整 Action executor 和抓取放置闭环；
+- `TARGETS` candidate 到 Runtime/Profile/Action admission 的生产授权接入。
