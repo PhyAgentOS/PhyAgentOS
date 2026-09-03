@@ -7,6 +7,16 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.7.1] - 2026-09-04
+
+维护 v3.7.0 审计记录：回写实现提交，并把真实模型 blocker 更新为提交后的终态 preflight 产物；没有修改评估行为、阈值或执行顺序。
+
+Maintained the v3.7.0 audit record by recording the implementation commit and updating the real-model blocker to the terminal post-commit preflight artifact; evaluation behavior, thresholds, and execution order are unchanged.
+
+- Implementation commit: `8775073`
+- Post-commit blocked run: `artifacts/evals/verification/20260903T163926.458050Z-db095983/`
+- The manifest binds the run to full commit `8775073eccb26791a5ffd0215794c49fd46f3f82`; no model request or quality score was produced.
+
 ## [v3.7.0] - 2026-09-03
 
 建立可复现的 Verification Service 真实模型语义质量评估基础设施，并在代码审查后关闭跨层依赖、非终态错误、fixture 身份冒充和部分 case 误过完整门禁的问题。真实模型凭据当前不可用，因此质量门禁保持 blocked；未连接 Gateway、Dora、Action 或硬件。
@@ -36,6 +46,8 @@ After:  a versioned non-custom provider identity and full case set are mandatory
 - Pick-place workflow and RoboTwin adapter suites: `310 passed` using the existing PAOS packages plus system NumPy; the unmodified PAOS environment alone currently lacks NumPy.
 - Ruff, compileall, `git diff --check`, reverse-dependency scan, and credential/artifact review passed.
 - Real-model preflight remains blocked by unavailable Codex OAuth credentials; fixture metrics are explicitly not quality-gate evidence.
+
+Git commit: `8775073` on `feature/long-horizon-workflow`.
 
 ## [v3.6.0] - 2026-09-03
 

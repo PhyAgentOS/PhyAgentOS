@@ -243,7 +243,8 @@ confusion matrix，以及把 `inconclusive` 当作 abstention 的 coverage/selec
 ### 当前运行证据
 
 fixture runner smoke 已通过正式 Verification Service 子进程，但仅作为实现测试。真实模型预检运行写入
-`artifacts/evals/verification/20260903T154750.788123Z-30249a45/`，状态为 `blocked`：当前没有 PAOS provider API key，现有
+`artifacts/evals/verification/20260903T163926.458050Z-db095983/`，状态为 `blocked`，并记录实现提交
+`8775073eccb26791a5ffd0215794c49fd46f3f82`：当前没有 PAOS provider API key，现有
 Codex OAuth 也不能由 `oauth-cli-kit` 读取。该运行没有模型请求、没有质量分数，`quality_gate_eligible=false`。
 
 因此，真实模型语义质量门禁尚未关闭。下一步必须先提供可被 PAOS provider 读取的凭据，再执行完整 held-out + hazard run，审核
