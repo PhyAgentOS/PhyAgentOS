@@ -7,11 +7,22 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.5.2] - 2026-09-03
+
+维护提交日志：回写 v3.5.0/v3.5.1 的实现提交 hash，并核对当前分支。
+
+Commit-log maintenance: recorded the implementation commit hash for v3.5.0/v3.5.1 and verified the current branch.
+
+- Implementation commit: `e4cdac5`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v3.5.1] - 2026-09-03
 
 完成第三轮五维代码审查并修复 Store、状态协议和 Verification HTTP 边界；未启动真实 provider、外部模型、Gateway、Action 或硬件。
 
 Completed the third five-dimension code review and fixed Store, state-protocol, and Verification HTTP boundaries; no real provider, external model, Gateway, Action, or hardware was started.
+
+Git commit: `e4cdac5` on `feature/long-horizon-workflow`.
 
 ### Detailed changes
 
