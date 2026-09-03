@@ -7,6 +7,15 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.7.2] - 2026-09-04
+
+回写 v3.7.1 审计维护提交；没有修改实现、评估配置、运行证据或执行顺序。
+
+Recorded the v3.7.1 audit-maintenance commit; implementation, evaluation configuration, run evidence, and execution order are unchanged.
+
+- Commit: `d88fd3a`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v3.7.1] - 2026-09-04
 
 维护 v3.7.0 审计记录：回写实现提交，并把真实模型 blocker 更新为提交后的终态 preflight 产物；没有修改评估行为、阈值或执行顺序。
