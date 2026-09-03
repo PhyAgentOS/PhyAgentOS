@@ -550,17 +550,39 @@ async def compile_sessions_to_agent_tasks(
     )
 
 
-def _projection(kind: str, path: str | Path, data: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:
+def _projection(
+    kind: str,
+    path: str | Path,
+    data: Mapping[str, Any],
+    *,
+    revision: str,
+    source: str,
+    expected_sha256: str | None = None,
+) -> ProjectionResult:
     if not isinstance(data, Mapping):
         raise StateFileError(f"{kind} projection data must be an object")
-    return write_projection(path, kind=kind, revision=revision, source=source, data=data)
+    return write_projection(
+        path,
+        kind=kind,
+        revision=revision,
+        source=source,
+        data=data,
+        expected_sha256=expected_sha256,
+    )
 
 
 def render_skillruntime_projection(path: str | Path, runtime: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:
     return _projection("skillruntime", path, runtime, revision=revision, source=source)
 
 
-def render_environment_projection(path: str | Path, snapshot: Mapping[str, Any], *, revision: str, source: str) -> ProjectionResult:
+def render_environment_projection(
+    path: str | Path,
+    snapshot: Mapping[str, Any],
+    *,
+    revision: str,
+    source: str,
+    expected_sha256: str | None = None,
+) -> ProjectionResult:
     if not isinstance(snapshot, Mapping):
         raise StateFileError("environment projection data must be an object")
     try:
@@ -570,7 +592,12 @@ def render_environment_projection(path: str | Path, snapshot: Mapping[str, Any],
     if data.scene_revision != revision:
         raise StateFileError("environment scene_revision must match projection revision")
     return _projection(
-        "environment", path, data.model_dump(mode="json"), revision=revision, source=source
+        "environment",
+        path,
+        data.model_dump(mode="json"),
+        revision=revision,
+        source=source,
+        expected_sha256=expected_sha256,
     )
 
 

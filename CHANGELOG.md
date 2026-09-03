@@ -7,6 +7,32 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.3.0] - 2026-09-03
+
+增加受限 `EnvironmentProjectionProducer`：从已捕获的 `ObservationSnapshot` 和显式 provenance 生成严格
+`ENVIRONMENT.md` projection；before/after 快照必须绑定 `evidence://` URI，可选地与
+`EnvironmentAdapter.snapshot()` 的 scene revision 一致性校验。producer 只做原子 projection 写入，
+不调用 Gateway、Watchdog、Action，不创建 AgentTask，也不替代 Evidence/Verifier 事实源。
+
+Added a bounded `EnvironmentProjectionProducer` that renders a strict `ENVIRONMENT.md` projection from an
+already captured `ObservationSnapshot` and explicit provenance. Before/after snapshots must use an `evidence://`
+URI and can be revision-bound to `EnvironmentAdapter.snapshot()`. The producer only performs atomic projection
+writes; it does not call Gateway, Watchdog, or Action, create AgentTasks, or replace Evidence/Verifier authority.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/environment_projection.py:L1-L180` adds the producer input contract, adapter revision binding, evidence URI gate, and no-side-effect projection path.
+- `PhyAgentOS/forge/__init__.py:L3-L31` exports the producer API.
+- `PhyAgentOS/state_io/adapters.py:L553-L601` forwards optional `expected_sha256` to the atomic projection writer.
+- `tests/test_environment_projection_producer.py:L1-L144` covers before/after success, idempotency, drift, invalid/empty input, evidence URI, adapter revision, and no-capture boundaries.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L256-L273` and `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L27-L71` record the producer boundary and remaining Phase-B work.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `33 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No live pick-place provider, Gateway invocation, AgentTask, Evidence verdict, or motion authorization was produced.
+
 ## [v3.2.0] - 2026-09-03
 
 完成 `ENVIRONMENT.md` 的严格 projection 适配：增加 snapshot/provenance schema、revision 一致性校验，

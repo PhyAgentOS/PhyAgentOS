@@ -27,6 +27,7 @@
 - `SESSIONS.md`: `input` mode; deterministic dry-run previews; one-session-at-a-time promotion only after digest-bound human approval
 - `SKILLRUNTIME.md`, `LESSONS.md`: `projection` mode; atomic writes and digest-based drift checks
 - `ENVIRONMENT.md`: `projection` mode; strict snapshot/provenance schema, revision matching, atomic writes, and digest-based drift checks
+- Environment producer: consumes an existing `ObservationSnapshot` and explicit provenance, optionally binds the revision to an `EnvironmentAdapter.snapshot()` identity, and only writes the projection; it does not create tasks, evidence, or actions
 
 ## Ownership
 
@@ -66,3 +67,4 @@
 - no automatic motion authorization
 - no multi-session batch promotion (prevents partial writes under the single-task invariant)
 - no Environment Markdown as Evidence or Verifier authority; before/after semantics remain in immutable Evidence snapshots
+- no producer-side sensor capture, Gateway call, Watchdog dispatch, AgentTask write, or motion authorization

@@ -262,9 +262,15 @@ candidate 外壳虽为 frozen dataclass，但其中嵌套 `data` 仍是普通映
 - `SceneGraphQueryTool` 已切换到严格 parser；缺失、旧版或损坏的 `ENVIRONMENT.md` 返回 bounded error，不再静默回退为空环境。
 - 模板已切换为 `paos.state-file.v1` projection envelope，并明确 Markdown 不是 Evidence、Verifier 或任务生命周期事实源。
 
-仍未完成的上层链路：EnvironmentAdapter/ObservationSnapshot 到 projection 的正式 producer 接入、before/after
-Evidence snapshot 引用的自动关联、Verifier 对 Evidence 的语义验收，以及跨环境 replay/failure conformance。
-因此阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
+已补上受限的 `EnvironmentProjectionProducer`：它只接受已捕获的 `ObservationSnapshot` 与显式
+`scene_revision`、`snapshot_ref`、phase、source/frame/calibration 和 scene graph 元数据，并通过
+`render_environment_projection()` 原子生成 `ENVIRONMENT.md`。`publish_from_adapter()` 只读取
+EnvironmentAdapter 的 sanitized `snapshot()` 身份并校验 revision；不会捕获传感器、调用 Gateway、
+创建 AgentTask、调度 Watchdog 或授权动作。producer 仍不把 Markdown 变成 Evidence/Verifier 事实源。
+
+仍未完成的上层链路：ForgeEvidenceWriter 生成的 before/after snapshot 与 projection 的自动关联、
+Verifier 对 Evidence 的语义验收，以及跨环境 replay/failure conformance。因此阶段 B 仍未完全结束，
+阶段 D 抓取放置闭环暂不启动。
 
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
