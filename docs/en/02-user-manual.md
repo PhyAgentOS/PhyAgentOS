@@ -10,8 +10,8 @@ PhyAgentOS supports Python 3.11 and 3.12. Forge Gateway, Dora, robot drivers, si
 and locked node artifacts are deployed separately when a robot Skill needs them.
 
 ```bash
-git clone https://github.com/PhyAgentOS/PhyAgentOS.git
-cd PhyAgentOS
+git clone https://github.com/PhyAgentOS/PhyAgentOS-core.git
+cd PhyAgentOS-core
 python -m pip install -e .
 paos onboard
 ```
