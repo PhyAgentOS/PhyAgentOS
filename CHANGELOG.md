@@ -7,6 +7,26 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.1.1] - 2026-09-03
+
+完成最近三个 `TARGETS.md` candidate 功能的代码审查与测试。修复 `profile_id` 可包含路径分隔符的问题，
+并补充审批 decision/时间戳、非法 profile、baseline 差异批准、输入文件不变和 no-motion 测试。
+
+Completed code review and testing for the three recent `TARGETS.md` candidate features. Fixed path-like
+`profile_id` identities and added coverage for approval decision/timestamp, invalid profiles, explicit baseline
+differences, input immutability, and no-motion behavior.
+
+### Detailed changes
+
+- `PhyAgentOS/state_io/adapters.py:L180-L190` now rejects path-unsafe `profile_id` values.
+- `tests/test_state_file_adapter.py:L82-L180` adds the review and failure-path tests; 18 focused tests pass.
+- `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L50-L56` and `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L246-L255` record the review result and remaining Minor risk.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_state_file_adapter.py` → `18 passed`.
+- `ruff check ...`, `python -m compileall ...`, and `git diff --check` passed.
+
 ## [v3.1.0] - 2026-09-03
 
 新增 `TARGETS.md` 的已验证 Capability Profile candidate：候选必须通过严格 shadow validation，并由

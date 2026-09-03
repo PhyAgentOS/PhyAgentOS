@@ -245,6 +245,14 @@ Capability Profile candidate，固定 `motion_authorized=false`，不写 Runtime
 Action 限幅。baseline 漂移、审批不匹配或 schema 失败均 fail-closed；真正的 Runtime/Profile admission 仍需
 另行设计并审核。
 
+#### 阶段 C candidate 代码审查结论
+
+本轮审查确认：审批 schema 使用 `extra=forbid`、source/baseline digest 双重绑定，candidate promotion 不产生
+任何执行副作用；同时补上了 `profile_id` 的 path-safe 校验，避免能力身份被路径语义污染。18 项定向测试覆盖
+成功、非法输入、审批 decision/时间戳、baseline drift、显式差异批准、输入文件不变和 no-motion 边界。
+candidate 外壳虽为 frozen dataclass，但其中嵌套 `data` 仍是普通映射；它目前只作为非权威比较/replay 结果，
+不得被当作可变 Runtime 配置或直接传入 admission。若未来需要跨进程缓存 candidate，应再定义深度不可变/序列化契约。
+
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 
 该方案短期看起来结构完整，但会造成：

@@ -49,7 +49,7 @@
 ## Acceptance
 
 - discovery/context: no Gateway route is added; adapter is imported as a local utility
-- valid and invalid contract cases: covered by `tests/test_state_file_adapter.py`
+- valid and invalid contract cases, approval failures, baseline drift, and candidate immutability boundary: covered by `tests/test_state_file_adapter.py`
 - binding and identity checks: revision/source and deterministic preview identity are tested
 - evidence and verification: no evidence/verdict is produced by this adapter
 - Fake Gateway/conformance: not applicable; no Gateway route is created

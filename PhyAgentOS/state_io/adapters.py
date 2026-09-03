@@ -233,8 +233,12 @@ def _validate_targets(data: Mapping[str, Any], baseline: Mapping[str, Any] | Non
     required = {"profile_id", "observation_modalities", "action_space", "limits"}
     errors = _require_keys(data, required, "targets")
     for field in ("profile_id",):
-        if field in data and (not isinstance(data[field], str) or not data[field].strip()):
-            errors.append(f"targets.{field} must be a non-empty string")
+        if field in data:
+            value = data[field]
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"targets.{field} must be a non-empty string")
+            elif value.strip() in {".", ".."} or any(char in value for char in "/\\"):
+                errors.append(f"targets.{field} must be path-safe")
     for field in ("observation_modalities", "action_space"):
         value = data.get(field)
         if not isinstance(value, list) or not value or not all(isinstance(item, str) and item.strip() for item in value):

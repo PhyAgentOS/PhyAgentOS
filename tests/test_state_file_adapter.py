@@ -124,6 +124,62 @@ def test_targets_candidate_rejects_baseline_drift(tmp_path):
         promote_targets_candidate(path, baseline=baseline, approval=approval)
 
 
+def test_targets_candidate_rejects_path_unsafe_profile_id_fail_closed(tmp_path):
+    path = tmp_path / "TARGETS.md"
+    data = {
+        "profile_id": "../panda-lab",
+        "observation_modalities": ["rgb"],
+        "action_space": ["object.place"],
+        "limits": {"cartesian_speed_m_s": {"value": 0.2}},
+    }
+    write_state(path, kind="targets", mode="input", data=data)
+    report = parse_targets_shadow(path, baseline=data)
+    assert report.valid is False
+    assert any("profile_id must be path-safe" in error for error in report.errors)
+    with pytest.raises(StateFileError, match="invalid TARGETS candidate"):
+        promote_targets_candidate(path, baseline=data, approval={})
+
+
+def test_targets_candidate_preserves_explicit_baseline_difference_without_writing(tmp_path):
+    path = tmp_path / "TARGETS.md"
+    baseline = {
+        "profile_id": "panda-lab",
+        "observation_modalities": ["rgb"],
+        "action_space": ["object.place"],
+        "limits": {"cartesian_speed_m_s": {"value": 0.2}},
+    }
+    candidate_data = {**baseline, "limits": {"cartesian_speed_m_s": {"value": 0.3}}}
+    write_state(path, kind="targets", mode="input", data=candidate_data)
+    source_digest = parse_targets_shadow(path, baseline=baseline).candidate_sha256
+    approval = {
+        "approval_id": "targets-approval-2",
+        "source_sha256": source_digest,
+        "baseline_sha256": canonical_sha256(baseline),
+        "approved_by": "operator",
+        "confirmed_at": "2026-09-03T09:00:00+00:00",
+    }
+    before = path.read_bytes()
+    candidate = promote_targets_candidate(path, baseline=baseline, approval=approval)
+    assert candidate.differences == ("limits",)
+    assert candidate.data == candidate_data
+    assert path.read_bytes() == before
+    candidate_data["profile_id"] = "mutated-after-promotion"
+    assert candidate.data["profile_id"] == "panda-lab"
+
+
+def test_target_profile_approval_rejects_invalid_decision_and_naive_timestamp():
+    base = {
+        "approval_id": "targets-approval",
+        "source_sha256": "a" * 64,
+        "baseline_sha256": "b" * 64,
+        "approved_by": "operator",
+    }
+    with pytest.raises(ValueError, match="decision"):
+        TargetProfileApproval(**base, decision="deny", confirmed_at="2026-09-03T09:00:00+00:00")
+    with pytest.raises(ValueError, match="timezone"):
+        TargetProfileApproval(**base, confirmed_at="2026-09-03T09:00:00")
+
+
 def test_parser_rejects_missing_or_malformed_structured_block(tmp_path):
     path = tmp_path / "ENVIRONMENT.md"
     path.write_text("# no structured state\n", encoding="utf-8")
