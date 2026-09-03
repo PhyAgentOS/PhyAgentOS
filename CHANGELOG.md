@@ -7,6 +7,35 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.4.6] - 2026-09-03
+
+增加 Verification Service HTTP replay/failure conformance：验证授权 token、请求 envelope、重复 replay、
+deterministic provider verdict、invalid-response normalization 和 provider failure。测试仅使用进程内
+provider，不启动生产验证子进程或连接外部模型。
+
+Added Verification Service HTTP replay/failure conformance for authorization tokens, request envelopes, repeated
+replay, deterministic provider verdicts, invalid-response normalization, and provider failures. Tests use only an
+in-process provider and do not start the production verification subprocess or connect to external models.
+
+### Detailed changes
+
+- `tests/test_verification_service_replay.py:L1-L117` adds HTTP handler/engine replay and failure tests.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L285-L296` records service-level conformance and remaining provider-spec/real-model gates.
+- `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L60-L63` records Verification Service HTTP conformance coverage.
+
+### Key diff
+
+```text
+Before: verifier checks were tested locally, but the HTTP service boundary had no deterministic replay matrix.
+After:  the real handler + VerificationEngine path validates auth, request schema, normalization, replay, and failure propagation without external side effects.
+```
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `58 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No production Verification Service, external model, Gateway, Watchdog, Action, or motion authorization was used.
+
 ## [v3.4.5] - 2026-09-03
 
 增加 ForgeTaskVerifier 本地 verdict contract conformance：success/replan 不变量、criteria 精确绑定、

@@ -288,6 +288,12 @@ malformed model response 必须 fail-closed。该 conformance 通过替换模型
 执行，不启动验证子进程、不调用模型或 Gateway；因此 provider-backed LLM 语义质量和真实服务 replay
 仍需单独验收。
 
+随后增加 Verification Service HTTP 层 replay/failure conformance：使用进程内 deterministic provider
+验证授权 token、请求 envelope、重复 replay、一致 verdict normalization、invalid model response 和
+provider failure。该测试覆盖真实 HTTP handler 与 `VerificationEngine` 的组合，但不启动生产子进程、
+不连接外部 provider；因此 `VerificationServiceProcess` 的 provider-spec 启动链和真实模型质量仍需
+在独立环境中验收。
+
 本轮进一步补充了文件适配的 Fake Store/Fake Gateway replay、未知字段失败前置、编译失败无残留、
 projection drift 保留旧内容和 no-motion conformance。这里的 replay 只证明适配器输入/投影的确定性和
 失败边界，不把 Fake Gateway 变成生产执行路径，也不把 Markdown 提升为事实源。
