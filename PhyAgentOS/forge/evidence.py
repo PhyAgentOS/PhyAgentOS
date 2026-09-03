@@ -39,6 +39,7 @@ class ForgeEvidenceWriter:
         namespace = Path(artifact_namespace)
         if namespace.is_absolute() or ".." in namespace.parts:
             raise ValueError("artifact namespace must be a safe relative path")
+        self.artifact_namespace = namespace.as_posix()
         self.artifact_dir = self.workspace / "artifacts" / namespace / session_id
         if not self.artifact_dir.resolve().is_relative_to(self.workspace):
             raise ValueError("Forge artifact directory escapes workspace")
@@ -47,6 +48,14 @@ class ForgeEvidenceWriter:
     def write_snapshot(self, phase: str, snapshot: ObservationSnapshot) -> str:
         if phase not in {"before", "after"}:
             raise ValueError(f"unsupported evidence phase: {phase}")
+        snapshot_path = self.artifact_dir / f"{phase}_snapshot.json"
+        if snapshot_path.exists():
+            existing = self.load_snapshot(str(snapshot_path.relative_to(self.workspace)))
+            if existing != snapshot:
+                raise ValueError(
+                    f"immutable {phase} evidence snapshot already exists with different content"
+                )
+            return str(snapshot_path.relative_to(self.workspace))
         planned_images: list[tuple[str, CapturedImage, Path]] = []
         planned_paths: set[Path] = set()
         for source, image in snapshot.images.items():
@@ -107,6 +116,33 @@ class ForgeEvidenceWriter:
         path = self.artifact_dir / f"{phase}_snapshot.json"
         atomic_write_text(path, json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
         return str(path.relative_to(self.workspace))
+
+    def snapshot_projection_identity(self, reference: str) -> tuple[str, str]:
+        """Return the phase and opaque URI for one writer-owned snapshot."""
+
+        path = self._workspace_path(reference)
+        expected_names = {"before_snapshot.json": "before", "after_snapshot.json": "after"}
+        phase = expected_names.get(path.name)
+        expected_path = (self.artifact_dir / path.name).resolve()
+        if phase is None or path != expected_path:
+            raise ValueError("snapshot reference is not a writer-owned before/after snapshot")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("evidence snapshot manifest is invalid") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("evidence snapshot manifest must be an object")
+        if (
+            payload.get("version") != "forge_observation_snapshot_v1"
+            or payload.get("phase") != phase
+        ):
+            raise ValueError("evidence snapshot manifest has an invalid phase or version")
+        return phase, f"evidence://{self.artifact_namespace}/{self.session_id}/{phase}_snapshot"
+
+    def snapshot_projection_ref(self, reference: str) -> str:
+        """Return the stable opaque evidence URI for a writer-owned snapshot."""
+
+        return self.snapshot_projection_identity(reference)[1]
 
     def load_snapshot(self, reference: str) -> ObservationSnapshot:
         snapshot, _, _ = self._load_snapshot(reference)

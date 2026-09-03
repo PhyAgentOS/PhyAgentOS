@@ -268,9 +268,12 @@ candidate 外壳虽为 frozen dataclass，但其中嵌套 `data` 仍是普通映
 EnvironmentAdapter 的 sanitized `snapshot()` 身份并校验 revision；不会捕获传感器、调用 Gateway、
 创建 AgentTask、调度 Watchdog 或授权动作。producer 仍不把 Markdown 变成 Evidence/Verifier 事实源。
 
-仍未完成的上层链路：ForgeEvidenceWriter 生成的 before/after snapshot 与 projection 的自动关联、
-Verifier 对 Evidence 的语义验收，以及跨环境 replay/failure conformance。因此阶段 B 仍未完全结束，
-阶段 D 抓取放置闭环暂不启动。
+已进一步补上 `ForgeEvidenceWriter` 关联：writer 对 before/after manifest 做版本、phase 和路径校验，
+为 writer-owned snapshot 生成稳定 opaque `evidence://` URI；producer 可由该 manifest 自动注入 phase 与
+reference，并拒绝调用方提供的不匹配值。writer 现在拒绝同一 phase 的不同内容覆盖，保持 snapshot 不可变。
+
+仍未完成的上层链路：Verifier 对 Evidence 的语义验收，以及跨环境 replay/failure conformance。因此
+阶段 B 仍未完全结束，阶段 D 抓取放置闭环暂不启动。
 
 ### 不推荐方案：先完整实现五个 Markdown 状态文件
 

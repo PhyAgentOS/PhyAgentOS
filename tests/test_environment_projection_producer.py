@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -10,6 +11,7 @@ from PhyAgentOS.forge import (
     EnvironmentProjectionProducer,
     EnvironmentProjectionProducerError,
 )
+from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import CapturedImage, ObservationSnapshot
 from PhyAgentOS.state_io import StateFileDriftError, parse_environment_projection
 
@@ -142,3 +144,51 @@ def test_publish_from_adapter_rejects_revision_mismatch_without_writing(tmp_path
             path, Adapter(), _snapshot(), _metadata()
         )
     assert not path.exists()
+
+
+def test_publish_from_evidence_writer_derives_phase_and_opaque_reference(tmp_path):
+    writer = ForgeEvidenceWriter(tmp_path, "task-4", "command-1")
+    snapshot_reference = writer.write_snapshot("after", _snapshot())
+    metadata = _metadata()
+    metadata.pop("phase")
+    metadata.pop("snapshot_ref")
+    metadata["scene_revision"] = "scene-4"
+
+    output = tmp_path / "ENVIRONMENT.md"
+    EnvironmentProjectionProducer().publish_from_evidence_writer(
+        output, writer, snapshot_reference, metadata
+    )
+    parsed = parse_environment_projection(output)
+    assert parsed.data.phase == "after"
+    assert parsed.data.snapshot_ref == "evidence://forge/task-4/after_snapshot"
+
+
+def test_evidence_writer_rejects_snapshot_rewrite_and_projection_mismatch(tmp_path):
+    writer = ForgeEvidenceWriter(tmp_path, "task-4", "command-1")
+    reference = writer.write_snapshot("before", _snapshot())
+    assert writer.snapshot_projection_ref(reference) == "evidence://forge/task-4/before_snapshot"
+    writer.write_snapshot("before", _snapshot())
+    changed = replace(
+        _snapshot().images["camera/front"],
+        data=b"changed-rgb",
+    )
+    with pytest.raises(ValueError, match="immutable before"):
+        writer.write_snapshot(
+            "before",
+            ObservationSnapshot(captured_at=CAPTURED_AT, images={"camera/front": changed}),
+        )
+    with pytest.raises(EnvironmentProjectionProducerError, match="does not match"):
+        EnvironmentProjectionProducer().publish_from_evidence_writer(
+            tmp_path / "ENVIRONMENT.md",
+            writer,
+            reference,
+            _metadata(phase="after", snapshot_ref="evidence://forge/task-4/after_snapshot"),
+        )
+
+
+def test_publish_from_evidence_writer_rejects_non_writer_reference(tmp_path):
+    writer = ForgeEvidenceWriter(tmp_path, "task-4", "command-1")
+    with pytest.raises(EnvironmentProjectionProducerError, match="invalid Forge evidence"):
+        EnvironmentProjectionProducer().publish_from_evidence_writer(
+            tmp_path / "ENVIRONMENT.md", writer, "artifacts/other.json", _metadata()
+        )

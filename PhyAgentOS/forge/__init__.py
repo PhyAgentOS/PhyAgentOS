@@ -14,6 +14,7 @@ from PhyAgentOS.forge.environment_projection import (
     EnvironmentProjectionInput,
     EnvironmentProjectionProducer,
     EnvironmentProjectionProducerError,
+    EvidenceSnapshotStore,
 )
 from PhyAgentOS.forge.task import AgentTaskCoordinator
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
@@ -23,6 +24,7 @@ __all__ = [
     "AgentTaskCoordinator",
     "CapabilityRuntime",
     "EnvironmentAdapter",
+    "EvidenceSnapshotStore",
     "EnvironmentProjectionInput",
     "EnvironmentProjectionProducer",
     "EnvironmentProjectionProducerError",

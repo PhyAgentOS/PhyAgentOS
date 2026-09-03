@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, Protocol
 
 from PhyAgentOS.forge.capability_runtime.ports import EnvironmentAdapter
 from PhyAgentOS.forge.observation import ObservationSnapshot
@@ -25,6 +25,14 @@ from PhyAgentOS.state_io.protocol import (
 
 class EnvironmentProjectionProducerError(StateFileError):
     """Raised when a snapshot cannot be safely projected."""
+
+
+class EvidenceSnapshotStore(Protocol):
+    """Minimal writer seam used for snapshot association."""
+
+    def load_snapshot(self, reference: str) -> ObservationSnapshot: ...
+
+    def snapshot_projection_identity(self, reference: str) -> tuple[str, str]: ...
 
 
 @dataclass(frozen=True)
@@ -155,6 +163,54 @@ class EnvironmentProjectionProducer:
             expected_sha256=expected_sha256,
         )
 
+    def publish_from_evidence_writer(
+        self,
+        path: str | Path,
+        writer: EvidenceSnapshotStore,
+        snapshot_reference: str,
+        metadata: EnvironmentProjectionInput | Mapping[str, Any],
+        *,
+        expected_sha256: str | None = None,
+    ) -> ProjectionResult:
+        """Associate a writer-owned immutable snapshot with a projection.
+
+        ``phase`` and ``snapshot_ref`` are derived from the writer manifest. If
+        callers provide either field, it must match the derived identity.
+        """
+
+        try:
+            phase, evidence_ref = writer.snapshot_projection_identity(snapshot_reference)
+            snapshot = writer.load_snapshot(snapshot_reference)
+        except Exception as exc:
+            raise EnvironmentProjectionProducerError(
+                f"invalid Forge evidence snapshot reference: {exc}"
+            ) from exc
+        if isinstance(metadata, EnvironmentProjectionInput):
+            if metadata.phase != phase or metadata.snapshot_ref != evidence_ref:
+                raise EnvironmentProjectionProducerError(
+                    "environment metadata does not match evidence snapshot identity"
+                )
+            input_data = metadata
+        elif isinstance(metadata, Mapping):
+            supplied = dict(metadata)
+            for name, expected in (("phase", phase), ("snapshot_ref", evidence_ref)):
+                if name in supplied and supplied[name] != expected:
+                    raise EnvironmentProjectionProducerError(
+                        f"environment metadata {name} does not match evidence snapshot identity"
+                    )
+                supplied[name] = expected
+            input_data = self._normalize_input(supplied)
+        else:
+            raise EnvironmentProjectionProducerError(
+                "environment projection metadata must be an object"
+            )
+        return self.publish(
+            path,
+            snapshot,
+            input_data,
+            expected_sha256=expected_sha256,
+        )
+
     @staticmethod
     def _normalize_input(
         metadata: EnvironmentProjectionInput | Mapping[str, Any],
@@ -177,4 +233,5 @@ __all__ = [
     "EnvironmentProjectionInput",
     "EnvironmentProjectionProducer",
     "EnvironmentProjectionProducerError",
+    "EvidenceSnapshotStore",
 ]

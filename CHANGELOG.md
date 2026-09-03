@@ -7,6 +7,33 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.4.0] - 2026-09-03
+
+增加 `ForgeEvidenceWriter` 到 `EnvironmentProjectionProducer` 的受限关联。writer 校验自身生成的
+before/after manifest、phase 和路径，生成稳定 opaque `evidence://` reference，并拒绝同一 phase 的
+不同内容覆盖；producer 可自动注入 phase/reference 并拒绝不匹配值。Evidence/Verifier 仍是权威，未增加
+Gateway、Watchdog、Action、AgentTask 或运动路径。
+
+Added a bounded association from `ForgeEvidenceWriter` to `EnvironmentProjectionProducer`. The writer validates
+its before/after manifests, phase, and path, derives a stable opaque `evidence://` reference, and rejects content
+replacement within a phase. The producer injects phase/reference or rejects mismatches. Evidence/Verifier remain
+authoritative; no Gateway, Watchdog, Action, AgentTask, or motion path was added.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/evidence.py:L27-L143` adds writer-owned snapshot identity validation, stable evidence URI derivation, and same-phase immutability checks.
+- `PhyAgentOS/forge/environment_projection.py:L30-L237` adds `publish_from_evidence_writer()` and the minimal `EvidenceSnapshotStore` seam.
+- `PhyAgentOS/forge/__init__.py:L3-L33` exports the evidence association protocol.
+- `tests/test_environment_projection_producer.py:L1-L194` covers manifest association, stable URI, overwrite rejection, phase/reference mismatch, and non-writer paths.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L265-L278` and `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L27-L71` record the completed association and remaining Phase-B work.
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `36 passed`.
+- `PYTHONPATH=examples/forge-skills/pick-place-workflow/src python -m pytest -q examples/forge-skills/pick-place-workflow/tests` → `241 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Full RoboTwin collection remains environment-limited by missing `numpy`/package path; no motion or live verifier run.
+
 ## [v3.3.0] - 2026-09-03
 
 增加受限 `EnvironmentProjectionProducer`：从已捕获的 `ObservationSnapshot` 和显式 provenance 生成严格
