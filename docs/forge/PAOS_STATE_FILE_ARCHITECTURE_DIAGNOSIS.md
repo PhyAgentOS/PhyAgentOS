@@ -282,6 +282,12 @@ authoritative association、artifact retention、byte size/digest、媒体类型
 不可变 bundle replay 中被重新校验；跨工作区复制后 artifact identity 与结构化事实保持一致。该测试
 验证的是 Evidence 消费边界，不等同于已经完成 LLM 语义 verdict 或真实 Gateway replay。
 
+当前又增加了 `ForgeTaskVerifier` 的本地 verdict contract conformance：验证 success 必须逐条满足
+criteria，replan 必须携带 recovery context，criteria 集合和 evidence reference 必须精确绑定，
+malformed model response 必须 fail-closed。该 conformance 通过替换模型启动 seam 的确定性 fixture
+执行，不启动验证子进程、不调用模型或 Gateway；因此 provider-backed LLM 语义质量和真实服务 replay
+仍需单独验收。
+
 本轮进一步补充了文件适配的 Fake Store/Fake Gateway replay、未知字段失败前置、编译失败无残留、
 projection drift 保留旧内容和 no-motion conformance。这里的 replay 只证明适配器输入/投影的确定性和
 失败边界，不把 Fake Gateway 变成生产执行路径，也不把 Markdown 提升为事实源。

@@ -7,6 +7,34 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.4.5] - 2026-09-03
+
+增加 ForgeTaskVerifier 本地 verdict contract conformance：success/replan 不变量、criteria 精确绑定、
+unknown evidence、malformed response 和 no-service 边界。该轮不启动 Verification Service，不调用模型或 Gateway。
+
+Added local ForgeTaskVerifier verdict contract conformance for success/replan invariants, exact criterion binding,
+unknown evidence, malformed responses, and the no-service boundary. This iteration does not start the Verification
+Service or call a model or Gateway.
+
+### Detailed changes
+
+- `tests/test_verifier_semantic_conformance.py:L1-L126` adds deterministic verifier acceptance/rejection tests.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L280-L290` distinguishes local verdict contract checks from provider-backed semantic quality.
+- `docs/forge/STATE_FILE_ADAPTER_FEATURE_CARD.md:L59-L62` records local verifier conformance coverage.
+
+### Key diff
+
+```text
+Before: verifier boundary tests covered projection-as-evidence rejection, but not the full verdict contract matrix.
+After:  deterministic fixtures validate criteria/evidence/recovery invariants and malformed responses without starting a service.
+```
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `54 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No Verification Service, model, Gateway, Watchdog, Action, or motion authorization was used.
+
 ## [v3.4.4] - 2026-09-03
 
 校正执行顺序文档：明确 `SKILLRUNTIME.md`/`LESSONS.md` 是可选 projection，记录受限 promotion 先于

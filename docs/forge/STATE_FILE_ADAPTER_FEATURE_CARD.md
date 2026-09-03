@@ -57,6 +57,7 @@
 - evidence and verification: no evidence/verdict is produced by this adapter
 - verifier boundary conformance: `ENVIRONMENT.md` cannot be parsed as an Evidence Bundle, and projection URIs are rejected as verifier evidence references
 - Evidence request conformance: `tests/test_evidence_semantic_replay_conformance.py` covers immutable bundle replay, capture-window ordering, required kind/source, authoritative association, retention, digest/size, and structured JSON validation
+- local verifier verdict conformance: `tests/test_verifier_semantic_conformance.py` covers exact criteria binding, success/replan invariants, unknown evidence references, malformed responses, and the no-service boundary
 - replay/failure conformance: `tests/test_state_file_replay_conformance.py` covers cross-workspace deterministic replay, unknown-field fail-closed behavior, Fake Store compilation failure without lifecycle residue, projection-drift preservation, and no-motion boundaries
 - Fake Gateway/conformance: not applicable; no Gateway route is created
 - simulation or hardware proof: not applicable; implementation is no-motion
