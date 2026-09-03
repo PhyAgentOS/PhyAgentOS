@@ -7,6 +7,37 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.4.2] - 2026-09-03
+
+增加状态文件适配的 replay/failure conformance：跨工作区回放保持确定性，未知字段在触及 Store/Gateway
+前 fail-closed，Store 编译失败不留下生命周期残留，projection drift 保留原内容，TARGETS/SESSIONS
+继续保持 `motion_authorized=false`。`SKILLRUNTIME.md` 与 `LESSONS.md` producer 仍明确为可选 projection。
+
+Added state-file adapter replay/failure conformance: cross-workspace replay remains deterministic, unknown fields
+fail closed before Store/Gateway access, Store compilation failures leave no lifecycle residue, projection drift
+preserves the prior content, and TARGETS/SESSIONS retain `motion_authorized=false`. `SKILLRUNTIME.md` and
+`LESSONS.md` producers remain explicitly optional projections.
+
+### Detailed changes
+
+- `tests/test_state_file_replay_conformance.py:L1-L215` adds replay, Fake Store failure, Gateway no-call sentinel, drift-preservation, and no-motion tests.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L280-L288` separates required Phase-B boundary conformance from optional Markdown projections.
+
+### Key diff
+
+```text
+Before: replay/failure coverage was distributed across adapter tests without an explicit cross-workspace boundary.
+After: dedicated conformance tests assert deterministic replay, no partial lifecycle state, drift preservation,
+       and no-motion behavior while keeping Markdown non-authoritative.
+```
+
+### Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests` → `43 passed`.
+- `PYTHONPATH=examples/forge-skills/pick-place-workflow/src python -m pytest -q examples/forge-skills/pick-place-workflow/tests` → `241 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No real Gateway, Watchdog, Action, or motion authorization was used.
+
 ## [v3.4.1] - 2026-09-03
 
 增加 Verifier/Evidence boundary conformance：`ENVIRONMENT.md` projection 不能被解析为 Evidence Bundle，
