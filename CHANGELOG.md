@@ -26,6 +26,7 @@ Completed the EnvironmentAdapter/provider-neutral `scene.observe` core seam and 
 - Ruff, compileall, and `git diff --check` passed.
 - Full RoboTwin runtime, real Gateway/Dora, geometry consumer, Action executor, and hardware remain deferred.
 - Commit: `c46a35a` on `feature/long-horizon-workflow`.
+- Follow-up adapter failure-path fix: `69c00d7` on `feature/long-horizon-workflow`.
 
 ## [v3.10.0] - 2026-09-04
 
