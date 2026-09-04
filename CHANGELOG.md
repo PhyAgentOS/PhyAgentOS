@@ -35,6 +35,15 @@ Recorded the v4.1.0 implementation commit hash; implementation, tests, and execu
 - Commit: `4b6ab2b`
 - Branch: `feature/long-horizon-workflow`
 
+## [v4.1.2] - 2026-09-04
+
+修正 readiness conformance 日志索引中的提交哈希说明；没有修改实现、测试或执行顺序。
+
+Corrected the readiness conformance changelog index's commit-hash note; implementation, tests, and execution order are unchanged.
+
+- Correct maintenance commit for v4.1.1: `68bacaf`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v4.0.0] - 2026-09-04
 
 完成 `manipulation.prepare` candidate consumer 的协议加固，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 Query/no-motion。Hephaestus 仅作为 clean-room 行为参考，未接入其运行时代码。
