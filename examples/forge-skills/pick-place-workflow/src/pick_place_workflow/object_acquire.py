@@ -54,6 +54,12 @@ class AcquireProvider(Protocol):
     def acquire(self, request: dict[str, Any]) -> "AcquireSnapshot | None": ...
 
 
+class ActionReadinessGate(Protocol):
+    """Validate immutable readiness evidence before provider admission."""
+
+    def check(self, request: dict[str, Any]) -> str | None: ...
+
+
 @dataclass(frozen=True)
 class AcquireSnapshot:
     """Provider-neutral terminal facts plus an internal fake pending budget."""
@@ -404,8 +410,14 @@ def terminal_result(arguments: dict[str, Any], snapshot: AcquireSnapshot) -> dic
 class ObjectAcquireEndpoint:
     """Validate and admit one bounded Action without owning Gateway lifecycle state."""
 
-    def __init__(self, provider: AcquireProvider) -> None:
+    def __init__(
+        self,
+        provider: AcquireProvider,
+        *,
+        readiness_gate: ActionReadinessGate | None = None,
+    ) -> None:
         self.provider = provider
+        self.readiness_gate = readiness_gate
 
     def admit(self, arguments: Any) -> AcquireAdmission | AcquireRejection:
         error = validate_arguments(arguments)
@@ -416,6 +428,27 @@ class ObjectAcquireEndpoint:
             }.get(error, 400)
             return AcquireRejection(status_code, error, _error_message(error))
         assert isinstance(arguments, dict)
+        if self.readiness_gate is not None:
+            try:
+                readiness_error = self.readiness_gate.check(dict(arguments))
+            except Exception:
+                return AcquireRejection(
+                    503,
+                    "readiness_gate_error",
+                    "readiness evidence gate failed",
+                )
+            if readiness_error is not None:
+                if not isinstance(readiness_error, str) or not readiness_error.strip():
+                    return AcquireRejection(
+                        502,
+                        "invalid_readiness_gate_result",
+                        "readiness evidence gate returned an invalid result",
+                    )
+                return AcquireRejection(
+                    409,
+                    readiness_error,
+                    "readiness evidence is not admissible for this Action",
+                )
         try:
             snapshot = self.provider.acquire(dict(arguments))
         except Exception:
@@ -449,6 +482,12 @@ class ObjectAcquireEndpoint:
                 snapshot_error,
                 "object acquisition result failed contract validation",
             )
+        if self.readiness_gate is not None and snapshot.world_change_started is not False:
+            return AcquireRejection(
+                502,
+                "motion_started_in_no_motion_mode",
+                "no-motion Action provider reported world change",
+            )
         return AcquireAdmission(snapshot, terminal_result(arguments, snapshot))
 
     def invoke(self, arguments: Any) -> AcquireAdmission | AcquireRejection:
@@ -466,6 +505,7 @@ __all__ = [
     "AcquireSnapshot",
     "AcquireAdmission",
     "AcquireRejection",
+    "ActionReadinessGate",
     "ACQUIRE_TOOL_SPEC",
     "ObjectAcquireEndpoint",
     "terminal_result",

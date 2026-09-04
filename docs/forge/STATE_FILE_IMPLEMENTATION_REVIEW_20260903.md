@@ -575,3 +575,30 @@ Franka geometry → 同 revision GraspGen → 外部 readiness evidence → 人�
 - 可维护性：evidence 具有 request/candidate-set/observation/scene/frame/calibration/worker/profile/timestamp 绑定，50 个 artifact ref 唯一；现有 replay profile 仍只用于 replay，不冒充 live worker schema。
 
 没有发现需要阻断当前 no-motion 阶段的 Blocker/Major。人工审核仅批准进入下一阶段的 Action/Gateway no-motion 集成审查。Curobo 碰撞范围仍限于 robot self 与 table，未覆盖 attached-object、完整 transport/descent/retreat、接触动力学或语义成功；因此尚不能宣称任意抓取、抓取放置闭环或物理执行完成。
+
+## 23. Action/Gateway no-motion wiring 五维复审（2026-09-05）
+
+本阶段将已人工审核的 readiness evidence 接入 Action admission 前置 gate。新增的
+`robotwin20_adapter.ReadinessEvidenceGate` 读取外部 manifest/review/artifact 配置，先验证
+SHA-256、审核决策、三项 checks、同一 scene/candidate-set/frame/calibration 和
+`motion_authorized=false`，再允许 `object.acquire`/`object.place` endpoint 调用 provider。
+Fake Gateway 保持标准 Action invocation/status/result/cancel 路由，并在 action context 中
+显式返回 `motion_authorized=false`。
+
+五个维度均通过：
+
+- 架构集成：gate 属于 adapter/profile，Action endpoint 仍属于 provider-neutral Skill，
+  Gateway 继续拥有 invocation 生命周期；没有 direct Agent→provider 或第二执行平面。
+- 失败路径：缺失/损坏/过期/身份漂移/非 no-motion evidence 在 invocation 创建前拒绝；
+  provider 异常、失败、取消、超时和 unknown 不被转换为成功，也不触发盲重试。
+- 权威边界：人工审核记录和 manifest digest 是进入 gate 的必要条件；evidence 只证明
+  readiness，不证明物理执行；本阶段所有 action provider 的 `world_change_started=false`。
+- 配置：manifest、review、artifact root 通过 `profiles/robotwin20/action-readiness.yaml`
+  和环境变量注入，未把路径、模型、URL 或凭据写入核心代码。
+- 可维护性：新增模块只依赖标准库（YAML 仅用于 profile loader），复用现有 Action
+  endpoint、Fake Gateway 和 `ForgeToolClient`，并提供独立 conformance 测试。
+
+验证：adapter/skill Action gate 与 Gateway conformance `52 passed`；RoboTwin 实际 manifest
+加载到 50 个候选 evidence 均通过 gate。此结果只关闭 no-motion Action/Gateway wiring
+门禁，仍不能进入 RoboTwin motion stepping；下一步需在独立 review 后建设仿真 motion
+executor，并继续保存每次 invocation 的中间证据。

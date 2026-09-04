@@ -318,3 +318,22 @@ are under `/home/yanxu/robotwin20-runtime/artifacts/paos-franka-blocks-ranking-v
 The manual decision authorizes only the next no-motion Action/Gateway
 integration review. It does not authorize attached-object transport/contact,
 RoboTwin action stepping, Dora, hardware, or physical execution.
+
+### No-motion Action admission
+
+Action admission is gated by the reviewed readiness evidence before a Gateway
+invocation is created. Configure `profiles/robotwin20/action-readiness.yaml`:
+
+```yaml
+schema_version: paos-robotwin20-action-readiness/v1
+manifest: ${ROBOTWIN20_READINESS_MANIFEST}
+manual_review: ${ROBOTWIN20_READINESS_REVIEW}
+artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
+```
+
+Use `build_action_readiness_gate(...)` and pass the resulting gate to the
+`object.acquire` and `object.place` endpoints. The gate verifies the review
+decision, manifest/evidence digests, same-scene identity, all three readiness
+checks, and `motion_authorized=false`. Rejections occur before invocation
+allocation. This path is still no-motion: providers must not call
+`play_once`, Dora, or hardware, and `world_change_started` remains `false`.

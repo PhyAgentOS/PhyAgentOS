@@ -559,3 +559,25 @@ evidence 前仍不得进入 Action/Gateway wiring。
 `profiles/robotwin20/readiness-live.yaml` 与 `build_live_readiness_evaluator` 已将该 worker 接入现有 bounded JSONL process seam；profile 仍要求只读 runtime profile 和一致的 profile digest。
 
 限制仍然有效：Curobo 当前碰撞范围只覆盖 robot self 与 table，未覆盖 attached object、完整 transport/descent/retreat、接触动力学或任务语义成功。因此这不是“任意抓取”或抓取放置闭环完成的证明；下一步是基于已审核 evidence 设计并审查 Action/Gateway 的 no-motion wiring，随后才可进行 RoboTwin 仿真动作接入。
+
+## 20. Action/Gateway no-motion wiring（2026-09-05）
+
+在已审核的 Franka readiness evidence 之上，Action admission 现在增加了 adapter-owned
+`ReadinessEvidenceGate`。它读取 manifest、证据 artifact 和人工审核记录，校验 manifest/
+review/evidence digest、`scene_revision`、`observation_ref`、`frame_id`、`calibration_ref`、
+`candidate_set_ref`、`candidate_ref`、`entity_ref` 以及三项 readiness check；任一身份漂移、
+证据缺失、过期或 `motion_authorized` 非 `false` 都在创建 invocation 前 fail-closed。Gate
+只做只读校验，不启动 planner、RoboTwin `play_once`、Dora 或硬件。
+
+`object.acquire`/`object.place` 的 provider-neutral Action endpoint 通过可注入 gate 接入
+既有 Fake Gateway；Gateway context 显式声明 `motion_authorized=false`，仍使用标准
+`invocation_id`/`attempt_id`、status/result、cancel 和 unknown 语义。Action provider 在
+本阶段必须保持 `world_change_started=false`；planner/readiness 通过不等同于执行成功。
+超时、取消、provider failure 和未知远端状态继续由 Gateway lifecycle owner 处理，不能
+自动重试或宣称物理停止。
+
+本阶段五维复审未发现 Blocker/Major：架构集成复用了 Skill Action endpoint 与既有 Gateway
+route；失败路径在 provider 前拒绝并保留 unknown；权威边界由人工审核 digest 和 evidence
+identity 持有；manifest/review/artifact 路径由 `action-readiness.yaml` 外置；实现没有新增
+RoboTwin/模型依赖或第二套生命周期事实源。该 wiring 仍是 no-motion 集成证据，不授权
+attached-object transport/descent/retreat、RoboTwin motion stepping、Dora 或硬件执行。

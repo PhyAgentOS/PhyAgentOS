@@ -29,6 +29,9 @@ from .object_acquire import (
     AcquireSnapshot,
     ObjectAcquireEndpoint,
 )
+from .object_acquire import (
+    ActionReadinessGate as AcquireActionReadinessGate,
+)
 from .object_place import (
     PLACE_TOOL_SPEC,
     ObjectPlaceEndpoint,
@@ -36,6 +39,9 @@ from .object_place import (
     PlaceProvider,
     PlaceRejection,
     PlaceSnapshot,
+)
+from .object_place import (
+    ActionReadinessGate as PlaceActionReadinessGate,
 )
 from .understanding import (
     SceneUnderstandingEndpoint,
@@ -57,6 +63,7 @@ __all__ = [
     "PreparationSnapshot",
     "ACQUIRE_TOOL_SPEC",
     "AcquireAdmission",
+    "AcquireActionReadinessGate",
     "AcquireProvider",
     "AcquireRejection",
     "AcquireSnapshot",
@@ -64,6 +71,7 @@ __all__ = [
     "PLACE_TOOL_SPEC",
     "ObjectPlaceEndpoint",
     "PlaceAdmission",
+    "PlaceActionReadinessGate",
     "PlaceProvider",
     "PlaceRejection",
     "PlaceSnapshot",

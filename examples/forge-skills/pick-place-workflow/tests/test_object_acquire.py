@@ -133,6 +133,7 @@ async def test_action_discovery_context_admission_pending_and_terminal_result():
         "observation_frame": "observation",
         "unit": "m",
         "orientation_convention": "candidate-bound",
+        "motion_authorized": False,
         "cancellation": "supported_via_common_cancel_route",
         "unknown_semantics": "terminal_for_accounting_not_physical_stop",
     }

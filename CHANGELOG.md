@@ -7,6 +7,35 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.7.9] - 2026-09-05
+
+接入已人工审核 readiness evidence 的 Action admission no-motion gate。`object.acquire`/
+`object.place` 在创建 Gateway invocation 前校验 manifest/review/evidence SHA-256、同一
+scene/candidate-set/frame/calibration、candidate/entity、worker/embodiment identity、三项
+readiness checks 和 `motion_authorized=false`；Fake Gateway action context 显式返回 no-motion，
+并拒绝 provider 报告的 `world_change_started=true`。manifest/review/artifact 路径由
+`profiles/robotwin20/action-readiness.yaml` 和环境变量注入。
+
+Added a no-motion Action-admission gate backed by manually reviewed readiness evidence. Before
+allocating a Gateway invocation, `object.acquire`/`object.place` validate manifest/review/evidence
+SHA-256, scene/candidate-set/frame/calibration, candidate/entity, worker/embodiment identity, all
+readiness checks, and `motion_authorized=false`. Fake Gateway Action contexts explicitly expose
+no-motion and reject providers reporting `world_change_started=true`. Manifest/review/artifact
+paths are injected through `profiles/robotwin20/action-readiness.yaml` and environment variables.
+
+### Detailed changes
+
+- Added `examples/forge-adapters/robotwin20/src/robotwin20_adapter/action_readiness.py:L1-L274` and `profiles/robotwin20/action-readiness.yaml:L1-L4`.
+- Added `examples/forge-adapters/robotwin20/tests/test_action_readiness_gate.py:L1-L273`.
+- Updated Skill Action endpoints and Fake Gateway at `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_acquire.py:L51-L60,L410-L488`, `object_place.py:L56-L65,L487-L565`, and `fake_gateway.py:L261-L297,L375-L410`.
+- Updated architecture diagnosis, five-dimension review, and adapter README.
+
+### Validation
+
+- Focused Action/Gateway/readiness conformance: `52 passed`.
+- Ruff and `git diff --check` passed; real Franka manifest gate loaded all `50` evidence candidates.
+- No RoboTwin `play_once`, Dora, Action stepping, or hardware motion was invoked.
+
 ## [v4.7.6] - 2026-09-04
 
 完成 Franka `blocks_ranking_rgb` 的独立 readiness worker 证据闭环，并将 live worker 接入 adapter 的 bounded JSONL profile seam。相同 `blocks_ranking_rgb-0-1/head_camera` 上生成 12 个 geometry/point-cloud derived artifacts，GraspGen funnel 为 `72→72→71→71`，Curobo no-motion worker 为 `50/71` prepared；50 个 evidence ref 唯一且全部绑定 request、candidate-set、observation、scene、frame、calibration、worker 和 profile digest。

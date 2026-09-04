@@ -34,6 +34,7 @@ from .object_acquire import (
     AcquireAdmission,
     AcquireProvider,
     AcquireRejection,
+    ActionReadinessGate,
     ObjectAcquireEndpoint,
 )
 from .object_place import (
@@ -266,6 +267,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         preparation_provider: PreparationProvider | None = None,
         acquire_provider: AcquireProvider | None = None,
         place_provider: PlaceProvider | None = None,
+        readiness_gate: ActionReadinessGate | None = None,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
@@ -283,10 +285,14 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             else None
         )
         self.acquire_endpoint = (
-            ObjectAcquireEndpoint(acquire_provider) if acquire_provider is not None else None
+            ObjectAcquireEndpoint(acquire_provider, readiness_gate=readiness_gate)
+            if acquire_provider is not None
+            else None
         )
         self.place_endpoint = (
-            ObjectPlaceEndpoint(place_provider) if place_provider is not None else None
+            ObjectPlaceEndpoint(place_provider, readiness_gate=readiness_gate)
+            if place_provider is not None
+            else None
         )
         self.invocations: dict[str, dict[str, Any]] = {}
         self.requests: list[httpx.Request] = []
@@ -378,6 +384,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     "observation_frame": "observation",
                     "unit": "m",
                     "orientation_convention": "candidate-bound",
+                    "motion_authorized": False,
                     "cancellation": "supported_via_common_cancel_route",
                     "unknown_semantics": "terminal_for_accounting_not_physical_stop",
                 }
@@ -397,6 +404,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     "observation_frame": "observation",
                     "unit": "m",
                     "orientation_convention": "candidate-bound",
+                    "motion_authorized": False,
                     "cancellation": "supported_via_common_cancel_route",
                     "unknown_semantics": "terminal_for_accounting_not_physical_stop",
                 }
