@@ -4,11 +4,11 @@
   <h3>面向物理智能体的递归自我进化基础设施</h3>
 
   <p>
-    <a href="https://github.com/PhyAgentOS/PhyAgentOS/stargazers">
-      <img src="https://img.shields.io/github/stars/PhyAgentOS/PhyAgentOS?style=social" alt="Stars">
+    <a href="https://github.com/PhyAgentOS/PhyAgentOS-core/stargazers">
+      <img src="https://img.shields.io/github/stars/PhyAgentOS/PhyAgentOS-core?style=social" alt="Stars">
     </a>
-    <a href="https://github.com/PhyAgentOS/PhyAgentOS/network/members">
-      <img src="https://img.shields.io/github/forks/PhyAgentOS/PhyAgentOS?style=social" alt="Forks">
+    <a href="https://github.com/PhyAgentOS/PhyAgentOS-core/network/members">
+      <img src="https://img.shields.io/github/forks/PhyAgentOS/PhyAgentOS-core?style=social" alt="Forks">
     </a>
   </p>
   <p>
@@ -21,9 +21,26 @@
     <a href="https://phy-agent-os.net/">
       <img src="https://img.shields.io/badge/Website-online-FF6B35" alt="Website">
     </a>
-    <a href="https://github.com/PhyAgentOS/PhyAgentOS">
+    <a href="https://github.com/PhyAgentOS/PhyAgentOS-core">
       <img src="https://img.shields.io/badge/PRs-Welcome-2EA44F" alt="PRs">
     </a>
+  <p>
+    <a href="https://space.bilibili.com/3546880296355920?spm_id_from=333.1007.0.0">
+      <img src="https://img.shields.io/badge/Bilibili-00A1D6?logo=bilibili&logoColor=white" alt="Bilibili">
+    </a>
+    <a href="https://www.xiaohongshu.com/user/profile/673d83e3000000001c01a183">
+      <img src="https://img.shields.io/badge/%E5%B0%8F%E7%BA%A2%E4%B9%A6-FF2442?logo=xiaohongshu&logoColor=white" alt="小红书">
+    </a>
+    <a href="https://x.com/phyagentos">
+      <img src="https://img.shields.io/badge/X-000000?logo=x&logoColor=white" alt="X">
+    </a>
+    <a href="https://www.linkedin.com/in/phyagent-os-252372401/">
+      <img src="https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white" alt="LinkedIn">
+    </a>
+    <a href="https://discord.gg/YJztZ4wUM">
+      <img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord">
+    </a>
+  </p>
   </p>
   <p>
     <sub><a href="README.md">English</a> · <a href="README_zh.md">中文</a> · <a href="docs/README.md">文档</a></sub>
@@ -113,8 +130,8 @@ PhyAgentOS 是一个面向具身任务的 Agent 框架。Agent 规划高层动�
 ### 1. 安装
 
 ```bash
-git clone https://github.com/PhyAgentOS/PhyAgentOS.git
-cd PhyAgentOS
+git clone https://github.com/PhyAgentOS/PhyAgentOS-core.git
+cd PhyAgentOS-core
 python -m pip install -e .
 
 # 开发与测试依赖
