@@ -64,6 +64,14 @@ from .readiness_replay import (
     validate_readiness_replay_artifact,
     write_readiness_replay_artifact,
 )
+from .route_evidence import (
+    ROUTE_EVIDENCE_PROFILE_SCHEMA_VERSION,
+    ROUTE_EVIDENCE_SCHEMA_VERSION,
+    RouteEvidenceClient,
+    RouteEvidenceError,
+    build_route_evidence_client,
+    verify_route_evidence,
+)
 from .route_readiness import (
     ROUTE_CHECKS,
     ROUTE_PHASES,
@@ -194,6 +202,12 @@ __all__ = [
     "project_route_evidence",
     "route_geometry_digest",
     "validate_route_request",
+    "ROUTE_EVIDENCE_PROFILE_SCHEMA_VERSION",
+    "ROUTE_EVIDENCE_SCHEMA_VERSION",
+    "RouteEvidenceClient",
+    "RouteEvidenceError",
+    "build_route_evidence_client",
+    "verify_route_evidence",
     "SIMULATION_AUTHORIZATION_PROFILE_SCHEMA_VERSION",
     "SIMULATION_APPROVAL_SCHEMA_VERSION",
     "SIMULATION_EVIDENCE_MANIFEST_SCHEMA_VERSION",

@@ -699,3 +699,34 @@ route readiness、接触动力学、RoboTwin motion worker、before/after snapsh
 “完整路线证据没有公共协议/worker seam”的结构性缺口，未关闭真实 planner、attached-object
 collision、接触动力学、停止控制、before/after snapshot 或语义 Verifier。下一步仍需补齐这些
 真实/独立证据，再进行人工审核和受控 motion executor 实现。
+
+## 28. 独立 route-evidence verifier 五维验收（2026-09-04）
+
+本阶段新增 `route_evidence.py`、`robotwin_route_evidence_worker.py`、
+`route-evidence.yaml` 及 conformance tests。verifier 消费外部证据，不执行 planner 或
+仿真；只有附着 geometry、trajectory/joint-limit、六个 readiness scope、before/after 快照
+和 semantic verdict 全部通过绑定与摘要校验时才生成 projection。
+
+- **架构集成：通过。** verifier 位于 RoboTwin adapter，复用现有 bounded JSONL
+  `ProcessWorkerClient` 和 route-readiness contract；不注册 Tool、Session、Action route，
+  不创建第二套生命周期或执行平面。
+- **失败路径：通过。** 缺失/损坏/越界/符号链接 artifact、摘要漂移、身份漂移、阶段顺序
+  错误、scope 不全、planner/semantic 非 pass 和 before/after 无状态变化均 fail-closed；
+  worker 异常由 JSONL 边界投影为 unavailable，client 不把它升级为可用。
+- **权威边界：通过。** external evidence 是被审计的输入而非运动授权；canonical projection
+  与响应固定 `motion_authorized=false`、`world_change_started=false`，不能绕过 Gateway
+  invocation-first、simulation authorization 或人工审批。
+- **配置：通过。** worker、artifact root、worker id、超时与 PYTHONPATH 均在
+  `route-evidence.yaml` 注入；核心代码不写入模型、设备、URL、凭据或运行时路径。
+- **可维护性：通过。** schema、artifact digest、snapshot identity 和 worker/client
+  边界集中在单一 adapter 模块；测试覆盖成功 round-trip、篡改、scope 缺失、digest、
+  symlink、不可变 canonical artifact 和 profile wiring。
+
+专项 verifier conformance 为 `10 passed`，结合 route/readiness/action 专项为 `80 passed`。
+初审发现并修复一个 Major：原协议把 verifier 的 no-motion 与外部 probe 的世界变化混为一体，
+且未绑定可信 producer。现在 `producer_binding`（producer id/profile digest/evidence mode）
+由 profile 注入并严格匹配；`probe_execution` 明确要求独立受控 simulation probe 已获授权、
+已开始且完成世界变化，而 verifier 响应仍固定 no-motion。没有 Blocker/Major 遗留。
+该验收关闭的是“外部 readiness evidence 无统一消费/审计边界”，不是生成真实 planner、接触
+动力学或语义成功证据；当前仓库只验证协议/审计 seam，下一步仍须由独立外部 worker 生成真实
+产物并完成人工审核，之后才可实现受控 simulation motion executor。

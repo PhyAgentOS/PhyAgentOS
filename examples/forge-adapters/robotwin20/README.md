@@ -373,3 +373,21 @@ dynamics, stop control, or semantic success. It never calls `play_once`, steps
 RoboTwin, or creates a Gateway Action. A future planner/contact/verifier worker
 must implement these checks under the same contract before any simulation
 authorization can be reviewed.
+
+### Independent route-evidence verifier
+
+`route-evidence.yaml` and `robotwin_route_evidence_worker.py` provide the next
+adapter-owned boundary. The worker consumes an external evidence bundle rather
+than running a planner: the bundle must include a verified attached-geometry
+artifact, planner trajectory and joint-limit artifacts, all six route-readiness
+scope artifacts, and bound before/after snapshots plus a semantic verdict.
+Every artifact is checked for SHA-256, root containment, immutability, and the
+same request/candidate/scene/frame/calibration identity. Before and after
+snapshots must be valid, bound JSON records with distinct state digests.
+
+`build_route_evidence_client(...)` returns `available` only when all of those
+external artifacts pass verification. The resulting projection remains
+`motion_authorized: false` and `world_change_started: false`; the worker never
+starts RoboTwin or creates an Action/Gateway invocation. This is an evidence
+consumer, not a substitute for a real planner, simulator stepping, or manual
+approval.

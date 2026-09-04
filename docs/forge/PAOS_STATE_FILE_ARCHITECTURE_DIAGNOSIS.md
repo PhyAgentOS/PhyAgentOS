@@ -670,3 +670,24 @@ step simulator，也不会把结构检查当成 readiness pass。profile-owned c
 因此本阶段完成的是完整路线证据协议和安全 worker seam，不是 attached-object/IK/接触 readiness
 本身。下一步仍需在同一 contract 下接入真实或独立 planner、附着碰撞模型、停止控制和执行后
 语义快照，完成独立人工审核后才可申请 simulation motion。
+
+## 24. 独立 route-evidence verifier（2026-09-04）
+
+按上述顺序新增 `paos-robotwin20-simulation-route-evidence/v1` verifier、profile-owned
+`RouteEvidenceClient` 和 bounded JSONL worker。该阶段不把结构化 route request 当成真实
+readiness，而是消费外部 planner/仿真探针已经生成的证据：附着物体 geometry digest、完整
+trajectory/joint-limit 产物、六个 route-readiness scope、before/after snapshot 以及语义
+verdict。每个 artifact 都要经过 root containment、不可变读取、SHA-256 和同一
+request/candidate/scene/frame/calibration 绑定；快照还必须是绑定正确且 state digest 不同的
+JSON 记录。
+
+verifier 仅在所有外部证据均为 `pass` 时生成 route-readiness projection；响应和 projection
+始终固定 `motion_authorized=false`、`world_change_started=false`，不会启动 RoboTwin、step
+仿真、创建 Action/Gateway invocation 或替代人工审批。缺失、损坏、摘要漂移、身份漂移、
+重复/越界 artifact 或 before/after 无状态变化均返回 unavailable/fail-closed。
+
+该阶段完成了“真实/独立 evidence 的消费与审计边界”，不等同于已经获得真实 planner、接触
+动力学或语义成功证据。外部证据必须声明受控 simulation probe 已获授权并实际发生世界变化，
+而 verifier 自身仍保持 no-motion；二者不能混写。当前仓库只验证该协议和 fail-closed seam，
+并未生成真实 probe 证据。只有外部独立 worker 生成并人工审核后，才可进入受控 simulation
+motion executor。

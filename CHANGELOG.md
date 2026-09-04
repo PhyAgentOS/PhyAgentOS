@@ -7,6 +7,24 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.11.0] - 2026-09-04
+
+新增独立 route-evidence verifier：消费外部授权 simulation probe 产物，校验附着 geometry、planner route、六项 readiness scope、before/after snapshot、semantic verdict、producer identity 和 SHA-256；verifier 与 worker 始终保持 no-motion，不启动 RoboTwin、Dora、Gateway 或硬件。
+
+Added an independent route-evidence verifier that consumes artifacts from an authorized external simulation probe and validates attached geometry, planner route, six readiness scopes, before/after snapshots, semantic verdict, producer identity, and SHA-256. The verifier and worker remain no-motion and never start RoboTwin, Dora, Gateway, or hardware.
+
+### Detailed changes
+
+- Added `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_evidence.py`, `runtime/robotwin_route_evidence_worker.py`, `profiles/robotwin20/route-evidence.yaml`, and `tests/test_route_evidence.py`.
+- Added strict producer/probe execution binding so external world change is explicit and cannot be confused with verifier no-motion.
+- Updated PAOS diagnosis, implementation review, and adapter README with the five-dimension acceptance and remaining motion gate.
+
+### Validation
+
+- Verifier focus: `10 passed`; combined route/readiness/action focus: `80 passed`; repository: `164 passed`.
+- Ruff, compileall, and `git diff --check` passed. No RoboTwin `play_once`, Dora, Gateway motion, or hardware was started.
+- Commit: pending (current working tree; to be recorded after commit).
+
 ## [v4.10.0] - 2026-09-05
 
 新增 simulation route-readiness contract、profile-owned bounded JSONL worker 和外部配置。请求绑定附着物体 geometry/digest、八阶段路线、waypoint frame/速度限幅、workspace 与 stop policy；当前 worker 对真实 planner、附着碰撞、接触动力学、stop controller 和语义验收明确返回 unavailable，保持 no-motion。
@@ -23,6 +41,7 @@ Added the simulation route-readiness contract, profile-owned bounded JSONL worke
 
 - Route readiness: `9 passed`; combined readiness/action/Gateway focus: `81 passed`; repository: `164 passed`.
 - Ruff, compileall, and `git diff --check` passed. No RoboTwin `play_once`, Dora, Gateway motion executor, or hardware was started.
+- Git commit: `ada59b5` on `feature/long-horizon-workflow`.
 
 ## [v4.9.0] - 2026-09-05
 
