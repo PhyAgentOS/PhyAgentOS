@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from .ports import ActionAdmission, ActionEndpoint, QueryEndpoint
@@ -63,6 +64,8 @@ class Invocation:
     timeout_ms: int | None = None
     status: str = "accepted"
     cancel_requested: bool = False
+    stop_requested: bool = False
+    deadline_monotonic: float | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -94,10 +97,11 @@ def _validate_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
 class CapabilityRuntime:
     """Register generic ToolEndpoints and expose Gateway-facing lifecycle methods."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
         self._tools: dict[str, EndpointRegistration] = {}
         self._operations: dict[tuple[str, str], EndpointRegistration] = {}
         self._invocations: dict[str, Invocation] = {}
+        self._clock = clock or time.monotonic
 
     def register_tool(
         self,
@@ -177,6 +181,8 @@ class CapabilityRuntime:
             isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or timeout_ms < 1
         ):
             raise ToolContractError("timeout_ms must be a positive integer when provided")
+        if registration.spec["semantics"] == "session" and timeout_ms is not None:
+            raise ToolContractError("Session invocations do not accept timeout_ms")
         max_concurrency = registration.context.get("max_concurrency", 1)
         if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int) or max_concurrency < 1:
             raise ToolContractError("Tool context max_concurrency must be a positive integer")
@@ -209,6 +215,11 @@ class CapabilityRuntime:
             terminal_result=dict(admission.terminal_result),
             caller_id=caller_id,
             timeout_ms=timeout_ms,
+            deadline_monotonic=(
+                self._clock() + (timeout_ms / 1000.0)
+                if timeout_ms is not None
+                else None
+            ),
         )
         self._invocations[invocation_id] = invocation
         return {
@@ -254,8 +265,45 @@ class CapabilityRuntime:
         invocation.status = "cancel_requested"
         return {"accepted": True, "status": "cancel_requested"}
 
+    def stop_invocation(self, invocation_id: str) -> dict[str, Any]:
+        """Request termination of a Session without claiming it stopped yet."""
+        invocation = self._invocation(invocation_id)
+        registration = self._registration(invocation.tool_id)
+        if registration.spec["semantics"] != "session":
+            raise ToolContractError("stop_invocation is only valid for Session tools")
+        if invocation.status in {"succeeded", "failed", "cancelled", "stopped", "unknown"}:
+            return {"accepted": False, "status": invocation.status}
+        invocation.stop_requested = True
+        invocation.status = "stop_requested"
+        return {"accepted": True, "status": "stop_requested"}
+
     def _advance(self, invocation: Invocation) -> None:
-        if invocation.status in {"cancel_requested", "succeeded", "failed", "cancelled", "stopped", "unknown"}:
+        if invocation.status in {"succeeded", "failed", "cancelled", "stopped", "unknown"}:
+            return
+        if invocation.cancel_requested:
+            invocation.status = "cancelled"
+            invocation.terminal_result = {
+                **invocation.terminal_result,
+                "status": "cancelled",
+            }
+            return
+        if invocation.stop_requested:
+            invocation.status = "stopped"
+            invocation.terminal_result = {
+                **invocation.terminal_result,
+                "status": "stopped",
+            }
+            return
+        if (
+            invocation.deadline_monotonic is not None
+            and self._clock() >= invocation.deadline_monotonic
+        ):
+            invocation.status = "unknown"
+            invocation.terminal_result = {
+                **invocation.terminal_result,
+                "status": "unknown",
+                "failure_code": "timeout",
+            }
             return
         if invocation.pending_polls > 0:
             invocation.pending_polls -= 1

@@ -380,3 +380,13 @@ held-out accuracy 为 `0.75`，但高于当前总体阈值 `0.8`；该残余风�
 因此，Verification 语义质量门禁现在可以关闭。执行顺序仍未跳过物理边界：下一步是 Gateway/Dora 的无动作 wiring、失败/超时/身份
 conformance 和代码审查；之后才是抓取放置闭环，最后才是基于可归因执行证据的受控自主进化。该评估没有连接 Gateway、Dora、Action 或硬件，
 也没有授予 motion authorization。
+
+## 11. v3.9.0 阶段验收澄清
+
+本阶段“之前五个模块”是五个验收维度：架构集成、失败路径、权威边界、配置、可维护性；不是要求重新实现
+`TARGETS.md`、`SKILLRUNTIME.md`、`SESSIONS.md`、`ENVIRONMENT.md`、`LESSONS.md`。这些文件继续遵循各自的
+projection/input 与 SQLite、Gateway、Evidence、Runtime、experience ledger 事实源边界。
+
+Gateway/Dora 无动作 wiring 已通过 provider-neutral `CapabilityRuntimeTransport` 接入既有 Runtime/ToolClient，覆盖
+discovery/context、Query、Action/Session 生命周期、身份关联、timeout/unknown、cancel/stop、并发和 no-POST recovery。
+该结果只证明协议与边界实现，不证明真实 Dora 进程或物理执行可用；抓取放置闭环与受控自主进化仍按顺序后置。

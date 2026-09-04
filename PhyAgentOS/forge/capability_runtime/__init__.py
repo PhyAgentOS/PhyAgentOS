@@ -8,6 +8,7 @@ from .grasp_proposal import (
 from .grasp_proposal import (
     normalize_snapshot as normalize_grasp_snapshot,
 )
+from .http_transport import CapabilityRuntimeTransport
 from .manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     ManipulationPreparationEndpoint,
@@ -43,6 +44,7 @@ __all__ = [
     "ActionAdmission",
     "ActionEndpoint",
     "CapabilityRuntime",
+    "CapabilityRuntimeTransport",
     "CapabilityRuntimeError",
     "DuplicateToolError",
     "EndpointRegistration",

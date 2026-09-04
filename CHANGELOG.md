@@ -7,6 +7,25 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.9.0] - 2026-09-04
+
+完成 Gateway/Dora provider-neutral 无动作 wiring，并按架构集成、失败路径、权威边界、配置、可维护性五个维度完成审查；不连接真实 Dora、Gateway、Action 或硬件。
+
+Completed provider-neutral no-motion Gateway/Dora wiring and reviewed it across architecture integration, failure paths, authority boundaries, configuration, and maintainability; no real Dora, Gateway, Actions, or hardware connected.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/capability_runtime/http_transport.py:L1-L95`: reusable HTTP Gateway transport over `CapabilityRuntime`.
+- `PhyAgentOS/forge/capability_runtime/runtime.py:L57-L70,L180-L223,L260-L313`: deadline/unknown and cancel/stop terminal reconciliation; Session timeout rejection.
+- `tests/test_gateway_dora_no_motion_conformance.py:L1-L117`: discovery, identity, lifecycle, malformed JSON, cancellation, timeout, and no-POST conformance.
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`: five-dimension acceptance and execution-order clarification.
+
+### Validation
+
+- Repository tests: `150 passed`; pick-place tests: `243 passed`; conformance subset: `11 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Real Dora/Gateway, Action executor, hardware motion, pick-place closure, and autonomous-evolution promotion remain deferred.
+
 ## [v3.8.3] - 2026-09-04
 
 完成完整 `gpt-5.6-sol/high` held-out + hazard 真实模型语义评估并关闭 Verification 质量门禁；保留一个 replan/inconclusive 残余质量风险，不连接 Gateway、Dora、Action 或硬件。

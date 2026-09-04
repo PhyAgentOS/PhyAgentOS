@@ -302,3 +302,25 @@ criterion 与 recovery-context 指标均为 1.0，且无凭据泄漏。因为使
 本次门禁可以关闭 Verification 语义质量 gate，但不能推导出 Gateway/Dora、Action executor、抓取放置或硬件运动已经实现。
 按照已批准执行顺序，下一步是 Gateway/Dora 的无动作 wiring、身份/超时/失败 conformance 和代码审查；该阶段通过后才进入抓取放置
 闭环，之后才讨论基于执行证据的受控自主进化。
+
+## 11. v3.9.0 Gateway/Dora 无动作 wiring 与五维验收
+
+本阶段的“之前五个模块”指五个验收维度，而不是五个 Markdown 状态文件：架构集成、失败路径、权威边界、配置、可维护性。
+实现保持 provider-neutral、dry-run/no-motion；没有连接真实 Dora、Gateway、Action 或硬件。
+
+### 实现与代码审查结论
+
+- [架构集成] `CapabilityRuntimeTransport` 位于 `PhyAgentOS/forge/capability_runtime`，复用既有 `CapabilityRuntime` 和 `ForgeToolClient` 协议，提供 `/tools`、context、Query、Action/Session invocation、status/result、cancel/stop 路由；不创建第二套执行平面。
+- [失败路径] Runtime deadline 到期明确变为 `unknown`；cancel/stop 先记录 request，再在 status/result reconciliation 中变为 terminal `cancelled`/`stopped`；malformed JSON 返回 400 `invalid_json`，不创建 invocation；pending/unknown 的重复读取不发送 POST。
+- [权威边界] Gateway identity 由 transport discovery 返回并由 Runtime/Binding 继续持有；`invocation_id`、`attempt_id`、`caller_id` 由 Runtime 生成/关联；adapter 不生成伪造 result，也不授予 motion authorization。
+- [配置] gateway identity 为构造参数且严格要求非空；timeout 仅接受正整数，Session 明确拒绝 timeout；未引入 URL、凭据、Dora 或硬件硬编码。
+- [可维护性] HTTP adapter 是可复用正式模块，测试只验证该模块，不把 example FakeGateway 作为生产实现；错误映射、终态集合和 no-motion 约束均有直接回归覆盖。
+
+### 验收结果
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests/test_gateway_dora_no_motion_conformance.py examples/forge-skills/pick-place-workflow/tests/test_generic_capability_runtime.py` → `11 passed`。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests` → `150 passed`。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=examples/forge-skills/pick-place-workflow/src python -m pytest -p pytest_asyncio.plugin -q examples/forge-skills/pick-place-workflow/tests` → `243 passed`。
+- `python -m ruff check PhyAgentOS/forge/capability_runtime tests/test_gateway_dora_no_motion_conformance.py`、`python -m compileall -q PhyAgentOS tests`、`git diff --check` → 通过。
+
+该阶段通过五维验收，但仍不等同于真实 Dora/Gateway 进程互操作、Action executor、抓取放置闭环或硬件安全证明；这些保持后置。

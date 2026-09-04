@@ -25,6 +25,14 @@ ACTION_SPEC = {
     "description": "Admit one bounded acquisition action.",
 }
 
+SESSION_SPEC = {
+    "tool_id": "workflow.session",
+    "endpoint_id": "workflow",
+    "operation": "run",
+    "semantics": "session",
+    "description": "Run one bounded provider-neutral workflow session.",
+}
+
 
 class Query:
     def invoke(self, arguments):
@@ -103,7 +111,34 @@ def test_action_lifecycle_is_explicit_and_cancel_does_not_claim_stop():
     invocation_id = runtime.start_action("object.acquire", {})["invocation_id"]
     cancelled = runtime.cancel_invocation(invocation_id)
     assert cancelled == {"accepted": True, "status": "cancel_requested"}
-    assert runtime.invocation_status(invocation_id)["status"] == "cancel_requested"
+    status = runtime.invocation_status(invocation_id)
+    assert status["status"] == "cancelled"
+    assert status["cancel_requested"] is True
+    assert runtime.invocation_result(invocation_id)["status"] == "cancelled"
+
+
+def test_timeout_reconciles_to_unknown_and_does_not_report_success():
+    now = [100.0]
+    runtime = CapabilityRuntime(clock=lambda: now[0])
+    runtime.register_tool(ACTION_SPEC, Action(pending_polls=10))
+    invocation_id = runtime.start_action("object.acquire", {}, timeout_ms=1000)["invocation_id"]
+    now[0] = 101.0
+    assert runtime.invocation_status(invocation_id)["status"] == "unknown"
+    result = runtime.invocation_result(invocation_id)
+    assert result["status"] == "unknown"
+    assert result["result"]["failure_code"] == "timeout"
+
+
+def test_session_stop_reconciles_to_stopped_and_sessions_reject_deadlines():
+    runtime = CapabilityRuntime()
+    runtime.register_tool(SESSION_SPEC, Action(pending_polls=2))
+    with pytest.raises(ToolContractError, match="Session invocations do not accept timeout_ms"):
+        runtime.start_action("workflow.session", {}, timeout_ms=1000)
+    invocation_id = runtime.start_action("workflow.session", {})["invocation_id"]
+    stopped = runtime.stop_invocation(invocation_id)
+    assert stopped == {"accepted": True, "status": "stop_requested"}
+    assert runtime.invocation_status(invocation_id)["status"] == "stopped"
+    assert runtime.invocation_result(invocation_id)["status"] == "stopped"
 
 
 def test_action_admission_must_return_generic_admission():

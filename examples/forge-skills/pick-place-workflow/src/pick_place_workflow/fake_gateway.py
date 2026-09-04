@@ -426,6 +426,8 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             return self._read_invocation(request)
         if request.method == "POST" and path.startswith("/invocations/") and path.endswith("/cancel"):
             return self._cancel_invocation(request)
+        if request.method == "POST" and path.startswith("/invocations/") and path.endswith("/stop"):
+            return self._stop_invocation(request)
         return self._fail(404, "not_found", "Gateway route not found")
 
     def _invoke(self, request: httpx.Request) -> httpx.Response:
@@ -489,6 +491,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             "pending_polls": admitted.snapshot.pending_polls,
             "terminal": False,
             "cancel_requested": False,
+            "stop_requested": False,
             "result": admitted.terminal_result,
         }
         return httpx.Response(
@@ -536,6 +539,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             "pending_polls": admitted.snapshot.pending_polls,
             "terminal": False,
             "cancel_requested": False,
+            "stop_requested": False,
             "result": admitted.terminal_result,
         }
         return httpx.Response(
@@ -593,16 +597,22 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         record = self.invocations.get(invocation_id)
         if record is None:
             return self._fail(404, "not_found", "invocation was not found")
-        if record["cancel_requested"]:
+        if record["cancel_requested"] or record["stop_requested"]:
             record["terminal"] = True
             result = dict(record["result"])
-            result["status"] = "cancelled"
+            status = "cancelled" if record["cancel_requested"] else "stopped"
+            result["status"] = status
+            summary = result.get("capability_outcome_summary", {})
             result["capability_outcome_summary"] = {
-                **result["capability_outcome_summary"],
+                **summary,
                 "capability_phase": "none",
-                "status": "cancelled",
+                "status": status,
                 "failure_owner": "operator",
-                "failure_code": "cancelled_by_operator",
+                "failure_code": (
+                    "cancelled_by_operator"
+                    if status == "cancelled"
+                    else "stopped_by_operator"
+                ),
                 "outcome_known": True,
             }
             record["result"] = result
@@ -632,15 +642,30 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         )
 
     def _cancel_invocation(self, request: httpx.Request) -> httpx.Response:
+        return self._control_invocation(request, "cancel")
+
+    def _stop_invocation(self, request: httpx.Request) -> httpx.Response:
+        return self._control_invocation(request, "stop")
+
+    def _control_invocation(self, request: httpx.Request, operation: str) -> httpx.Response:
         prefix = "/invocations/"
-        suffix = "/cancel"
+        suffix = f"/{operation}"
         invocation_id = unquote(request.url.path[len(prefix): -len(suffix)])
         record = self.invocations.get(invocation_id)
         if record is None:
             return self._fail(404, "not_found", "invocation was not found")
         if not record["terminal"]:
-            record["cancel_requested"] = True
-        return httpx.Response(202, json={"ok": True, "data": {"invocation_id": invocation_id, "cancel_requested": True}})
+            record[f"{operation}_requested"] = True
+        return httpx.Response(
+            202,
+            json={
+                "ok": True,
+                "data": {
+                    "invocation_id": invocation_id,
+                    f"{operation}_requested": True,
+                },
+            },
+        )
 
     @staticmethod
     def _ok(data: dict[str, Any]) -> httpx.Response:
