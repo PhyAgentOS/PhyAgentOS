@@ -9,9 +9,9 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 
 ## [v4.5.4] - 2026-09-05
 
-回写 v4.5.3 GraspGen 验收日志维护提交哈希 `36d940d`；没有修改实现、测试或执行顺序。
+回写 v4.5.3 GraspGen 验收日志维护提交哈希 `36d940d`，并完成 v4.5.4 索引提交 `0cfcd56`；没有修改实现、测试或执行顺序。
 
-Recorded the v4.5.3 GraspGen acceptance-log maintenance commit hash `36d940d`; implementation, tests, and execution order are unchanged.
+Recorded the v4.5.3 GraspGen acceptance-log maintenance commit hash `36d940d` and completed the v4.5.4 index commit `0cfcd56`; implementation, tests, and execution order are unchanged.
 
 ## [v4.5.1] - 2026-09-05
 
