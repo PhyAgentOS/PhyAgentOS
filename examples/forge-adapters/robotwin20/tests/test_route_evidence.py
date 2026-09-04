@@ -48,6 +48,7 @@ def _external(request: dict, root: Path) -> dict:
     records = [_write_artifact(root, f"scope-{index}.json", f"scope-{index}".encode()) for index in range(6)]
     snapshots = []
     for index in range(2):
+        position = [0.1 + (0.2 * index), 0.2, 0.8]
         payload = {
             "scene_revision": request["scene_revision"],
             "observation_ref": request["observation_ref"],
@@ -55,6 +56,13 @@ def _external(request: dict, root: Path) -> dict:
             "candidate_set_ref": request["candidate_set_ref"],
             "captured_at": f"2026-09-04T00:00:0{index}Z",
             "state_digest": hashlib.sha256(f"state-{index}".encode()).hexdigest(),
+            "target_entity_ref": candidate["entity_ref"],
+            "target_actor": "block1",
+            "target_pose": {
+                "position_m": position,
+                "orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+            },
+            "robot_grippers": {"left": 1.0, "right": 1.0},
         }
         snapshots.append(_write_artifact(root, f"snapshot-{index}.json", json.dumps(payload).encode()))
     return {
@@ -87,9 +95,16 @@ def _external(request: dict, root: Path) -> dict:
         "after_snapshot": snapshots[1],
         "semantic_verdict": {
             "status": "pass",
-            "verifier_id": "independent-semantic-verifier/v1",
-            "criteria": ["ordered_blocks", "target_relation"],
+            "verifier_id": "independent-single-object-semantic-verifier/v1",
+            "criteria_scope": "single_object_route_only",
+            "criteria": [
+                "single_object_target_actor_state_changed",
+                "selected_gripper_released",
+            ],
             "after_snapshot_ref": snapshots[1]["artifact_ref"],
+            "target_displacement_m": 0.2,
+            "selected_arm": "right",
+            "selected_gripper_value": 1.0,
         },
         "producer_binding": TRUSTED.copy(),
         "probe_execution": {

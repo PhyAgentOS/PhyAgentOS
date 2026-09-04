@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any, Mapping
@@ -91,7 +92,13 @@ def _require_artifact_record(root: Path, value: Any, label: str) -> str:
     return str(value["artifact_ref"])
 
 
-def _snapshot(root: Path, value: Any, request: Mapping[str, Any], label: str) -> tuple[str, str]:
+def _snapshot(
+    root: Path,
+    value: Any,
+    request: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    label: str,
+) -> tuple[str, str, Mapping[str, Any]]:
     ref = _require_artifact_record(root, value, label)
     path = _artifact_path(root, ref)
     try:
@@ -99,19 +106,52 @@ def _snapshot(root: Path, value: Any, request: Mapping[str, Any], label: str) ->
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RouteEvidenceError(f"{label} snapshot is not valid JSON") from exc
     if not isinstance(payload, Mapping) or set(payload) != {
-        "scene_revision", "observation_ref", "frame_id", "candidate_set_ref", "captured_at", "state_digest"
+        "scene_revision", "observation_ref", "frame_id", "candidate_set_ref", "captured_at",
+        "state_digest", "target_entity_ref", "target_actor", "target_pose", "robot_grippers",
     }:
         raise RouteEvidenceError(f"{label} snapshot fields are invalid")
     if any(payload[key] != request[key] for key in ("scene_revision", "observation_ref", "frame_id", "candidate_set_ref")):
         raise RouteEvidenceError(f"{label} snapshot identity is invalid")
     if not isinstance(payload["captured_at"], str) or not payload["captured_at"].strip():
         raise RouteEvidenceError(f"{label} snapshot timestamp is invalid")
+    if payload["target_entity_ref"] != candidate["entity_ref"]:
+        raise RouteEvidenceError(f"{label} snapshot target identity is invalid")
+    if not isinstance(payload["target_actor"], str) or not payload["target_actor"].strip():
+        raise RouteEvidenceError(f"{label} snapshot target actor is invalid")
+    target_pose = payload["target_pose"]
+    if not isinstance(target_pose, Mapping) or set(target_pose) != {"position_m", "orientation_wxyz"}:
+        raise RouteEvidenceError(f"{label} snapshot target pose is invalid")
+    for key, length in (("position_m", 3), ("orientation_wxyz", 4)):
+        vector = target_pose[key]
+        if (
+            not isinstance(vector, list)
+            or len(vector) != length
+            or any(
+                isinstance(item, bool)
+                or not isinstance(item, (int, float))
+                or not math.isfinite(float(item))
+                for item in vector
+            )
+        ):
+            raise RouteEvidenceError(f"{label} snapshot target pose is invalid")
+    grippers = payload["robot_grippers"]
+    if (
+        not isinstance(grippers, Mapping)
+        or set(grippers) != {"left", "right"}
+        or any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not math.isfinite(float(item))
+            for item in grippers.values()
+        )
+    ):
+        raise RouteEvidenceError(f"{label} snapshot gripper state is invalid")
     state_digest = payload["state_digest"]
     if not isinstance(state_digest, str) or len(state_digest) != 64 or any(
         char not in "0123456789abcdef" for char in state_digest
     ):
         raise RouteEvidenceError(f"{label} snapshot state_digest is invalid")
-    return ref, state_digest
+    return ref, state_digest, payload
 
 
 def _verify_external_evidence(
@@ -194,13 +234,18 @@ def _verify_external_evidence(
 
     before = external["before_snapshot"]
     after = external["after_snapshot"]
-    before_ref, before_state_digest = _snapshot(artifact_root, before, request, "before_snapshot")
-    after_ref, after_state_digest = _snapshot(artifact_root, after, request, "after_snapshot")
+    before_ref, before_state_digest, before_payload = _snapshot(
+        artifact_root, before, request, selected_candidate, "before_snapshot"
+    )
+    after_ref, after_state_digest, after_payload = _snapshot(
+        artifact_root, after, request, selected_candidate, "after_snapshot"
+    )
     if before_ref == after_ref or before_state_digest == after_state_digest:
         raise RouteEvidenceError("before/after snapshots do not show a state transition")
     semantic = external["semantic_verdict"]
     if not isinstance(semantic, Mapping) or set(semantic) != {
-        "status", "verifier_id", "criteria", "after_snapshot_ref"
+        "status", "verifier_id", "criteria_scope", "criteria", "after_snapshot_ref",
+        "target_displacement_m", "selected_arm", "selected_gripper_value",
     }:
         raise RouteEvidenceError("route evidence semantic verdict is invalid")
     if semantic["status"] != "pass" or not isinstance(semantic["verifier_id"], str) or not semantic["verifier_id"].strip():
@@ -211,6 +256,37 @@ def _verify_external_evidence(
         raise RouteEvidenceError("route evidence semantic criteria are invalid")
     if semantic["after_snapshot_ref"] != after_ref:
         raise RouteEvidenceError("route evidence semantic snapshot binding is invalid")
+    if semantic["criteria_scope"] != "single_object_route_only":
+        raise RouteEvidenceError("route evidence semantic criteria scope is invalid")
+    expected_criteria = {
+        "single_object_target_actor_state_changed",
+        "selected_gripper_released",
+    }
+    if set(semantic["criteria"]) != expected_criteria:
+        raise RouteEvidenceError("route evidence semantic criteria are invalid")
+    selected_arm = semantic["selected_arm"]
+    if selected_arm not in {"left", "right"}:
+        raise RouteEvidenceError("route evidence semantic selected arm is invalid")
+    before_position = before_payload["target_pose"]["position_m"]
+    after_position = after_payload["target_pose"]["position_m"]
+    displacement = math.sqrt(
+        sum((float(after_value) - float(before_value)) ** 2 for before_value, after_value in zip(before_position, after_position))
+    )
+    if (
+        isinstance(semantic["target_displacement_m"], bool)
+        or not isinstance(semantic["target_displacement_m"], (int, float))
+        or not math.isclose(float(semantic["target_displacement_m"]), displacement, rel_tol=1e-6, abs_tol=1e-8)
+        or displacement < 1e-4
+    ):
+        raise RouteEvidenceError("route evidence semantic target displacement is invalid")
+    selected_gripper = float(after_payload["robot_grippers"][selected_arm])
+    if (
+        isinstance(semantic["selected_gripper_value"], bool)
+        or not isinstance(semantic["selected_gripper_value"], (int, float))
+        or not math.isclose(float(semantic["selected_gripper_value"]), selected_gripper, abs_tol=1e-6)
+        or selected_gripper < 0.8
+    ):
+        raise RouteEvidenceError("route evidence semantic gripper release is invalid")
 
     evidence_ref = f"artifact://route-evidence/{candidate_ref.removeprefix('candidate://').replace('/', '-')}.json"
     # The caller writes the canonical projection; return only the verified refs.

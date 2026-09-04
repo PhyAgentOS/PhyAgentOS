@@ -730,3 +730,75 @@ collision、接触动力学、停止控制、before/after snapshot 或语义 Ver
 该验收关闭的是“外部 readiness evidence 无统一消费/审计边界”，不是生成真实 planner、接触
 动力学或语义成功证据；当前仓库只验证协议/审计 seam，下一步仍须由独立外部 worker 生成真实
 产物并完成人工审核，之后才可实现受控 simulation motion executor。
+
+## 29. 独立 simulation-probe producer 五维验收（2026-09-05）
+
+审查对象为 `robotwin_simulation_probe_worker.py`、`simulation_probe.py`、`simulation-probe.yaml` 及其 conformance；不把 fixture 或 verifier 输出当作真实执行通过。
+
+- **架构集成：通过（有边界）。** producer 位于 RoboTwin adapter 独立 runtime，复用 route contract、Curobo/SAPIEN 和 bounded JSONL；不注册 Tool、Session、Gateway/Dora route，verifier 仍是 no-motion。
+- **失败路径：通过。** approval、身份/摘要、geometry、calibration、workspace、trajectory、timeout、stop、active contact、detach、失败 snapshot 和 reset 均 fail-closed。本轮真实 Franka seed-0 run 在 retreat 检测 `panda_rightfinger/table` active collision，返回 unavailable 并保存 failure trace。
+- **权威边界：通过。** probe 的 `motion_authorized=true` 只表示经专用 approval 的外部仿真探针，不是 PAOS Action/Gateway 授权；semantic scope 明确为 `single_object_route_only`，不是 benchmark 成功或任意抓取；verifier projection 仍固定 no-motion。
+- **配置：通过。** runtime/profile/artifact root、approval、worker identity、producer digest、超时和 stop-file 全部由 profile/CLI 绑定；strict loader 拒绝重复 key、缺失绑定和路径漂移。
+- **可维护性：通过（功能门槛未关闭）。** phase/check 常量、不可变 artifact、接触/快照 schema、失败 diagnostics 和 profile client 分层明确；但当前候选路线仍有真实 attached-phase finger/table collision，不能用测试通过替代路线修正。
+
+专项 probe/evidence conformance 为 `19 passed`；adapter 组合（排除 PAOS 环境缺失 numpy 的 grasp proposal 测试）为 `145 passed, 2 skipped`，ruff、compileall、diff check 通过。代码审查无 Blocker/Major，但 readiness 证据门禁仍未通过；下一步必须基于 failure trace 修正路线并用全新 artifact root 重跑，六个 scope 全部通过并人工审核后才可申请受控 simulation motion gate。
+
+## 30. simulation-probe lift 真实性复审（2026-09-05）
+
+本轮再次按五个维度审查，并修复三个 Major；修复后没有遗留代码级 Blocker/Major，但功能 readiness
+仍未通过：
+
+- **架构集成：通过。** 删除 worker 启动阶段的预先 scene reset，把 backend 构造纳入真实
+  `model_load_*` 生命周期；请求内第一次 reset 现在严格产生 revision generation 1，并显式对比
+  backend snapshot 与 route request。外部 probe 仍未接入 Gateway、Dora、Action executor 或硬件。
+- **失败路径：通过。** 新增目标 actor 的唯一命名、首步前 before snapshot、失败证据中的 before/after
+  绑定和真实 lift 检查。最新运行在 lift 阶段检测目标未升高至少 `0.01 m`，fail-closed 返回
+  unavailable；所有第三方 runtime 异常均进入相同的 detach/snapshot/reset recovery，after-failure
+  snapshot 自身失败也不会阻止 reset；reset 完成后 `reconciliation_required=false` 被 client 正确接受。
+- **权威边界：通过。** planner attached model、gripper contact 或 simulator world change 不再单独构成
+  readiness。只有目标实体真实 lift、完整路线和六项 scope 全部 pass 才允许 no-motion verifier 消费；
+  probe approval 仍不等同于 Action/Gateway motion authority。
+- **配置：通过。** runtime/profile/artifact root、approval、producer/profile digest、deadline 和 stop-file
+  仍完全外置；新运行使用独立 request `probe-green-2-20260905-1100` 和不可覆盖的 artifact root。
+- **可维护性：通过。** actor identity、revision、reconciliation 和 lift 真实性均在 owning worker/client
+  内集中校验；conformance 覆盖 reset 次数、唯一 actor label 和 reconciliation 类型，不引入 fixture-only
+  生产分支。
+
+证据根目录为
+`/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T1100Z`；人工结论为
+`not_approved_for_readiness_or_motion_wiring`。因此本阶段完成的是“探针能诚实拒绝未真实抓起的路线”，
+不是 readiness 通过、完整 benchmark 成功或任意抓取能力。下一步是 candidate selection/route generation，
+而不是 motion wiring。
+
+## 31. simulation-probe 最终 policy/recovery 五维复审（2026-09-05）
+
+本轮先运行专项与全量回归，再检查真实 v5/v6 证据，修复以下 Major：policy 引用未实体化消费；
+grasp-frame 未受全局 joint-speed policy 约束；final snapshot/semantic/artifact 写入异常位于 reset 恢复之外；
+左右臂 planner 原因未保存；approval 未绑定 calibration/joint/stop 内容摘要；runtime joint limits 未拒绝
+NaN/反转边界；worker 多次请求会造成 scene revision 漂移；scene reset 已改变世界却可能报告 no-change。
+
+- **架构集成：通过。** policy、approval、执行与恢复仍位于 RoboTwin adapter-owned worker/client；复用
+  route contract 与 bounded JSONL，不注册 PAOS Tool、Gateway、Dora 或硬件 executor。single-use 语义与
+  “一次审批、一个候选、一个独立 probe 进程”一致。
+- **失败路径：通过。** approval/输入摘要、geometry、calibration、workspace、joint limits、planner
+  velocity、SAPIEN linear velocity、stop/deadline、actor identity、真实 lift、contacts 和 finalization
+  均 fail-closed。所有 post-reset 错误都有结构化 failure artifact；发生世界变化后统一
+  detach/snapshot/reset，reset 成功后才清除 reconciliation。
+- **权威边界：通过。** `motion_authorized=true` 仅授权隔离仿真探针。scene reset 也被计入外部世界变化；
+  planner/contact/state-change 不能单独构成 readiness。负证据不会送入只接受完整 available bundle 的
+  no-motion route-evidence verifier，更不授予 Action/Gateway 权限。
+- **配置：通过。** runtime/profile/artifact root、approval、producer/profile identity、deadline、stop-file
+  以及 joint/stop policy 均外置；approval 绑定 calibration、joint policy、stop policy 的实际 SHA-256；
+  strict loader 和 worker 拒绝字段、摘要、路径与 revision 漂移。
+- **可维护性：通过。** success finalization 与 failure recovery 分离为单一 helper；arm-selection diagnostics、
+  policy provenance 和 reset 状态进入稳定 artifact。测试覆盖 policy 篡改、grasp-frame 超速、joint-limit
+  NaN/反转、finalization failure recovery、single-use/revision 与 reconciliation contract。无 fixture-only
+  成功分支或隐藏 Gateway wiring。
+
+验证结果：simulation-probe 专项 `21 passed`；adapter 子集（仅排除当前 PAOS Python 环境缺失 NumPy 的
+`test_grasp_proposal.py`）`158 passed, 2 skipped`；根仓库 `164 passed`；ruff、compileall、diff-check
+通过。最终真实目录
+`/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T020000p0800-policy-v6`
+返回 `unavailable`，左臂 planner 失败、右臂超过 `1.0 rad/s` 策略，scene reset 后恢复 reset completed，
+人工结论 `not_approved_for_readiness_or_motion_wiring`。代码实现验收通过，功能 readiness 明确未通过；
+下一步是安全的 candidate/route generation，不是 Action/Gateway wiring。

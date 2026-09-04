@@ -2,6 +2,91 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v4.12.1] - 2026-09-05
+
+收紧独立 RoboTwin simulation probe 的真实性门禁：为 block actor 分配唯一身份，首步前保存 before
+snapshot，校验实际 backend revision，并要求目标实体在 lift 阶段真实升高至少 1 cm。修复 client 将
+“世界曾变化”错误等同于“仍需 reconciliation”的协议问题，以及启动时双 reset 导致的 revision 漂移。
+
+最终复审进一步实体化并执行 joint/stop policy，将 calibration 与 policy 内容摘要绑定进 approval，校验
+runtime limit 的有限有序性和规划/观测速度，并将 worker 固定为 single-use；planning/finalization 失败
+统一保存不可变诊断并进入 reset 恢复。scene reset 现在也被如实计为仿真世界变化。
+
+Tightened the independent RoboTwin simulation probe's truthfulness gates: assign unique block identities,
+persist the before snapshot before the first step, verify the actual backend revision, and require the target
+entity to rise by at least 1 cm during lift. Fixed the client protocol conflating prior world change with pending
+reconciliation and removed the startup double-reset revision drift.
+
+The final review also materializes and enforces joint/stop policies, binds calibration and policy digests into the
+approval, validates finite ordered runtime limits and planned/observed speeds, makes the worker single-use, and
+routes planning/finalization failures through immutable diagnostics and reset recovery. Scene reset is now
+truthfully counted as a simulation-world change.
+
+### 文件变更详情 / Detailed changes
+
+- `robotwin_simulation_probe_worker.py:L110-L173,L295-L397,L514-L1225`：绑定审批输入摘要，执行实体化
+  policy、runtime/速度/真实 lift 门禁，并统一 finalization/failure/reset；worker 固定 single-use。
+- `robotwin_simulation_probe_worker.py:L110-L173,L295-L397,L514-L1225`: binds approved input digests,
+  enforces materialized policies plus runtime/speed/real-lift gates, unifies finalization/failure/reset, and makes
+  the worker single-use.
+- `simulation_probe.py:L41-L108` 与 `test_simulation_probe.py:L1-L656`：收紧 client failure/reconciliation
+  contract，并覆盖摘要篡改、limits、失败恢复与 revision 生命周期。
+- `simulation_probe.py:L41-L108` and `test_simulation_probe.py:L1-L656`: tighten the client
+  failure/reconciliation contract and cover digest tampering, limits, recovery, and revision lifecycle.
+- `PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L737-L763`、`STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L773-L804`
+  与 adapter README `L395-L428`：记录最终真实负证据、五维验收和下一门禁。
+- The diagnosis `L737-L763`, implementation review `L773-L804`, and adapter README `L395-L428` record the
+  final real negative evidence, five-dimension acceptance, and next gate.
+
+### 关键 Diff / Key Diff
+
+```text
+Before: approval bound policy references but not their bytes; final evidence failures could escape recovery;
+        scene reset could be reported as no world change.
+After:  approval binds calibration/joint/stop SHA-256; all post-reset failures persist diagnostics and reset;
+        scene reset is a world change, while negative evidence never becomes readiness.
+```
+
+### Validation
+
+- Latest real run: `paos-simulation-probe-20260905T020000p0800-policy-v6` returned `unavailable` before a robot
+  step because the left arm failed planning and the right arm exceeded the approved `1.0 rad/s` limit; the scene
+  reset was recorded as world change, recovery reset completed, and readiness/motion wiring was not approved.
+- Focused simulation-probe conformance: `21 passed`; adapter subset: `158 passed, 2 skipped`; repository:
+  `164 passed`; ruff, compileall, and diff-check passed.
+- Gateway, Dora, Action executor, and hardware remain disconnected. Commit: pending on
+  `feature/long-horizon-workflow`.
+
+## [v4.12.0] - 2026-09-05
+
+新增独立 RoboTwin simulation-probe producer 与严格 profile-owned client。worker 在专用 approval 和
+Franka/task/request 绑定下执行八阶段单候选仿真路线，记录附着几何、planner/joint limits、active
+contacts、stop/failure snapshot 和 reset/reconciliation；不接入 Gateway、Dora 或硬件。真实 seed-0
+运行在 retreat 检测 `panda_rightfinger/table` active collision，返回 unavailable，未批准 readiness
+或 motion wiring。
+
+Added an independent RoboTwin simulation-probe producer and strict profile-owned client. Under dedicated
+approval and Franka/task/request bindings, the worker executes an eight-phase single-candidate simulation
+route and records attached geometry, planner/joint limits, active contacts, stop/failure snapshots, and
+reset/reconciliation; Gateway, Dora, and hardware remain disconnected. The real seed-0 run detected an
+active `panda_rightfinger/table` collision during retreat and returned unavailable; readiness and motion
+wiring were not approved.
+
+### Detailed changes
+
+- Added the simulation probe worker, profile-owned client/profile, and conformance tests.
+- Extended route-evidence snapshot/semantic validation and exported the probe API.
+- Updated diagnosis, implementation review, and adapter README with the five-dimension review and negative
+  readiness evidence boundary.
+
+### Validation
+
+- Probe/evidence conformance: `19 passed`; adapter composition excluding the PAOS missing-numpy grasp
+  proposal module: `145 passed, 2 skipped`.
+- Ruff, compileall, and `git diff --check` passed. Real artifact root:
+  `/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T0230Z`.
+- Commit: pending on `feature/long-horizon-workflow`.
+
 ## Archive
 
 - [2026-09 part 2](changelog/2026-09_part2.md)

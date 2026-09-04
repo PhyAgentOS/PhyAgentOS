@@ -651,6 +651,48 @@ attached-object readiness、连续路线、接触动力学、before/after snapsh
 下一步仍是让外部 worker 产生这些独立证据，之后才可在人工审核后实现受控 simulation
 motion executor。
 
+## 25. 独立 RoboTwin simulation-probe producer（2026-09-05）
+
+本阶段实现独立 `robotwin_simulation_probe_worker.py` 与 `simulation_probe.py` profile-owned
+client。它们与 PAOS verifier、Gateway、Dora 和硬件保持进程边界；只有专用 approval、producer/profile
+摘要、request/candidate/route digest、Franka embodiment 和 stop-file 全部绑定时，外部 probe 才能在
+RoboTwin 仿真执行一个候选路线。worker 校验 geometry、calibration、世界 workspace、轨迹/joint
+limits、附着模型和接触 impulse，并保存八阶段路线、before/after、失败快照、detach/reset 状态。
+
+`attached_object_collision` 明确记录 attached link、尺寸、采样半径和附着期间 active contact；非目标
+环境 active contact fail-closed。`semantic_verification` 明确为 `single_object_route_only`，只证明单
+实体位移和选定夹爪释放，不声称完整 benchmark 成功或任意抓取。`stop_control` 只覆盖 worker-local
+deadline/stop-file polling；开始世界变化的失败会保存 after-failure snapshot 并尝试 reset，不替代
+Gateway kill/reconciliation。
+
+本轮真实 `blocks_ranking_rgb` / Franka / seed 0 probe 在 retreat 检测到 `panda_rightfinger/table`
+active collision，返回 `status=unavailable`，保存 failure artifact、contact trace、失败快照和 reset
+状态；尚未生成 verifier 可接受的 available readiness evidence，也没有人工批准。这是安全负证据，不得
+升级为 readiness pass、抓取放置闭环或硬件就绪。下一步必须依据 failure trace 修正候选路线，并使用
+全新 request/artifact root 重跑；六个 scope 全部通过且人工审核后才能申请受控 simulation motion gate。
+
+### 25.1 真实 lift 门禁复审（2026-09-05）
+
+后续以全新 request/artifact root 重跑后发现，旧 contact trace 中三个 block 都使用上游相同的
+`box` 名称，且 planner attached model 成功并不能证明 SAPIEN 中的目标实体真实随夹爪运动。严格复审
+因此增加三项 fail-closed 约束：probe-local block actor 使用稳定唯一身份；`lift` 结束时目标实体必须
+相对 before snapshot 真实升高至少 `0.01 m`；before snapshot 必须在第一个 simulator step 之前持久化，
+并随失败证据绑定。worker 初始化也移入真实 `model_load_*` 生命周期，删除启动时的预先 reset，保证
+实际 backend generation 与 `blocks_ranking_rgb-0-1` 一致。
+
+最新真实运行位于
+`/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T1100Z`。它使用真实
+GraspGen `candidate://block-green-1/2`、Franka seed 0、独立 approval 和全新 route digest；结果为
+`status=unavailable`、`failed_phase=lift`、`error_detail=attached object did not lift with the gripper`。
+失败前/后快照、route、calibration、geometry、approval、failure manifest 和人工 review 均已保存，
+仿真 reset 完成且 `reconciliation_required=false`。因此 verifier 未被调用：它只能消费完整 available
+evidence，不能把本负证据投影为 readiness pass。
+
+下一步不再是 Action/Gateway wiring，而是从真实 71 个 GraspGen 候选中选择或生成能够在同一 seed/revision
+下完成物理夹持与抬升的候选，再执行完整 transport/descent/release/retreat。只有真实 lift 和六个 scope
+全部通过后，才进入 no-motion route-evidence verifier 和人工批准；当前方向未偏离 PAOS 的 fail-closed
+扩展原则。
+
 ## 23. simulation route-readiness evidence seam（2026-09-05）
 
 按文档顺序新增 `paos-robotwin20-simulation-route-readiness/v1` contract、
@@ -691,3 +733,31 @@ verifier 仅在所有外部证据均为 `pass` 时生成 route-readiness project
 而 verifier 自身仍保持 no-motion；二者不能混写。当前仓库只验证该协议和 fail-closed seam，
 并未生成真实 probe 证据。只有外部独立 worker 生成并人工审核后，才可进入受控 simulation
 motion executor。
+
+## 31. simulation-probe policy 与恢复协议收口（2026-09-05）
+
+本轮没有越过文档规定的 readiness 门禁，而是继续收紧独立 simulation probe。joint-limit 与 stop
+policy 现在必须是 artifact root 内的实体化 JSON，worker 会校验严格 schema、Curobo runtime
+position limits、planner joint velocity、SAPIEN 末端线速度以及每个 grasp/route pose 的 policy 上限。
+专用 approval 同时绑定 calibration、joint policy 和 stop policy 的 SHA-256，不能在审批后用同名文件
+替换输入。worker 明确为 single-use，避免第二次请求把 backend generation 2/3 冒充 revision 1。
+
+失败恢复覆盖 `_run_candidate` 以及完成路线后的 snapshot、semantic 和 artifact finalization。发生任何
+仿真世界变化后，worker 都会尝试 detach、保存 after-failure snapshot、reset，并把
+`reconciliation_required` 与 reset 结果分开表达；即使尚未产生 robot-control step，scene reset 本身也
+被如实记为 `world_change_started=true`。左右臂 planner 失败原因、有限且有序的 joint limits、唯一 actor
+身份和真实目标 lift 仍全部 fail-closed。
+
+最终真实证据目录为
+`/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T020000p0800-policy-v6`。
+它绑定真实 GraspGen `candidate://block-green-1/2`、Franka seed 0、实体化 `1.0 rad/s` policy 和完整输入
+摘要。结果为 `status=unavailable`：左臂 planner route 失败，右臂轨迹超过 waypoint joint-speed limit；
+`simulator_steps=0`，但 scene reset 已发生，因此保存了 before/after-failure snapshot，随后 reset completed，
+`reconciliation_required=false`。人工审查结论仍为
+`not_approved_for_readiness_or_motion_wiring`，route-evidence verifier 未被调用。
+
+因此代码级五维审查已无 Blocker/Major，但功能 readiness 仍未通过。下一步仍是 candidate
+selection/route generation：在不放宽 Franka 已审批速度、workspace、碰撞和真实 lift 门禁的前提下，
+生成能够通过 planner 的参数化路线，再验证物体真实 lift 与完整 transport/descent/release/retreat。
+只有六个 scope 全部获得真实 available evidence 并人工审核后，才进入 no-motion verifier；不是现在接入
+Action/Gateway/Dora。

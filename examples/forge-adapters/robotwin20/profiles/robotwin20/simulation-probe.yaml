@@ -1,0 +1,39 @@
+schema_version: paos-robotwin20-simulation-probe-profile/v1
+worker_id: robotwin20-simulation-probe/v1
+producer_id: robotwin20-independent-probe/v1
+producer_profile_sha256: ${ROBOTWIN20_PROBE_PROFILE_SHA256}
+runtime_root: ${ROBOTWIN20_RUNTIME_ROOT}
+runtime_profile: ${ROBOTWIN20_RUNTIME_PROFILE}
+artifact_root: ${ROBOTWIN20_SIMULATION_ARTIFACT_ROOT}
+approval_ref: ${ROBOTWIN20_PROBE_APPROVAL_REF}
+max_duration_s: 300
+stop_file: ${ROBOTWIN20_PROBE_STOP_FILE}
+worker:
+  python: ${ROBOTWIN20_ROUTE_WORKER_PYTHON}
+  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/robotwin_simulation_probe_worker.py
+  cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  startup_timeout_s: 180
+  request_timeout_s: 360
+  shutdown_timeout_s: 15
+  environment:
+    PYTHONUNBUFFERED: "1"
+    PYTHONPATH: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/src:${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  arguments:
+    - --runtime-root
+    - ${ROBOTWIN20_RUNTIME_ROOT}
+    - --runtime-profile
+    - ${ROBOTWIN20_RUNTIME_PROFILE}
+    - --artifact-root
+    - ${ROBOTWIN20_SIMULATION_ARTIFACT_ROOT}
+    - --worker-id
+    - robotwin20-simulation-probe/v1
+    - --producer-id
+    - robotwin20-independent-probe/v1
+    - --producer-profile-sha256
+    - ${ROBOTWIN20_PROBE_PROFILE_SHA256}
+    - --approval-ref
+    - ${ROBOTWIN20_PROBE_APPROVAL_REF}
+    - --max-duration-s
+    - "300"
+    - --stop-file
+    - ${ROBOTWIN20_PROBE_STOP_FILE}

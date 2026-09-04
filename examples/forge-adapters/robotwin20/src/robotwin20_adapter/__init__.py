@@ -94,6 +94,14 @@ from .simulation_authorization import (
     SimulationMotionAuthorizationProfile,
     load_simulation_motion_profile,
 )
+from .simulation_probe import (
+    SIMULATION_PROBE_PROFILE_SCHEMA_VERSION,
+    SIMULATION_PROBE_RESPONSE_SCHEMA_VERSION,
+    SimulationProbeClient,
+    SimulationProbeProfileError,
+    build_simulation_probe_client,
+    load_simulation_probe_profile,
+)
 from .single_view_perception import (
     FilesystemPerceptionArtifactStore,
     LocalizationRequest,
@@ -214,4 +222,10 @@ __all__ = [
     "SimulationAuthorizationError",
     "SimulationMotionAuthorizationProfile",
     "load_simulation_motion_profile",
+    "SIMULATION_PROBE_PROFILE_SCHEMA_VERSION",
+    "SIMULATION_PROBE_RESPONSE_SCHEMA_VERSION",
+    "SimulationProbeClient",
+    "SimulationProbeProfileError",
+    "build_simulation_probe_client",
+    "load_simulation_probe_profile",
 ]

@@ -391,3 +391,38 @@ external artifacts pass verification. The resulting projection remains
 starts RoboTwin or creates an Action/Gateway invocation. This is an evidence
 consumer, not a substitute for a real planner, simulator stepping, or manual
 approval.
+
+### Independent RoboTwin simulation probe
+
+`simulation-probe.yaml`, `simulation_probe.py`, and `robotwin_simulation_probe_worker.py` form a separately
+authorized simulation-only producer. The worker requires profile/producer/request/candidate binding and a
+stop file, checks Curobo trajectories and attached-object geometry, and records phase-level SAPIEN contacts,
+snapshots, failure diagnostics, and reset status. Its semantic result is explicitly `single_object_route_only`;
+it is not a `blocks_ranking_rgb` benchmark result or a hardware readiness claim.
+
+The latest Franka `blocks_ranking_rgb` seed-0 run is a negative readiness result: an active
+`panda_rightfinger/table` collision was found during retreat, so the worker returned `unavailable` and wrote
+a failure artifact. A corrected candidate route must be run from a fresh artifact root before evidence can be
+reviewed. The producer is not connected to PAOS Gateway, Dora, Action admission, or hardware, and the verifier
+remains no-motion.
+
+The stricter follow-up run at
+`/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T1100Z` also assigns unique actor
+identities, persists the before snapshot before the first simulator step, binds the actual backend revision, and
+requires the target actor to rise by at least 1 cm at the end of `lift`. The real GraspGen green-block candidate
+did not satisfy that physical lift invariant, so the result remains `unavailable` and the simulation was reset.
+Planner attachment and contact alone are not readiness. Select or generate a candidate that physically lifts the
+target, then rerun the complete route and the no-motion evidence verifier; do not proceed to motion wiring yet.
+
+The final policy/recovery review additionally requires materialized joint-limit and stop-policy JSON artifacts.
+The approval binds their SHA-256 values together with the calibration digest; the worker enforces runtime
+position limits, planner joint velocity, SAPIEN end-effector linear velocity, and is single-use to prevent scene
+revision drift. Any failure after scene reset—including planning or final evidence persistence—produces a bound
+failure artifact and attempts simulator reset. Scene reset itself counts as a world change.
+
+The latest run is
+`/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T020000p0800-policy-v6`.
+It returned `unavailable` before a robot-control step: the left arm could not plan, while the right-arm trajectory
+exceeded the approved `1.0 rad/s` waypoint limit. Before/after-failure snapshots and reset-completed evidence were
+preserved. This is a valid negative safety result, not route readiness. Generate a policy-compliant candidate route
+and prove real lift plus all remaining phases before invoking the no-motion route-evidence verifier.
