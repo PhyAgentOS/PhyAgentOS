@@ -18,6 +18,12 @@ Persisted independently validated readiness worker no-motion projections as immu
 - Readiness/replay/process: `25 passed`; repository: `161 passed`; dependency-free adapter subset: `16 passed`; pick-place: `256 passed`.
 - Ruff, compileall, and `git diff --check` passed. Artifact is not a PAOS EvidenceBundle or motion authorization.
 
+## [v4.4.1] - 2026-09-04
+
+回写 v4.4.0 readiness replay artifact 实现提交哈希 `a2f972a`；没有修改实现、测试或执行顺序。
+
+Recorded the v4.4.0 readiness replay artifact implementation commit hash `a2f972a`; implementation, tests, and execution order were unchanged.
+
 ## [v4.3.4] - 2026-09-04
 
 回写 v4.3.3 readiness calibration identity 修复提交哈希 `20c6ad6`；没有修改实现、测试或执行顺序。
