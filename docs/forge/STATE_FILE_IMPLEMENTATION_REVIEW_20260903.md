@@ -549,3 +549,15 @@ stdout 严格保持 JSONL，模型日志进入 stderr。对真实 RoboTwin `enti
 证据保存于 `/home/yanxu/robotwin20-runtime/artifacts/paos-graspgen-live-20260905T0040Z/`，manifest digest 为
 `a7627a6d8583bf4da502dfe1deaf8c3ec1e978f8f274ede545446614f43ae336`。所有 motion flags 为 false；未调用 IK、碰撞、Action、
 Gateway、Dora 或硬件。该阶段通过后仍只能进入 readiness worker evidence，不能直接进入 Action/Gateway wiring。
+
+## 21. Franka readiness 输入审计（2026-09-04）
+
+对首个 `blocks_ranking_rgb` + 双 Franka profile 的实际产物进行输入完整性
+审查后，readiness probe 保持 `unavailable`。capture 目录只有 RGB/depth/
+state/calibration，没有与 `blocks_ranking_rgb-0-1/head_camera` 绑定的
+geometry artifact 或 candidate set；现有 GraspGen live 结果属于
+`beat_block_hammer-0-1/head_camera`，跨 scene revision 复用会违反权威绑定。
+因此没有构造 prepared fixture、没有运行 IK/碰撞 worker，也没有进入
+Action/Gateway/Dora。完整记录见
+`docs/forge/FRANKA_READINESS_INPUT_AUDIT_20260904.md`。下一步按顺序为
+Franka geometry → 同 revision GraspGen → 外部 readiness evidence → 人工审核。

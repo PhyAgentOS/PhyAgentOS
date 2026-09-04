@@ -532,3 +532,16 @@ readiness profile 现在还必须显式指向只读的 runtime profile 文件，
 该文件 SHA-256 等于 `embodiment_binding.profile_digest`。因此修改任务、本体、
 拓扑或 planner 后，旧 readiness evidence 会在 worker 启动前失效，不能被
 静默复用。
+
+## 18. 2026-09-04 Franka readiness 输入审计
+
+按修订后的执行顺序检查首个 `blocks_ranking_rgb` Franka 场景后，当前门禁
+结果为 `unavailable`，详见
+`docs/forge/FRANKA_READINESS_INPUT_AUDIT_20260904.md`。真实 capture 只包含
+RGB/depth/state/calibration；没有同一 `blocks_ranking_rgb-0-1` revision 的
+geometry 或 candidate set。已有 GraspGen 结果绑定的是
+`beat_block_hammer-0-1/head_camera`，不能跨 revision 复用。由于输入不完整，
+本轮没有启动 readiness probe，也没有生成 prepared candidate 或 replay
+artifact。下一步必须先完成 Franka geometry localization 和同 revision 的
+GraspGen，再恢复外部 IK/collision/workspace worker；人工审核 readiness
+evidence 前仍不得进入 Action/Gateway wiring。

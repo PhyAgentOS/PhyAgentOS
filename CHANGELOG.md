@@ -7,6 +7,14 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.7.4] - 2026-09-04
+
+完成 Franka `blocks_ranking_rgb` readiness 输入审计：capture 缺少同一 scene revision 的 geometry/candidate，现有 GraspGen 结果不可跨场景复用，因此安全记录 `unavailable`，未启动 IK/碰撞或动作链路。
+
+Completed the Franka `blocks_ranking_rgb` readiness-input audit: the capture lacks same-revision geometry/candidates and the existing GraspGen result cannot be reused across scenes, so the gate safely records `unavailable` without starting IK/collision or motion paths.
+
+详细记录见 [FRANKA_READINESS_INPUT_AUDIT_20260904](docs/forge/FRANKA_READINESS_INPUT_AUDIT_20260904.md)。
+
 ## [v4.7.1] - 2026-09-04
 
 回写 v4.7.0 本体 profile 与 readiness identity 实现提交哈希 `30bf3ed`；没有修改实现行为。

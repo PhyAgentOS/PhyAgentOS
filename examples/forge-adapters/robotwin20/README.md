@@ -299,3 +299,11 @@ The execution order is now:
    execution evidence.
 
 No Action, Gateway, Dora, or hardware motion is enabled by this profile work.
+
+The current Franka readiness gate is explicitly `unavailable`: the verified
+capture contains RGB/depth/state/calibration only, while the available live
+GraspGen result belongs to the older `beat_block_hammer-0-1` scene revision.
+Do not reuse that candidate set. Complete geometry localization and a
+same-revision GraspGen run for `blocks_ranking_rgb` before starting an external
+IK/collision/workspace readiness worker. The audit is recorded in
+`docs/forge/FRANKA_READINESS_INPUT_AUDIT_20260904.md`.
