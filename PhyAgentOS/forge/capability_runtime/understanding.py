@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 
@@ -277,6 +278,12 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         return _error("invalid_scene_revision", "scene_revision must be a non-empty string", observation_ref=observation_ref)
     if not isinstance(arguments.get("frame_id"), str) or not arguments["frame_id"].strip():
         return _error("invalid_frame", "frame_id must be a non-empty string", observation_ref=observation_ref)
+    if observation_ref != f"observation://{arguments['scene_revision']}/{arguments['frame_id']}":
+        return _error(
+            "invalid_observation_binding",
+            "observation_ref must match scene_revision and frame_id",
+            observation_ref=observation_ref,
+        )
     if not isinstance(arguments.get("calibration_ref"), str) or not arguments["calibration_ref"].strip():
         return _error("missing_calibration", "calibration_ref is required", observation_ref=observation_ref)
     if any(
@@ -291,6 +298,8 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None for ref in artifacts
     ):
         return _error("invalid_artifact_ref", "artifacts must contain valid artifact references", observation_ref=observation_ref)
+    if len(set(artifacts)) != len(artifacts):
+        return _error("invalid_artifact_ref", "artifacts must not contain duplicates", observation_ref=observation_ref)
     return None
 
 
@@ -333,7 +342,9 @@ def normalize_snapshot(snapshot: Any) -> UnderstandingSnapshot | None:
 
 
 def _provenance_is_bound(value: Any, allowed_artifacts: set[str] | None) -> bool:
-    if not isinstance(value, list):
+    if not isinstance(value, list) or not value or any(not isinstance(ref, str) for ref in value):
+        return False
+    if len(set(value)) != len(value):
         return False
     return all(
         isinstance(ref, str)
@@ -538,6 +549,7 @@ def validate_snapshot(
             or envelope.get("entity_ref") not in entity_refs
             or not isinstance(envelope.get("frame_id"), str)
             or not envelope["frame_id"].strip()
+            or (frame_id is not None and envelope["frame_id"] != frame_id)
             or envelope.get("unit") != "m"
             or not isinstance(envelope.get("min_xyz_m"), list)
             or not isinstance(envelope.get("max_xyz_m"), list)
@@ -581,7 +593,7 @@ class SceneUnderstandingEndpoint:
                 "calibration_ref": arguments["calibration_ref"],
             }
         try:
-            snapshot = self.provider.understand(arguments)
+            snapshot = self.provider.understand(deepcopy(arguments))
         except Exception:
             return _error("understanding_provider_error", "scene understanding provider failed", observation_ref=observation_ref)
         normalized = normalize_snapshot(snapshot)

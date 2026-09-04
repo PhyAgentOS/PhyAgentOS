@@ -7,6 +7,25 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.10.8] - 2026-09-04
+
+加固 `scene.understand` 对 `scene.observe` identity 与 artifact lineage 的消费边界，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 Query/no-motion。
+
+Hardened `scene.understand` consumption of `scene.observe` identity and artifact lineage, passing review across architecture integration, failure paths, authority boundaries, configuration, and maintainability; kept Query/no-motion.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/capability_runtime/understanding.py`: strict observation identity, unique artifact/provenance binding, frame consistency, and provider-request isolation.
+- `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py`: binding, provenance, frame-drift, and mutation regression coverage.
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`: stage status and five-dimension review.
+
+### Validation
+
+- Scene-understand tests: `21 passed`; repository tests: `161 passed`; pick-place tests: `250 passed`.
+- RoboTwin provider tests: `7 passed, 1 skipped`; Ruff, compileall, and `git diff --check` passed.
+- Real model, Gateway/Dora, Action executor, and hardware remain deferred.
+- Commit: pending.
+
 ## [v3.10.2] - 2026-09-04
 
 完成 EnvironmentAdapter/provider-neutral `scene.observe` 核心 seam，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 no-motion，不连接真实机器人、Dora 或硬件。

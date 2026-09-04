@@ -381,3 +381,28 @@ actor/entity truth 写入公共 observation。
 EnvironmentAdapter / observation seam 五维审查通过，无 Blocker/Major。该结论只表示核心 Query contract、adapter
 port 和 no-motion replay 边界已具备；下一步应按顺序审查并实现 `scene.understand` 对正式 observation/geometry artifact
 的消费，再进入真实 Gateway/Dora provider wiring。不得把本阶段结果表述为真实环境或抓取放置完成。
+
+## 14. scene.understand observation/artifact consumer hardening
+
+本阶段继续按执行顺序完善 `scene.understand` 对正式 `scene.observe` 输出的消费，仍为 provider-neutral Query、无动作、无
+真实 Gateway/Dora/硬件连接。
+
+### 代码审查发现与修复
+
+- [架构集成] `SceneUnderstandingEndpoint` 现在只使用与 observation 请求严格绑定的 revision/frame/calibration/artifact
+  identity；provider 收到深拷贝请求，不能通过原地修改请求改变后续绑定校验。
+- [失败路径] `observation_ref` 必须等于 `observation://{scene_revision}/{frame_id}`；请求 artifact refs 必须有效且不重复；
+  entity/relation/spatial provenance 必须非空、唯一并属于输入 artifact；spatial envelope frame 必须等于 observation frame。
+- [权威边界] provider 仍只能返回 entity/relation/geometry claim 与 opaque derived artifact，不能携带 provider-specific
+  字段；所有派生 artifact 必须绑定当前 observation 并通过 lineage 校验。
+- [配置] 未增加模型、设备、URL 或仿真器配置；provider 仍通过 adapter port 注入，公共 ToolSpec 未变化。
+- [可维护性] 删除重复错误字段，统一使用显式稳定错误码；新增验证覆盖 identity、重复 refs、provenance、frame drift 和
+  provider request mutation。
+
+### 验证与结论
+
+- `test_scene_understand.py` → `21 passed`；根仓库 → `161 passed`；pick-place 全量 → `250 passed`。
+- RoboTwin scene-understand/single-view provider → `7 passed, 1 skipped`（命令显式加入 adapter 与 pick-place 两个 source
+  root）；Ruff、compileall、`git diff --check` 通过。
+- 五维复审无 Blocker/Major。该阶段证明 observation→understanding 的协议绑定和 no-motion 边界，不证明真实模型语义质量、
+  GraspGen live、Gateway/Dora 互操作或物理执行。

@@ -137,6 +137,52 @@ def test_missing_calibration_and_unknown_provider_fields_fail_closed():
     assert provider.calls == 0
 
 
+def test_observation_ref_must_bind_to_scene_revision_and_frame():
+    provider = Provider(understanding_snapshot())
+    result = SceneUnderstandingEndpoint(provider).invoke(
+        request_payload(observation_ref="observation://other/camera_front")
+    )
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_observation_binding"
+    assert provider.calls == 0
+
+
+@pytest.mark.parametrize("provenance", [[], ["artifact://obs-7/rgb", "artifact://obs-7/rgb"]])
+def test_claim_provenance_must_be_non_empty_and_unique(provenance):
+    result = SceneUnderstandingEndpoint(
+        Provider(understanding_snapshot(entities=({
+            "entity_ref": "entity://bottle-1",
+            "category": "container",
+            "confidence": 0.92,
+            "provenance": provenance,
+        },)))
+    ).invoke(request_payload())
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_entity_claim"
+
+
+def test_spatial_envelope_cannot_cross_observation_frame():
+    envelope = dict(understanding_snapshot().spatial_envelopes[0])
+    envelope["frame_id"] = "other_camera"
+    result = SceneUnderstandingEndpoint(
+        Provider(understanding_snapshot(spatial_envelopes=(envelope,)))
+    ).invoke(request_payload())
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_spatial_envelope"
+
+
+def test_provider_cannot_mutate_request_used_for_binding_validation():
+    class MutatingProvider(Provider):
+        def understand(self, request):
+            request["scene_revision"] = "scene-attacker"
+            return super().understand(request)
+
+    provider = MutatingProvider(understanding_snapshot())
+    result = SceneUnderstandingEndpoint(provider).invoke(request_payload())
+    assert result["status"] == "available"
+    assert result["scene_revision"] == "scene-7"
+
+
 def _derived(kind="instance_mask", **overrides):
     value = {
         "artifact_ref": "artifact://obs-7/derived/mask-bottle-1",
