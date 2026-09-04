@@ -25,6 +25,15 @@ Hardened the `manipulation.prepare` candidate consumer and passed review across 
 - Ruff, compileall, and `git diff --check` passed.
 - No real IK, collision engine, Gateway, Dora, Action executor, hardware, or motion path was started.
 
+## [v4.0.1] - 2026-09-04
+
+回写 v4.0.0 实现提交哈希；没有修改实现、测试或执行顺序。
+
+Recorded the v4.0.0 implementation commit hash; implementation, tests, and execution order are unchanged.
+
+- Commit: `385eb7a`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v3.10.8] - 2026-09-04
 
 加固 `scene.understand` 对 `scene.observe` identity 与 artifact lineage 的消费边界，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 Query/no-motion。
