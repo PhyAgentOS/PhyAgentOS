@@ -13,6 +13,12 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 
 Recorded the v4.7.0 embodiment-profile and readiness-identity implementation commit hash `30bf3ed`; implementation behavior is unchanged.
 
+## [v4.7.2] - 2026-09-04
+
+readiness profile 现在校验绑定的 runtime profile 文件及 SHA-256，防止 benchmark/本体配置漂移后复用旧 evidence。
+
+The readiness profile now verifies its bound runtime-profile file and SHA-256, preventing stale evidence reuse after benchmark or embodiment drift.
+
 ## [v4.7.0] - 2026-09-04
 
 完成 RoboTwin adapter 的可替换 embodiment profile 与 readiness 身份绑定。
