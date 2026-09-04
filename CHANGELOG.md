@@ -7,6 +7,46 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.8.1] - 2026-09-04
+
+将独立 key 文件能力接入 `paos agent` 主配置，修正评估文档与日志中的当前状态，并验证 Agent 配置链路。
+
+Wired the independent key-file capability into the `paos agent` main configuration, corrected the evaluation documentation and changelog state, and verified the Agent configuration path.
+
+### Detailed changes
+
+- `PhyAgentOS/config/credentials.py:L1-L48`: strict owner-only, non-symlink API-key-file reader.
+- `PhyAgentOS/config/schema.py:L394-L417,L547-L612`, `PhyAgentOS/config/loader.py:L43-L52`, `PhyAgentOS/cli/commands.py:L285-L337,L1650-L1657`: `apiKeyFile` schema, config-path-relative resolution, runtime provider wiring, and status detection.
+- `tests/test_config_api_key_file.py:L1-L52`: success, relative-path, dual-source, symlink, and permission regression tests.
+- `README.md:L196-L200`, `docs/zh/04-forge-configuration-reference.md:L70-L76`, `docs/forge/VERIFICATION_MODEL_EVALUATION.md:L42-L101`: configuration and execution-order documentation.
+
+### Validation
+
+- `paos status`: `Custom: ✓`.
+- No-tool `paos agent` connectivity check completed successfully with `gpt-5.6-sol/high`.
+- Repository tests: `147 passed`; Ruff, compileall, and `git diff --check` passed.
+- The LiteLLM SOCKS cost-map warning is non-fatal; no Gateway, Dora, Action, hardware, or motion path was started.
+
+## [v3.8.0] - 2026-09-04
+
+接入 Verification 真实模型评估的独立 API key 文件，并完成 `gpt-5.6-sol/high` 单 case 连通性验证；同时保持完整 held-out + hazard 门禁、Gateway/Dora 和抓取放置闭环后置。
+
+Added an independent API-key-file credential source for Verification real-model evaluation and completed a `gpt-5.6-sol/high` single-case connectivity check; full held-out + hazard gating, Gateway/Dora, and pick-place closure remain deferred.
+
+### Detailed changes
+
+- `PhyAgentOS/verification/evaluation.py:L6-L18,L137-L190,L254-L329,L514-L548`: strict file credential loading, redaction, and provider binding.
+- `PhyAgentOS/verification/service.py:L64-L68`: explicit recovery-context field guidance in the production prompt.
+- `evals/verification/evaluation_config_sol_high_v1.json:L1-L25`, `evals/verification/provider.sol_high.example.json:L1-L13`: versioned `custom`/`gpt-5.6-sol` `/v1` configuration with `allow_custom_provider=true` binding.
+- `tests/test_verification_model_evaluation.py:L21-L22,L196-L207,L300-L413`, `tests/test_verifier_semantic_conformance.py:L10,L43-L49`: credential, prompt, and strict-schema regression coverage.
+- `docs/forge/VERIFICATION_MODEL_EVALUATION.md:L42-L101`, `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L272-L285`: operating instructions and evidence boundaries.
+
+### Validation
+
+- `gpt-5.6-sol/high --max-cases 1`: completed with contract/verdict/criterion/recovery-context `1.0`; gate eligibility remains `false`.
+- Full repository regression after the follow-up configuration wiring: `147 passed`; Ruff, compileall, and `git diff --check` passed.
+- No Gateway, Dora, Action, hardware, or motion path was started.
+
 ## [v3.7.2] - 2026-09-04
 
 回写 v3.7.1 审计维护提交；没有修改实现、评估配置、运行证据或执行顺序。

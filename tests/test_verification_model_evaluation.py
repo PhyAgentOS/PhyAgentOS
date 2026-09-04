@@ -18,6 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DATASET_PATH = REPO_ROOT / "evals/verification/semantic_verifier_v1.json"
 CONFIG_PATH = REPO_ROOT / "evals/verification/evaluation_config_v1.json"
 PROVIDER_PATH = REPO_ROOT / "evals/verification/provider.openai_codex.example.json"
+SOL_CONFIG_PATH = REPO_ROOT / "evals/verification/evaluation_config_sol_high_v1.json"
+SOL_PROVIDER_EXAMPLE_PATH = REPO_ROOT / "evals/verification/provider.sol_high.example.json"
 
 
 def _case(case_id: str, marker: str, expected_verdict: str, expected_status: str) -> dict:
@@ -191,6 +193,19 @@ def test_versioned_dataset_has_separate_development_held_out_and_hazard_splits()
     assert len({case.case_id for case in dataset.cases}) == len(dataset.cases)
 
 
+def test_sol_high_file_provider_example_matches_versioned_gate_binding_without_secret():
+    config, _, provider = load_evaluation_inputs(SOL_CONFIG_PATH, SOL_PROVIDER_EXAMPLE_PATH)
+
+    assert provider.provider_name == "custom"
+    assert provider.model == "gpt-5.6-sol"
+    assert provider.api_base == "https://api.shuaiapi.com/v1"
+    assert provider.api_key_file == ".secrets/verification-model.key"
+    assert provider.reasoning_effort == "high"
+    assert config.quality_gate_provider.allow_custom_provider is True
+    assert config.quality_gate_provider.api_base == provider.api_base
+    assert "api_key\"" not in SOL_PROVIDER_EXAMPLE_PATH.read_text(encoding="utf-8")
+
+
 def test_dataset_loader_rejects_duplicate_json_keys(tmp_path):
     config_path = tmp_path / "config.json"
     config_path.write_text(
@@ -202,7 +217,7 @@ def test_dataset_loader_rejects_duplicate_json_keys(tmp_path):
         load_evaluation_inputs(config_path, PROVIDER_PATH)
 
 
-def test_config_rejects_custom_quality_gate_provider_binding(tmp_path):
+def test_config_rejects_custom_quality_gate_provider_binding_without_explicit_opt_in(tmp_path):
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     config["quality_gate_provider"] = {
         "provider_name": "custom",
@@ -212,7 +227,22 @@ def test_config_rejects_custom_quality_gate_provider_binding(tmp_path):
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="custom providers cannot be quality-gate bindings"):
+    with pytest.raises(ValueError, match="custom quality-gate bindings require explicit opt-in"):
+        load_evaluation_inputs(config_path, PROVIDER_PATH)
+
+
+def test_config_rejects_opted_in_custom_binding_for_non_public_endpoint(tmp_path):
+    config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    config["quality_gate_provider"] = {
+        "provider_name": "custom",
+        "model": "fixture-model",
+        "api_base": "http://127.0.0.1:9000/v1",
+        "allow_custom_provider": True,
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="public HTTPS endpoint"):
         load_evaluation_inputs(config_path, PROVIDER_PATH)
 
 
@@ -229,7 +259,7 @@ def test_fixture_smoke_runs_through_production_subprocess_but_cannot_pass_gate(t
                 "api_key_env": None,
                 "temperature": 0.0,
                 "max_tokens": 512,
-                "reasoning_effort": None,
+                "reasoning_effort": "high",
             },
         )
         summary = run_semantic_evaluation(
@@ -243,6 +273,7 @@ def test_fixture_smoke_runs_through_production_subprocess_but_cannot_pass_gate(t
     assert summary.quality_gate_eligible is False
     assert summary.quality_gate_passed is False
     assert len(requests) == 3
+    assert all(request["reasoning_effort"] == "high" for request in requests)
 
     metrics = json.loads((summary.run_dir / "metrics.json").read_text())
     manifest = json.loads((summary.run_dir / "run_manifest.json").read_text())
@@ -264,6 +295,136 @@ def test_fixture_smoke_runs_through_production_subprocess_but_cannot_pass_gate(t
     ]
     assert "no-key" not in json.dumps(manifest)
     assert len(results) == 3
+
+
+def test_api_key_file_is_resolved_relative_to_provider_config_and_redacted(tmp_path):
+    secret = "unit-test-provider-secret"
+    key_path = tmp_path / "provider.key"
+    key_path.write_text(secret + "\n", encoding="utf-8")
+    key_path.chmod(0o600)
+    with _model_server() as (api_base, requests):
+        config_path, provider_path = _write_inputs(
+            tmp_path,
+            provider={
+                "version": "verification_eval_provider_v1",
+                "evaluation_mode": "fixture",
+                "provider_name": "custom",
+                "model": "fixture-model",
+                "api_base": api_base,
+                "api_key_env": None,
+                "api_key_file": "provider.key",
+                "temperature": 0.0,
+                "max_tokens": 512,
+                "reasoning_effort": None,
+            },
+        )
+        summary = run_semantic_evaluation(
+            config_path=config_path,
+            provider_config_path=provider_path,
+            repo_root=REPO_ROOT,
+        )
+
+    assert len(requests) == 3
+    assert summary.status == "completed"
+    manifest = json.loads((summary.run_dir / "run_manifest.json").read_text())
+    assert manifest["provider"]["api_key_source"] == {
+        "type": "file",
+        "reference": "provider.key",
+    }
+    artifact_text = "".join(path.read_text() for path in summary.run_dir.iterdir())
+    assert secret not in artifact_text
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        (0o644, "permissions must not grant group or other access"),
+        (0o600, "still contains a placeholder"),
+    ],
+)
+def test_api_key_file_failures_create_terminal_blocked_runs(tmp_path, mode, expected):
+    key_path = tmp_path / "provider.key"
+    key_path.write_text("PASTE_API_KEY_HERE\n", encoding="utf-8")
+    key_path.chmod(mode)
+    config_path, provider_path = _write_inputs(
+        tmp_path,
+        provider={
+            "version": "verification_eval_provider_v1",
+            "evaluation_mode": "real_model",
+            "provider_name": "custom",
+            "model": "unavailable-model",
+            "api_base": "https://example.invalid/v1",
+            "api_key_env": None,
+            "api_key_file": "provider.key",
+            "temperature": 0.0,
+            "max_tokens": 512,
+            "reasoning_effort": None,
+        },
+    )
+
+    summary = run_semantic_evaluation(
+        config_path=config_path,
+        provider_config_path=provider_path,
+        repo_root=REPO_ROOT,
+    )
+
+    assert summary.status == "blocked"
+    metrics = json.loads((summary.run_dir / "metrics.json").read_text())
+    assert expected in metrics["blocker"]
+    assert metrics["quality_gate_passed"] is False
+
+
+def test_api_key_file_rejects_symlinks(tmp_path):
+    target = tmp_path / "target.key"
+    target.write_text("unit-test-provider-secret\n", encoding="utf-8")
+    target.chmod(0o600)
+    (tmp_path / "provider.key").symlink_to(target)
+    config_path, provider_path = _write_inputs(
+        tmp_path,
+        provider={
+            "version": "verification_eval_provider_v1",
+            "evaluation_mode": "real_model",
+            "provider_name": "custom",
+            "model": "unavailable-model",
+            "api_base": "https://example.invalid/v1",
+            "api_key_env": None,
+            "api_key_file": "provider.key",
+            "temperature": 0.0,
+            "max_tokens": 512,
+            "reasoning_effort": None,
+        },
+    )
+
+    summary = run_semantic_evaluation(
+        config_path=config_path,
+        provider_config_path=provider_path,
+        repo_root=REPO_ROOT,
+    )
+
+    assert summary.status == "blocked"
+    metrics = json.loads((summary.run_dir / "metrics.json").read_text())
+    assert "credential file is unavailable" in metrics["blocker"]
+
+
+def test_provider_config_rejects_multiple_api_key_sources(tmp_path):
+    config_path, provider_path = _write_inputs(
+        tmp_path,
+        provider={
+            "version": "verification_eval_provider_v1",
+            "evaluation_mode": "real_model",
+            "provider_name": "custom",
+            "model": "fixture-model",
+            "api_base": "https://example.invalid/v1",
+            "api_key_env": "PAOS_TEST_API_KEY",
+            "api_key_file": "provider.key",
+            "temperature": 0.0,
+            "max_tokens": 512,
+            "reasoning_effort": None,
+        },
+    )
+
+    with pytest.raises(ValueError, match="only one of api_key_env or api_key_file"):
+        load_evaluation_inputs(config_path, provider_path)
 
 
 def test_missing_real_model_credential_creates_blocked_non_eligible_run(tmp_path, monkeypatch):

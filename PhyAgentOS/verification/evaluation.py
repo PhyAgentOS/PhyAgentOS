@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import random
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -14,6 +16,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -139,12 +142,33 @@ class QualityGateProviderBinding(BaseModel):
     provider_name: str = Field(min_length=1)
     model: str = Field(min_length=1)
     api_base: str | None = None
+    allow_custom_provider: bool = False
 
     @model_validator(mode="after")
     def validate_provider_identity(self) -> "QualityGateProviderBinding":
+        if self.allow_custom_provider and self.provider_name != "custom":
+            raise ValueError("allow_custom_provider is valid only for custom providers")
+        if self.provider_name == "custom" and not self.allow_custom_provider:
+            raise ValueError("custom quality-gate bindings require explicit opt-in")
         if self.provider_name == "custom":
-            raise ValueError("custom providers cannot be quality-gate bindings")
+            parsed = urlsplit(self.api_base or "")
+            hostname = parsed.hostname or ""
+            if parsed.scheme != "https" or not hostname or hostname == "localhost":
+                raise ValueError("custom quality-gate bindings require a public HTTPS endpoint")
+            try:
+                address = ipaddress.ip_address(hostname)
+            except ValueError:
+                if hostname.endswith((".local", ".localhost")):
+                    raise ValueError(
+                        "custom quality-gate bindings require a public HTTPS endpoint"
+                    )
+            else:
+                if not address.is_global:
+                    raise ValueError(
+                        "custom quality-gate bindings require a public HTTPS endpoint"
+                    )
         probe = self.model_dump(mode="python")
+        probe.pop("allow_custom_provider")
         if self.provider_name == "azure_openai":
             probe["api_key"] = "binding-validation-only"
         VerificationProviderSpec.model_validate(probe)
@@ -182,9 +206,20 @@ class EvaluationProviderConfig(BaseModel):
     model: str = Field(min_length=1)
     api_base: str | None = None
     api_key_env: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]*$")
+    api_key_file: str | None = Field(default=None, min_length=1)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, allow_inf_nan=False)
     max_tokens: int = Field(default=2048, ge=1, le=262_144)
     reasoning_effort: str | None = None
+
+    @model_validator(mode="after")
+    def validate_credential_source(self) -> "EvaluationProviderConfig":
+        if self.api_key_env is not None and self.api_key_file is not None:
+            raise ValueError("configure only one of api_key_env or api_key_file")
+        if self.provider_name == "openai_codex" and (
+            self.api_key_env is not None or self.api_key_file is not None
+        ):
+            raise ValueError("openai_codex uses OAuth and cannot use an API key source")
+        return self
 
 
 class EvaluationRunSummary(BaseModel):
@@ -251,7 +286,58 @@ def _allocate_loopback_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _resolve_provider_spec(config: EvaluationProviderConfig) -> dict[str, Any]:
+def _read_api_key_file(configured_path: str, provider_config_path: Path) -> str:
+    path = Path(configured_path).expanduser()
+    if not path.is_absolute():
+        path = provider_config_path.parent / path
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise EvaluationConfigurationError(
+            f"required provider credential file is unavailable: {configured_path}"
+        ) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise EvaluationConfigurationError("provider credential file must be a regular file")
+        if metadata.st_uid != os.getuid():
+            raise EvaluationConfigurationError("provider credential file must be owned by this user")
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise EvaluationConfigurationError(
+                "provider credential file permissions must not grant group or other access"
+            )
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            raw = handle.read(16_385)
+    finally:
+        os.close(descriptor)
+    if len(raw) > 16_384:
+        raise EvaluationConfigurationError("provider credential file exceeds 16384 bytes")
+    try:
+        key = raw.decode("utf-8").strip()
+    except UnicodeDecodeError as exc:
+        raise EvaluationConfigurationError("provider credential file must be UTF-8 text") from exc
+    if not key:
+        raise EvaluationConfigurationError("provider credential file is empty")
+    if key in {"PASTE_API_KEY_HERE", "REPLACE_ME"}:
+        raise EvaluationConfigurationError("provider credential file still contains a placeholder")
+    if any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in key):
+        raise EvaluationConfigurationError("provider credential file must contain exactly one token")
+    return key
+
+
+def _credential_source(config: EvaluationProviderConfig) -> dict[str, str] | None:
+    if config.api_key_env is not None:
+        return {"type": "environment", "reference": config.api_key_env}
+    if config.api_key_file is not None:
+        return {"type": "file", "reference": config.api_key_file}
+    return None
+
+
+def _resolve_provider_spec(
+    config: EvaluationProviderConfig,
+    provider_config_path: Path,
+) -> dict[str, Any]:
     api_key = None
     if config.api_key_env is not None:
         api_key = os.environ.get(config.api_key_env)
@@ -259,6 +345,8 @@ def _resolve_provider_spec(config: EvaluationProviderConfig) -> dict[str, Any]:
             raise EvaluationConfigurationError(
                 f"required provider credential is unavailable: {config.api_key_env}"
             )
+    elif config.api_key_file is not None:
+        api_key = _read_api_key_file(config.api_key_file, provider_config_path)
     if config.provider_name == "openai_codex":
         try:
             from oauth_cli_kit import get_token
@@ -426,11 +514,13 @@ def _quality_gate_eligibility(
     max_cases: int | None,
 ) -> tuple[bool, list[str]]:
     reasons: list[str] = []
+    binding = config.quality_gate_provider
     if provider_config.evaluation_mode != "real_model":
         reasons.append("evaluation_mode_is_not_real_model")
-    if provider_config.provider_name == "custom":
+    if provider_config.provider_name == "custom" and not (
+        binding.provider_name == "custom" and binding.allow_custom_provider
+    ):
         reasons.append("custom_provider_is_not_quality_gate_trusted")
-    binding = config.quality_gate_provider
     if (
         provider_config.provider_name,
         provider_config.model,
@@ -485,7 +575,7 @@ def run_semantic_evaluation(
             "provider_name": provider_config.provider_name,
             "model": provider_config.model,
             "api_base_configured": provider_config.api_base is not None,
-            "api_key_source": provider_config.api_key_env,
+            "api_key_source": _credential_source(provider_config),
             "temperature": provider_config.temperature,
             "max_tokens": provider_config.max_tokens,
             "reasoning_effort": provider_config.reasoning_effort,
@@ -512,7 +602,7 @@ def run_semantic_evaluation(
     _write_json(run_dir / "run_manifest.json", manifest)
 
     try:
-        provider_spec = _resolve_provider_spec(provider_config)
+        provider_spec = _resolve_provider_spec(provider_config, provider_config_path)
     except EvaluationConfigurationError as exc:
         terminal_reasons = [*gate_ineligibility_reasons, "evaluation_preflight_blocked"]
         manifest["status"] = "blocked"

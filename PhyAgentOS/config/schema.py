@@ -394,8 +394,23 @@ class ProviderConfig(Base):
     """LLM provider configuration."""
 
     api_key: str = ""
+    api_key_file: str | None = None
     api_base: str | None = None
     extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
+
+    @model_validator(mode="after")
+    def validate_credential_sources(self) -> "ProviderConfig":
+        if self.api_key and self.api_key_file:
+            raise ValueError("configure only one of api_key or api_key_file")
+        return self
+
+    def resolve_api_key(self, *, base_dir: Path) -> str:
+        """Resolve the configured key at runtime; never mutate this config."""
+        if self.api_key_file:
+            from PhyAgentOS.config.credentials import read_api_key_file
+
+            return read_api_key_file(self.api_key_file, base_dir=base_dir)
+        return self.api_key
 
 
 class ProvidersConfig(Base):
@@ -492,6 +507,7 @@ class Config(BaseSettings):
     embodiments: EmbodimentsConfig = Field(default_factory=EmbodimentsConfig)
     forge: ForgeConfig = Field(default_factory=ForgeConfig)
     resource_registry: ResourceRegistryConfig = Field(default_factory=ResourceRegistryConfig)
+    _config_path: Path | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -531,6 +547,8 @@ class Config(BaseSettings):
         from PhyAgentOS.providers.registry import PROVIDERS
 
         forced = self.agents.defaults.provider
+        def has_key(provider: ProviderConfig) -> bool:
+            return bool(provider.api_key or provider.api_key_file)
         if forced != "auto":
             p = getattr(self.providers, forced, None)
             return (p, forced) if p else (None, None)
@@ -548,14 +566,14 @@ class Config(BaseSettings):
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and model_prefix and normalized_prefix == spec.name:
-                if spec.is_oauth or spec.is_local or p.api_key:
+                if spec.is_oauth or spec.is_local or has_key(p):
                     return p, spec.name
 
         # Match by keyword (order follows PROVIDERS registry)
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and any(_kw_matches(kw) for kw in spec.keywords):
-                if spec.is_oauth or spec.is_local or p.api_key:
+                if spec.is_oauth or spec.is_local or has_key(p):
                     return p, spec.name
 
         # Fallback: configured local providers can route models without
@@ -573,7 +591,7 @@ class Config(BaseSettings):
             if spec.is_oauth:
                 continue
             p = getattr(self.providers, spec.name, None)
-            if p and p.api_key:
+            if p and has_key(p):
                 return p, spec.name
         return None, None
 
@@ -590,7 +608,9 @@ class Config(BaseSettings):
     def get_api_key(self, model: str | None = None) -> str | None:
         """Get API key for the given model. Falls back to first available key."""
         p = self.get_provider(model)
-        return p.api_key if p else None
+        if not p:
+            return None
+        return p.resolve_api_key(base_dir=(self._config_path or Path.cwd()).parent)
 
     def get_api_base(self, model: str | None = None) -> str | None:
         """Get API base URL for the given model. Applies default URLs for gateway/local providers."""

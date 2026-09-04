@@ -194,8 +194,9 @@ The configuration file is serialized in camelCase; snake_case keys are also acce
     }
   },
   "providers": {
-    "openrouter": {
-      "apiKey": "YOUR_API_KEY"
+    "custom": {
+      "apiKeyFile": "/path/to/verification-model.key",
+      "apiBase": "https://api.shuaiapi.com/v1"
     }
   },
   "forge": {

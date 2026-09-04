@@ -13,7 +13,7 @@ Watchdog、Action 或硬件。评估通过不构成任何运动授权，也不�
 
 - `semantic_verifier_v1.json`：版本化数据集，共 10 个 case；3 个 development、4 个 held-out、3 个 hazard。
 - `evaluation_config_v1.json`：split、seed、重复次数、timeout 和阈值。
-- provider config：仅记录 provider/model 和 API key 的环境变量名，不允许内嵌 `api_key`。
+- provider config：仅记录 provider/model、URL，以及 API key 的环境变量名或独立 key 文件路径；不允许内嵌 `api_key`。
 - 生产请求 framing：评估与 `VerificationRequestBuilder` 共用
   `build_verification_context_content()`，避免评估 prompt 与运行时 prompt 漂移。
 
@@ -35,11 +35,13 @@ development case 用于人工检查标签和未来有审批的 prompt 调整；�
 
 `evaluation_mode=real_model` 只是运行声明，不单独授予正式门禁资格。只有 provider config 精确匹配版本化
 `quality_gate_provider` identity binding、未使用 `--max-cases`，并且全部阈值通过，`quality_gate_passed` 才可能为 true。
-`custom` provider、fixture 和部分 case 运行即使获得满分也固定 `quality_gate_eligible=false`；不合格原因写入 manifest/metrics。
+普通 `custom` provider、fixture 和部分 case 运行即使获得满分也固定 `quality_gate_eligible=false`。只有版本化配置显式
+`allow_custom_provider=true`、精确绑定公开 HTTPS URL/model，custom provider 才能取得资格；这表示操作者信任该 endpoint，不能
+独立证明第三方网关背后的模型实现身份。不合格原因写入 manifest/metrics。
 
 ## 4. 运行方式
 
-OpenAI Codex OAuth 示例：
+版本化 provider 配置示例：
 
 ```bash
 python scripts/evaluate_verification_model.py \
@@ -47,8 +49,27 @@ python scripts/evaluate_verification_model.py \
   --provider-config evals/verification/provider.openai_codex.example.json
 ```
 
-API-key provider 应复制 provider config 到本地未提交文件，把 `api_key_env` 设置为环境变量名，然后在 shell 中设置该变量。
-runner 不读取或持久化 key 值。
+API-key provider 可以使用环境变量，或采用推荐的“本地 provider 配置 + 独立 key 文件”：
+
+```text
+evals/verification/provider.sol_high.local.json       # URL/model/reasoning 设置，Git 忽略
+evals/verification/.secrets/verification-model.key   # 只包含一行 key，Git 忽略，权限 0600
+```
+
+本机评估配置已经设置为 `https://api.shuaiapi.com/v1`、`gpt-5.6-sol`、`reasoning_effort=high`。用户给出的根 URL
+`https://api.shuaiapi.com/` 对 `/models` 返回 451；OpenAI-compatible API 实际入口 `/v1/models` 返回 200，因此配置绑定 `/v1`。
+运行命令：
+
+```bash
+chmod 600 evals/verification/.secrets/verification-model.key
+python scripts/evaluate_verification_model.py \
+  --config evals/verification/evaluation_config_sol_high_v1.json \
+  --provider-config evals/verification/provider.sol_high.local.json
+```
+
+runner 要求 key 文件为当前用户拥有的普通非符号链接文件，拒绝 group/other 权限、空文件、placeholder、多 token 和超过 16 KiB
+的内容。manifest 只记录 `{type: file, reference: ...}`，不记录 key 值或 key digest。key 会在内存中传给 Verification 子进程，
+不会持久化到运行产物。
 
 小规模连通性运行可加 `--max-cases 1`，但它固定不具备质量门禁资格。退出码：0 表示绑定的真实模型完整门禁通过；1 表示运行完成但
 阈值未通过或属于 fixture；2 表示凭据/启动等基础条件阻塞。
@@ -71,5 +92,10 @@ case IDs 和指标路径。`results.jsonl` 每个 attempt 一行并在写入后 
 ## 6. 当前状态
 
 评估器的 fixture smoke 必须经过正式 Verification Service 子进程和独立 OpenAI-compatible HTTP stub，但其结果只证明 runner
-和指标链路。2026-09-03 当前机器没有 PAOS provider config/API key，且现有 Codex OAuth 不能被 `oauth-cli-kit` 读取；因此真实模型
-质量结果仍是 blocked，不能以 fixture 分数替代。凭据可用后需运行完整 held-out + hazard 配置，并审核逐 case verdict 后才关闭该门禁。
+和指标链路。2026-09-04 已完成 `gpt-5.6-sol / high` 单 case 连通性验证：首次使用根 URL 被远端拦截；切换实际 `/v1` 后模型
+返回 verdict，随后把 prompt 中含糊的 “action-agnostic guidance” 改为精确字段 `guidance`，严格 schema 下该 hazard case 的 contract、
+verdict、criterion 和 recovery-context 均通过。该运行使用 `--max-cases 1`，因此固定不具备质量门禁资格。
+
+`paos agent` 使用 `~/.PhyAgentOS/config.json`，不会自动读取 `evals/verification/` 下的评估 provider 文件。主配置现在支持同样的
+`providers.<name>.apiKeyFile` 安全边界；本机主配置将 `custom` 绑定到 `gpt-5.6-sol` 与 `/v1`，key 只作为独立文件引用。仍需在提交
+实现后运行完整 held-out + hazard，并逐 case 审核 verdict 与阈值，才能判断真实模型门禁是否关闭。

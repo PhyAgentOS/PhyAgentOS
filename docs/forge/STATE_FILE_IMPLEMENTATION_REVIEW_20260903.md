@@ -182,6 +182,25 @@ OpenAI-compatible HTTP stub 验证 provider-spec 传递、私有 readiness、鉴
 评估；真实 Gateway/Dora wiring 与抓取放置闭环继续后置。文件适配完成不等于五个 Markdown 文件全部成为机器事实源，也不改变
 PAOS 的自主进化边界。
 
+## 9. v3.8.1 PAOS Agent 主配置凭据接入
+
+`paos agent` 与 Verification 评估器读取不同配置入口：前者读取 `~/.PhyAgentOS/config.json`，后者读取
+`evals/verification/evaluation_config_*.json` 与 provider config。此前只配置评估器文件会导致 Agent 启动时报
+`No API key configured`，这不是 LiteLLM cost-map 代理警告导致的失败。
+
+主配置的 `ProviderConfig` 现在支持 `apiKeyFile`。该字段只保存路径，不保存解析后的 key；运行时解析要求文件为当前用户所有的普通
+非符号链接文件、权限不开放给 group/other、大小在 1..16 KiB、UTF-8 且恰好包含一个非空 token，并拒绝 placeholder。`apiKey`
+与 `apiKeyFile` 同时出现会在 schema 层 fail-closed。相对路径以主配置文件所在目录为基准。
+
+本机 `~/.PhyAgentOS/config.json` 已将 Agent 默认模型/provider/reasoning 设置为 `gpt-5.6-sol`、`custom`、`high`，API base 为
+`https://api.shuaiapi.com/v1`，并只引用现有独立 key 文件；key 值没有进入配置、日志、Git 或运行产物。LiteLLM 的
+`socks://127.0.0.1:7897` cost-map warning 可存在，但不是凭据配置错误。
+
+### 验证
+
+- `tests/test_config_api_key_file.py` → `3 passed`。
+- 主配置解析与 provider 选择已通过本地无网络检查；未启动 Gateway、Dora、Action 或硬件。
+
 ## 6. v3.6.0 provider-spec 子进程门禁
 
 ### 实现与代码审查
@@ -211,7 +230,7 @@ Gateway、Watchdog、Action、Evidence 或硬件 owner。readiness 现在同时�
 - 真实 Gateway/Dora wiring、完整 Action executor 和抓取放置闭环；
 - `TARGETS` candidate 到 Runtime/Profile/Action admission 的生产授权接入。
 
-## 7. v3.7.0 真实模型语义评估基础设施
+## 7. v3.7.0 真实模型语义评估基础设施（历史快照）
 
 ### 实现与审查修复
 
@@ -242,10 +261,28 @@ confusion matrix，以及把 `inconclusive` 当作 abstention 的 coverage/selec
 
 ### 当前运行证据
 
-fixture runner smoke 已通过正式 Verification Service 子进程，但仅作为实现测试。真实模型预检运行写入
+fixture runner smoke 已通过正式 Verification Service 子进程，但仅作为实现测试。以下是 v3.7.0 时点的历史快照；当时的真实模型预检运行写入
 `artifacts/evals/verification/20260903T163926.458050Z-db095983/`，状态为 `blocked`，并记录实现提交
 `8775073eccb26791a5ffd0215794c49fd46f3f82`：当前没有 PAOS provider API key，现有
 Codex OAuth 也不能由 `oauth-cli-kit` 读取。该运行没有模型请求、没有质量分数，`quality_gate_eligible=false`。
 
-因此，真实模型语义质量门禁尚未关闭。下一步必须先提供可被 PAOS provider 读取的凭据，再执行完整 held-out + hazard run，审核
-逐 case verdict 和阈值；在此之前继续后置 Gateway/Dora 和抓取放置闭环。
+因此，v3.7.0 时点的真实模型语义质量门禁尚未关闭。该 blocker 已在 v3.8.0 通过独立 key 文件和第三方
+OpenAI-compatible endpoint 的单 case 连通性验证中解除；完整 held-out + hazard 质量门禁仍未运行，Gateway/Dora 和抓取放置闭环继续后置。
+
+## 8. v3.8.0 API-key 文件接入与 sol/high 连通性
+
+用户选择配置文件接入并提供第三方 OpenAI-compatible URL/key。实现新增 `api_key_file`，相对路径以 provider config 所在目录为
+基准；key 文件通过 `O_NOFOLLOW` 打开，必须属于当前用户、为普通文件且不授予 group/other 权限。provider config 与 key 文件分别
+由 `.gitignore` 隔离，运行产物只记录安全的 source type/reference，不记录 key 或 digest。
+
+版本化 `evaluation_config_sol_high_v1.json` 显式绑定 `custom + gpt-5.6-sol + https://api.shuaiapi.com/v1`，并以
+`allow_custom_provider=true` 表达人工信任边界。该绑定可以阻止本地 fixture 或其他 URL/model 冒充本次门禁，但不能独立证明第三方
+网关实际后端模型身份。provider 本地设置为 `reasoning_effort=high`、`temperature=0`、`max_tokens=4096`。
+
+网络探测显示用户给出的根 URL 的 `/models` 返回 451，而 `/v1/models` 返回 200。修正到 `/v1` 后真实模型首次返回的
+`recovery_context` 将 prompt 中 “action-agnostic guidance” 误作字段名，被严格 `extra=forbid` 拒绝；生产 prompt 已改为明确要求
+`unmet_criteria`、`preserved_constraints`、`guidance` 三个字段，未放宽 schema。再次运行同一 hazard case 后 contract、verdict、
+criterion 与 recovery-context 指标均为 1.0，且无凭据泄漏。因为使用 `--max-cases 1`，该证据只证明连通性和契约可用，不能关闭门禁。
+
+下一步仍是先提交并复审 v3.8.0，再执行完整 held-out + hazard 真实模型评估；只有逐 case 审核和全部阈值通过后，才进入后续
+Gateway/Dora 阶段。

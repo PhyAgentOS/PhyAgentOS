@@ -61,8 +61,9 @@ not proof that the task goal is complete. Return exactly one JSON object with:
 - evidence_refs: artifact IDs or concise evidence labels supporting the overall verdict
 - reason: a non-empty explanation
 - lesson: a non-empty reusable lesson
-- recovery_context: null unless verdict is replan_required; then include unmet_criteria,
-  preserved_constraints, and action-agnostic guidance
+- recovery_context: null unless verdict is replan_required; then return exactly three fields:
+  unmet_criteria (array), preserved_constraints (array), and guidance (a string containing
+  action-agnostic advice). Do not add any other recovery_context fields
 Use replan_required only when the original goal remains achievable. Never output an action_type,
 robot command, policy parameter, or executable Gateway input. Use inconclusive when the supplied
 evidence cannot support a reliable semantic decision.

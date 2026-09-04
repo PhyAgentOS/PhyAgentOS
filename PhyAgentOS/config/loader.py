@@ -43,9 +43,13 @@ def load_config(config_path: Path | None = None) -> Config:
             print("Using default configuration.")
         else:
             data = _migrate_config(data)
-            return Config.model_validate(data)
+            config = Config.model_validate(data)
+            config._config_path = path.resolve()
+            return config
 
-    return Config()
+    config = Config()
+    config._config_path = path.resolve()
+    return config
 
 
 def save_config(config: Config, config_path: Path | None = None) -> None:

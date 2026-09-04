@@ -9,6 +9,7 @@ from PhyAgentOS.agent.session_verifier import (
     VerificationVerdictError,
 )
 from PhyAgentOS.verification.contracts import RecoveryContext
+from PhyAgentOS.verification.service import FORGE_TASK_PROMPT
 
 
 def _verifier(tmp_path, response):
@@ -36,6 +37,12 @@ def _run(verifier, *, criteria=("placed",), refs=("after_rgb",)):
             valid_evidence_refs=set(refs),
         )
     )
+
+
+def test_verifier_prompt_names_exact_recovery_context_fields():
+    assert "return exactly three fields" in FORGE_TASK_PROMPT
+    assert "guidance (a string containing" in FORGE_TASK_PROMPT
+    assert "Do not add any other recovery_context fields" in FORGE_TASK_PROMPT
 
 
 def test_success_verdict_is_accepted_only_with_exact_satisfied_criteria(tmp_path):
