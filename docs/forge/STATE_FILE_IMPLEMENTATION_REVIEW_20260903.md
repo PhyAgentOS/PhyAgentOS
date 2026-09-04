@@ -676,3 +676,26 @@ object route readiness、真实运动和 after-snapshot/语义验收仍是后续
 route readiness、接触动力学、RoboTwin motion worker、before/after snapshot 或语义验收；因此
 不能启动 `play_once`、Dora、硬件或宣称抓取放置闭环完成。下一步按文档进入外部 worker 的
 完整路线/附着物体证据阶段。
+
+## 27. simulation route-readiness seam 五维验收（2026-09-05）
+
+本阶段新增 `route_readiness.py`、`robotwin_route_readiness_worker.py`、
+`route-readiness.yaml` 和 profile-owned `RouteReadinessClient`，完成以下审查：
+
+- **架构集成：通过。** route contract 位于 RoboTwin adapter，复用 bounded JSONL client；不注册
+  PAOS Tool、不创建 Action/Session、不绕过 Gateway，也不修改 no-motion readiness schema。
+- **失败路径：通过。** 请求字段、阶段顺序、附着几何 digest、4x4 变换、frame、workspace、
+  速度限幅、candidate identity 和 immutable artifact 均在 planner 前校验；worker 能力缺失
+  返回 `unavailable`，客户端拒绝将其解释为 available/pass。
+- **权威边界：通过。** 所有 route evidence 固定 `motion_authorized=false` 和
+  `world_change_started=false`；当前 worker 明确不提供真实 IK、附着碰撞、接触动力学、stop
+  controller 或语义成功证据，不能触发 simulation authorization。
+- **配置：通过。** worker、artifact root、worker id、超时和 `PYTHONPATH` 由
+  `profiles/robotwin20/route-readiness.yaml` 注入；没有硬编码模型、设备、URL 或凭据。
+- **可维护性：通过。** 阶段常量、检查项、digest 和 profile loader 集中在 adapter 模块；
+  conformance 覆盖合法请求、阶段/几何/边界失败、外部 worker unavailable 和 profile wiring。
+
+专项 route-readiness conformance 为 `9 passed`；没有发现 Blocker/Major。该结果关闭的是
+“完整路线证据没有公共协议/worker seam”的结构性缺口，未关闭真实 planner、attached-object
+collision、接触动力学、停止控制、before/after snapshot 或语义 Verifier。下一步仍需补齐这些
+真实/独立证据，再进行人工审核和受控 motion executor 实现。

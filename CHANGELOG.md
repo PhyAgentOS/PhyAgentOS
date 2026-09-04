@@ -7,6 +7,23 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.10.0] - 2026-09-05
+
+新增 simulation route-readiness contract、profile-owned bounded JSONL worker 和外部配置。请求绑定附着物体 geometry/digest、八阶段路线、waypoint frame/速度限幅、workspace 与 stop policy；当前 worker 对真实 planner、附着碰撞、接触动力学、stop controller 和语义验收明确返回 unavailable，保持 no-motion。
+
+Added the simulation route-readiness contract, profile-owned bounded JSONL worker, and external configuration. Requests bind attached-object geometry/digests, eight route phases, waypoint frames/speed limits, workspace, and stop policy; the current worker explicitly returns unavailable for the real planner, attached collision, contact dynamics, stop controller, and semantic verification while remaining no-motion.
+
+### Detailed changes
+
+- Added `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py:L1-L344`, `runtime/robotwin_route_readiness_worker.py:L1-L99`, `profiles/robotwin20/route-readiness.yaml:L1-L18`, and `tests/test_route_readiness.py:L1-L166`.
+- Exported route readiness APIs from `robotwin20_adapter/__init__.py:L67-L78,L185-L193`.
+- Updated architecture diagnosis, implementation review, adapter README, and monthly changelog.
+
+### Validation
+
+- Route readiness: `9 passed`; combined readiness/action/Gateway focus: `81 passed`; repository: `164 passed`.
+- Ruff, compileall, and `git diff --check` passed. No RoboTwin `play_once`, Dora, Gateway motion executor, or hardware was started.
+
 ## [v4.9.0] - 2026-09-05
 
 新增独立的 simulation-motion authorization profile/schema。`simulation_authorization.py` 严格绑定 runtime/evidence manifest digest、任务/场景/Franka 本体身份、四类 readiness scope、审批记录、停止策略和 before/after semantic snapshot；默认配置为 disabled/no-motion，不启动任何 worker 或动作。

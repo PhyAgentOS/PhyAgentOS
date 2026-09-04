@@ -650,3 +650,23 @@ Gateway invocation，不改变 Action admission；运动权限仍由未来 Gatew
 attached-object readiness、连续路线、接触动力学、before/after snapshot 或语义成功已经实现。
 下一步仍是让外部 worker 产生这些独立证据，之后才可在人工审核后实现受控 simulation
 motion executor。
+
+## 23. simulation route-readiness evidence seam（2026-09-05）
+
+按文档顺序新增 `paos-robotwin20-simulation-route-readiness/v1` contract、
+`RouteReadinessClient`/profile loader 和独立 `robotwin_route_readiness_worker.py`。请求现在可
+严格描述同一 observation/scene/candidate-set/frame 下的附着物体 geometry artifact、完整八阶段
+`approach → contact → close → lift → transport → descent → release → retreat`、每个 waypoint
+的速度限幅、workspace、joint-limit/stop policy 引用和 provenance。路线 geometry digest、candidate
+identity 和 evidence artifact 均可复核，重复 YAML key、非法姿态/变换、workspace 越界、阶段缺失
+和身份漂移均 fail-closed。
+
+当前 worker 的实现边界是诚实的 unavailable：它只生成带 `motion_authorized=false`、
+`world_change_started=false` 的 route evidence，明确标记 attached-object collision、真实 planner
+路线、接触动力学、stop controller 和 semantic verifier 尚未接入；不会调用 `play_once`、不会
+step simulator，也不会把结构检查当成 readiness pass。profile-owned client 复用 bounded JSONL
+生命周期并拒绝把 unavailable 响应投影为可执行能力。
+
+因此本阶段完成的是完整路线证据协议和安全 worker seam，不是 attached-object/IK/接触 readiness
+本身。下一步仍需在同一 contract 下接入真实或独立 planner、附着碰撞模型、停止控制和执行后
+语义快照，完成独立人工审核后才可申请 simulation motion。

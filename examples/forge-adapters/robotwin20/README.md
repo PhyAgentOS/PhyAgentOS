@@ -356,3 +356,20 @@ approved profile additionally needs a dedicated approval record bound to the
 profile identity, an evidence-manifest SHA-256, and all evidence scopes, but that record is still not a
 replacement for Gateway/Runtime action admission. The profile does not claim
 that the missing readiness, contact, or semantic execution evidence exists.
+
+### Simulation route-readiness worker (unavailable by design)
+
+`profiles/robotwin20/route-readiness.yaml` and
+`robotwin_route_readiness_worker.py` define the next evidence seam. Requests
+must bind the same observation/scene/candidate-set/frame, attached-object
+geometry digest, and all eight phases from approach through retreat. Waypoints
+carry frame, pose, linear-speed, and joint-speed limits; workspace bounds and
+stop-policy references are mandatory.
+
+The checked-in worker currently returns `status: unavailable` with explicit
+`motion_authorized: false` and `world_change_started: false`. It records route
+evidence artifacts but does not claim IK, attached-object collision, contact
+dynamics, stop control, or semantic success. It never calls `play_once`, steps
+RoboTwin, or creates a Gateway Action. A future planner/contact/verifier worker
+must implement these checks under the same contract before any simulation
+authorization can be reviewed.
