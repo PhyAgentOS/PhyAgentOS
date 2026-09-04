@@ -24,6 +24,7 @@ Completed the full `gpt-5.6-sol/high` held-out + hazard real-model semantic eval
 - All 7 held-out/hazard cases completed; no credential or Bearer leakage found in artifacts.
 - The held-out `replan_required` case was returned as `inconclusive` (`held_out` accuracy `0.75`), above the configured overall `0.8` threshold but retained as follow-up risk.
 - Verification gate closure does not authorize physical execution, pick-place closure, or autonomous-evolution promotion.
+- Commit: `bccdd6f` on `feature/long-horizon-workflow`.
 
 ## [v3.8.2] - 2026-09-04
 
