@@ -581,3 +581,39 @@ route；失败路径在 provider 前拒绝并保留 unknown；权威边界由人
 identity 持有；manifest/review/artifact 路径由 `action-readiness.yaml` 外置；实现没有新增
 RoboTwin/模型依赖或第二套生命周期事实源。该 wiring 仍是 no-motion 集成证据，不授权
 attached-object transport/descent/retreat、RoboTwin motion stepping、Dora 或硬件执行。
+
+## 21. 仿真 motion executor 阶段的前置阻断与顺序修订（2026-09-05）
+
+按文档进入 RoboTwin 仿真 motion executor 前，重新检查现有 gate、Action 生命周期和
+readiness worker，发现以下问题必须先关闭，不能直接接入 `play_once` 或任意 simulator step：
+
+1. **授权边界仍是 no-motion。** `ReadinessEvidenceGate` 要求 manifest/evidence 的
+   `motion_authorized=false`，`object.acquire`/`object.place` 还会拒绝 provider 报告的
+   `world_change_started=true`。当前人工审核决策只批准下一阶段 no-motion gate，不能被解释
+   为仿真运动授权。
+2. **Action 生命周期尚未具备真实执行语义。** 当前 endpoint 在 invocation 创建前调用
+   provider；如果 provider 在这里启动仿真，动作会先于 `invocation_id`、timeout、cancel/stop
+   责任建立，Gateway 无法可靠归属和停止该动作。必须先拆分为
+   `validate/readiness → allocate invocation → execute → reconcile`。
+3. **attached-object readiness 不存在。** 独立 worker 对每个候选只调用一次左右臂
+   `plan_path`，证据中的 `collision_scope` 仍为 `robot_self_and_table`，没有附着物体、夹爪
+   接触几何或携物后的联合碰撞模型。
+4. **完整路径 readiness 不存在。** 当前没有 approach/contact/close/lift/hold 或
+   transport/descent/release/retreat 的连续 waypoint、速度/关节限幅和中途停止证据。
+5. **接触动力学与语义验收不存在。** backend 只执行 `setup_demo/get_obs`，不执行动作、
+   物理接触或 `check_success`，也没有执行后的不可变环境快照供 Verifier 比较。
+
+因此本阶段的执行顺序修订为：
+
+1. 重构 Action 生命周期，确保 invocation 建立后才可启动 provider，并保留 timeout、cancel、
+   stop 和 unknown 的归属语义；
+2. 新增独立的 simulation-motion authorization profile/schema，与现有 no-motion readiness
+   gate 隔离；
+3. 在外部 RoboTwin worker 中加入 attached-object、完整 transport/descent/retreat 和
+   workspace/limit/stop 证据；
+4. 保存执行前后 observation/environment snapshot，接入语义 Verifier；
+5. 完成独立人工审核后，才允许显式配置的 RoboTwin motion stepping；
+6. 运动阶段完成后再按架构集成、失败路径、权威边界、配置、可维护性五维复审。
+
+本轮只完成诊断文档更新和 no-motion 复核，不启动仿真运动，不修改
+`motion_authorized=false`，也不把现有 readiness evidence 升级为执行成功证据。

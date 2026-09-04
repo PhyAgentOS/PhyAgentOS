@@ -602,3 +602,27 @@ Fake Gateway 保持标准 Action invocation/status/result/cancel 路由，并在
 加载到 50 个候选 evidence 均通过 gate。此结果只关闭 no-motion Action/Gateway wiring
 门禁，仍不能进入 RoboTwin motion stepping；下一步需在独立 review 后建设仿真 motion
 executor，并继续保存每次 invocation 的中间证据。
+
+## 24. 仿真 motion executor 进入前的生命周期与证据审查（2026-09-05）
+
+在执行仿真 motion executor 前进行专项审查，结论是当前 no-motion 实现不能直接升级为
+运动实现：
+
+- **架构集成（Blocker）**：Action endpoint 在 invocation 分配前调用 provider。真实 provider
+  若在此处开始仿真，Gateway 尚未持有 invocation/attempt 身份，timeout、cancel、stop 和
+  unknown 无法可靠关联。必须先改为 invocation-first 的执行生命周期。
+- **失败路径（Major）**：现有 gate 只覆盖 evidence 缺失、身份漂移、过期和 provider failure；
+  没有 attached-object collision、连续路径中止、仿真进程崩溃后的 reconciliation 或
+  执行后 snapshot 缺失处理。
+- **权威边界（Blocker）**：manifest、review、evidence 和 Action context 都固定
+  `motion_authorized=false`，provider 的 `world_change_started=true` 会被拒绝。绕过它们
+  接入 `play_once` 会形成第二套运动授权源。
+- **配置（Major）**：当前只有 no-motion readiness/action profile，没有独立的 simulation
+  authorization、planner route、attached-object model、stop policy 和 snapshot policy 配置。
+- **可维护性（Major）**：RoboTwin backend 只提供 sensor capture；没有稳定的
+  `ManipulationExecutor` 实现、跨进程 motion worker schema 或执行证据 artifact contract。
+
+修订后的实现顺序为：先完成 invocation-first Action 生命周期，再建立隔离的 simulation-motion
+profile/schema，随后实现 attached-object 与完整路线 readiness、before/after snapshot 和
+语义 Verifier，最后才在人工审核后启用 RoboTwin stepping。当前不修改运动授权，不启动
+`play_once`、Dora 或硬件。
