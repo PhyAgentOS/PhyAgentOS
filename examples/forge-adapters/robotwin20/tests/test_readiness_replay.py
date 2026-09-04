@@ -12,8 +12,11 @@ from robotwin20_adapter import (
     READINESS_PROFILE_SCHEMA_VERSION,
     ProcessWorkerError,
     ReadinessProfileError,
+    ReadinessReplayArtifactError,
     build_readiness_evaluator,
     load_readiness_profile,
+    load_readiness_replay_artifact,
+    readiness_replay_artifact_id,
 )
 
 WORKER = Path(__file__).parents[1] / "runtime" / "readiness_replay_worker.py"
@@ -123,6 +126,84 @@ def test_profile_builds_process_replay_and_paos_projects_no_motion(tmp_path):
     )
     assert result["status"] == "available"
     assert result["motion_authorized"] is False
+    evaluator.release()
+
+
+def test_record_replay_writes_immutable_canonical_artifact(tmp_path):
+    fixture = _fixture(tmp_path, prepared=_prepared())
+    evaluator = build_readiness_evaluator(_profile(tmp_path, fixture))
+    path = (tmp_path / "replays" / "readiness.json").absolute()
+    path.parent.mkdir()
+    artifact = evaluator.record_replay(_request(), path)
+    loaded = load_readiness_replay_artifact(path)
+    assert loaded == artifact
+    assert loaded["motion_authorized"] is False
+    assert path.read_bytes().endswith(b"\n")
+    evaluator.release()
+
+
+def test_replay_artifact_refuses_divergent_overwrite_and_tampering(tmp_path):
+    fixture = _fixture(tmp_path, prepared=_prepared())
+    evaluator = build_readiness_evaluator(_profile(tmp_path, fixture))
+    path = (tmp_path / "replay.json").absolute()
+    artifact = evaluator.record_replay(_request(), path)
+    original = path.read_bytes()
+    changed = dict(artifact)
+    changed["worker_id"] = "other-worker"
+    changed["artifact_id"] = readiness_replay_artifact_id(changed)
+    with pytest.raises(ReadinessReplayArtifactError, match="overwrite"):
+        from robotwin20_adapter import write_readiness_replay_artifact
+        write_readiness_replay_artifact(path, changed)
+    path.write_bytes(original.replace(b'"provider_available":true', b'"provider_available":false'))
+    with pytest.raises(ReadinessReplayArtifactError, match="digest|canonical"):
+        load_readiness_replay_artifact(path)
+    evaluator.release()
+
+
+def test_replay_artifact_rejects_relative_path_and_naive_timestamp(tmp_path):
+    fixture = _fixture(tmp_path, prepared=_prepared())
+    evaluator = build_readiness_evaluator(_profile(tmp_path, fixture))
+    artifact = evaluator.record_replay(_request(), (tmp_path / "replay.json").absolute())
+    artifact["generated_at"] = "2026-09-04T12:00:00"
+    artifact["artifact_id"] = readiness_replay_artifact_id(artifact)
+    from robotwin20_adapter import write_readiness_replay_artifact
+    with pytest.raises(ReadinessReplayArtifactError, match="timezone"):
+        write_readiness_replay_artifact((tmp_path / "naive.json").absolute(), artifact)
+    with pytest.raises(ReadinessReplayArtifactError, match="absolute"):
+        write_readiness_replay_artifact("relative.json", evaluator.record_replay(_request(), (tmp_path / "other.json").absolute()))
+    evaluator.release()
+
+
+def test_record_replay_rejects_unavailable_projection(tmp_path):
+    fixture = _fixture(tmp_path)
+    evaluator = build_readiness_evaluator(_profile(tmp_path, fixture))
+    request = _request()
+    request.update(
+        {
+            "observation_ref": "observation://scene-8/camera_front",
+            "scene_revision": "scene-8",
+            "candidate_set_ref": "candidate-set://scene-8/camera_front",
+        }
+    )
+    with pytest.raises(ReadinessProfileError, match="unavailable"):
+        evaluator.record_replay(request, (tmp_path / "unavailable.json").absolute())
+    evaluator.release()
+
+
+def test_replay_artifact_rejects_symlink_and_permissive_existing_file(tmp_path):
+    fixture = _fixture(tmp_path, prepared=_prepared())
+    evaluator = build_readiness_evaluator(_profile(tmp_path, fixture))
+    artifact = evaluator.record_replay(_request(), (tmp_path / "source.json").absolute())
+    from robotwin20_adapter import write_readiness_replay_artifact
+    link = (tmp_path / "link.json").absolute()
+    link.symlink_to(tmp_path / "source.json")
+    with pytest.raises(ReadinessReplayArtifactError, match="symlink"):
+        write_readiness_replay_artifact(link, artifact)
+    permissive = (tmp_path / "permissive.json").absolute()
+    permissive.write_bytes((tmp_path / "source.json").read_bytes())
+    permissive.chmod(0o666)
+    with pytest.raises(ReadinessReplayArtifactError, match="writable"):
+        load_readiness_replay_artifact(permissive)
     evaluator.release()
 
 

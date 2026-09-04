@@ -502,4 +502,6 @@ PAOS 最终 projection 与 `motion_authorized=false`；配置通过 `readiness-r
 未注入 pick-place 源路径影响，未宣称 GraspGen/数值感知 live 验收。Hephaestus 仍仅作 clean-room 参考，未作为运行时依赖接入。
 
 下一步是对真实或经独立验证的 readiness worker 产生 evidence replay；在该证据完成人工审核前，不进入真实 Action/Gateway
-wiring 或硬件执行。
+wiring 或硬件执行。为支撑这一门禁，adapter 现在可将已通过 worker conformance 的 no-motion projection 固化为不可变
+canonical replay artifact，并绑定 fixture/manifest/request/result digest。该 artifact 仅用于 adapter-local 审计与回放，
+不冒充 PAOS EvidenceBundle、Verifier 物理成功判断或 Action admission；fixture replay 仍不等价于真实 IK/碰撞/轨迹证据。

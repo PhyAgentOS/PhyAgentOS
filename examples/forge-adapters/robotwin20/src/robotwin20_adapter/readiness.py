@@ -9,6 +9,7 @@ the immutable ``motion_authorized=false`` boundary.
 
 from __future__ import annotations
 
+import os
 import re
 from copy import deepcopy
 from typing import Any, Callable, Mapping, Protocol
@@ -125,6 +126,15 @@ class RoboTwinReadinessEvaluator:
         release = getattr(self.evaluator, "release", None)
         if callable(release):
             release()
+
+    def record_replay(
+        self, request: Mapping[str, Any], path: str | os.PathLike[str]
+    ) -> Mapping[str, Any]:
+        """Persist adapter-local replay evidence when the injected evaluator supports it."""
+        record = getattr(self.evaluator, "record_replay", None)
+        if not callable(record):
+            raise ReadinessAdapterError("readiness evaluator does not support replay recording")
+        return record(request, path)
 
 
 def _validate_request(request: Mapping[str, Any]) -> None:

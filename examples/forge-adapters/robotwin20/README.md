@@ -213,6 +213,17 @@ unknown cases, digest/path/schema mismatches, worker identity changes, missing
 or drifted evidence, and non-no-motion responses fail closed. Replay is protocol
 evidence only, not a claim of real IK, collision, trajectory, or physical success.
 
+Once a real or independently validated worker result has been manually reviewed,
+`ReadinessReplayClient.record_replay(request, absolute_path)` can persist the
+validated projection as an immutable adapter-local canonical JSON artifact. The
+artifact carries worker, fixture, evidence-manifest, request, result, and
+timezone-aware generation bindings plus a SHA-256 content ID. Existing files may
+only be replayed when the bytes are identical; divergent overwrites, malformed
+JSON, path/symlink or permission violations, request/result drift, and any
+`motion_authorized=true` value fail closed. This artifact is an audit/replay
+record, not a PAOS `EvidenceBundle`, physical-success verdict, or Action/Gateway
+admission. The manual-review gate remains a prerequisite for real wiring.
+
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
 `check_success`, segmentation APIs, actor/entity APIs, or any action route.

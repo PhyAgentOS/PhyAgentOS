@@ -452,3 +452,9 @@ worker 对完整 observation/candidate identity 做精确 case 匹配，并校�
 和带时区 timestamp；client 校验 worker/schema/no-motion 后才向 PAOS 投影。该阶段证明可重复的协议 evidence，不证明真实
 IK、碰撞规划或物理可达性；五维审查无 Blocker/Major，专项 `34 passed`，依赖隔离 adapter 子集 `44 passed`。下一步是对
 真实或独立验证的 readiness worker 生成 evidence replay，之后才讨论 Action/Gateway wiring。
+当前 adapter 已提供一个受限的 replay artifact 固化接口：它把 worker 已通过
+conformance 的 no-motion projection 以不可变 canonical JSON 保存，并绑定 worker、fixture、evidence
+manifest、请求和结果 digest。该文件只是 adapter-local audit/replay artifact，不是 PAOS EvidenceBundle，
+不会改变 Verifier 的权威边界，也不会授予 Action admission。只有真实或独立验证 worker 的证据完成
+人工审核后，才可据此进入真实 Action/Gateway wiring；fixture replay 本身仍不能被描述为真实 IK、碰撞
+或物理可达性证据。

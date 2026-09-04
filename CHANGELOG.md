@@ -7,6 +7,17 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.4.0] - 2026-09-04
+
+固化独立 readiness worker 的 no-motion projection 为 adapter-local、不可变 canonical replay artifact；保持人工审核门禁，不进入真实 Action/Gateway wiring。
+
+Persisted independently validated readiness worker no-motion projections as immutable adapter-local canonical replay artifacts; retained the manual-review gate and did not enter real Action/Gateway wiring.
+
+### Validation
+
+- Readiness/replay/process: `25 passed`; repository: `161 passed`; dependency-free adapter subset: `16 passed`; pick-place: `256 passed`.
+- Ruff, compileall, and `git diff --check` passed. Artifact is not a PAOS EvidenceBundle or motion authorization.
+
 ## [v4.3.4] - 2026-09-04
 
 回写 v4.3.3 readiness calibration identity 修复提交哈希 `20c6ad6`；没有修改实现、测试或执行顺序。

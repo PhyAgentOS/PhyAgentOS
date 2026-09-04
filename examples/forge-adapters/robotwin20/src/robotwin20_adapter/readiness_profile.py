@@ -7,6 +7,7 @@ import os
 import re
 import stat
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
@@ -14,6 +15,10 @@ from uuid import uuid4
 from .perception_profile import PerceptionProfileError, _absolute_path, _expand, _worker_config
 from .process_worker import JsonlProcessWorkerClient
 from .readiness import RoboTwinReadinessEvaluator
+from .readiness_replay import (
+    readiness_replay_artifact_id,
+    write_readiness_replay_artifact,
+)
 
 READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-readiness/v1"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -26,11 +31,26 @@ class ReadinessProfileError(ValueError):
 class ReadinessReplayClient:
     """Process client that validates worker identity before projecting evidence."""
 
-    def __init__(self, client: JsonlProcessWorkerClient, *, worker_id: str) -> None:
+    def __init__(
+        self,
+        client: JsonlProcessWorkerClient,
+        *,
+        worker_id: str,
+        fixture_sha256: str,
+        evidence_manifest_sha256: str,
+    ) -> None:
         self.client = client
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise ValueError("worker_id must be a non-empty string")
+        for field, value in (
+            ("fixture_sha256", fixture_sha256),
+            ("evidence_manifest_sha256", evidence_manifest_sha256),
+        ):
+            if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+                raise ValueError(f"{field} must be a lowercase SHA-256 digest")
         self.worker_id = worker_id
+        self.fixture_sha256 = fixture_sha256
+        self.evidence_manifest_sha256 = evidence_manifest_sha256
 
     def evaluate(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         if not isinstance(request, Mapping):
@@ -52,6 +72,30 @@ class ReadinessReplayClient:
             "prepared_candidates": response.get("prepared_candidates"),
             "provider_available": response.get("provider_available"),
         }
+
+    def record_replay(
+        self, request: Mapping[str, Any], path: str | os.PathLike[str]
+    ) -> dict[str, Any]:
+        """Persist one validated worker projection as an immutable local artifact."""
+        result = self.evaluate(request)
+        if result is None or result.get("provider_available") is not True:
+            raise ReadinessProfileError("cannot record an unavailable readiness replay")
+        artifact = {
+            "schema_version": "paos-robotwin20-readiness-replay-artifact/v1",
+            "artifact_id": "0" * 64,
+            "worker_id": self.worker_id,
+            "fixture_sha256": self.fixture_sha256,
+            "evidence_manifest_sha256": self.evidence_manifest_sha256,
+            "motion_authorized": False,
+            "request": dict(request),
+            "result": {
+                "prepared_candidates": [dict(item) for item in result["prepared_candidates"]],
+                "provider_available": result["provider_available"],
+            },
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        artifact["artifact_id"] = readiness_replay_artifact_id(artifact)
+        return write_readiness_replay_artifact(path, artifact)
 
     def release(self) -> None:
         self.client.release()
@@ -153,7 +197,12 @@ def build_readiness_evaluator(
         ),
     )
     return RoboTwinReadinessEvaluator(
-        ReadinessReplayClient(JsonlProcessWorkerClient(config), worker_id=worker_id)
+        ReadinessReplayClient(
+            JsonlProcessWorkerClient(config),
+            worker_id=worker_id,
+            fixture_sha256=expected,
+            evidence_manifest_sha256=expected_manifest,
+        )
     )
 
 
