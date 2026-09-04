@@ -7,6 +7,12 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.3.2] - 2026-09-04
+
+回写 v4.3.1 日志维护提交哈希 `8833784`；没有修改实现、测试或执行顺序。
+
+Recorded the v4.3.1 changelog-maintenance commit hash `8833784`; implementation, tests, and execution order were unchanged.
+
 ## [v4.3.1] - 2026-09-04
 
 回写 v4.3.0 readiness evidence manifest 实现提交哈希 `23364de`；没有修改实现、测试或执行顺序。
