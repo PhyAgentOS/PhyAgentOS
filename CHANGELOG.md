@@ -7,6 +7,21 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.7.10] - 2026-09-05
+
+回写 v4.7.9 Action readiness gate 实现提交哈希 `83c74ff`；未修改运行逻辑，用户目录 `.codegraph/` 与 `.cursor/` 未纳入提交。
+
+Recorded the v4.7.9 Action readiness-gate implementation commit hash `83c74ff`; runtime logic was unchanged, and user directories `.codegraph/` and `.cursor/` were excluded from the commit.
+
+### Detailed changes
+
+- Updated `changelog/2026-09_part2.md` with the completed maintenance record and exact implementation commit.
+- Kept user-owned `.codegraph/` and `.cursor/` directories out of the change.
+
+### Validation
+
+- Verified the working tree contains only the intended changelog/index edits plus pre-existing untracked user directories.
+
 ## [v4.7.9] - 2026-09-05
 
 接入已人工审核 readiness evidence 的 Action admission no-motion gate。`object.acquire`/
