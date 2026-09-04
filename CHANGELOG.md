@@ -21,6 +21,7 @@ Recorded the v4.7.9 Action readiness-gate implementation commit hash `83c74ff`; 
 ### Validation
 
 - Verified the working tree contains only the intended changelog/index edits plus pre-existing untracked user directories.
+- Git commit: `5cc58a0` on `feature/long-horizon-workflow`.
 
 ## [v4.7.9] - 2026-09-05
 
