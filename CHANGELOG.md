@@ -26,6 +26,15 @@ Implemented the independent RoboTwin20 `ReadinessEvaluator` conformance and pass
 - Ruff, compileall, and `git diff --check` passed.
 - No real IK/collision engine, Action, Gateway, Dora, hardware, or motion path was started.
 
+## [v4.1.1] - 2026-09-04
+
+回写 v4.1.0 实现提交哈希；没有修改实现、测试或执行顺序。
+
+Recorded the v4.1.0 implementation commit hash; implementation, tests, and execution order are unchanged.
+
+- Commit: `4b6ab2b`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v4.0.0] - 2026-09-04
 
 完成 `manipulation.prepare` candidate consumer 的协议加固，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 Query/no-motion。Hephaestus 仅作为 clean-room 行为参考，未接入其运行时代码。
