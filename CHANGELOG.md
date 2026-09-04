@@ -7,6 +7,26 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.10.2] - 2026-09-04
+
+完成 EnvironmentAdapter/provider-neutral `scene.observe` 核心 seam，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 no-motion，不连接真实机器人、Dora 或硬件。
+
+Completed the EnvironmentAdapter/provider-neutral `scene.observe` core seam and passed review across architecture integration, failure paths, authority boundaries, configuration, and maintainability; kept no-motion with no real robot, Dora, or hardware connected.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/capability_runtime/observation.py`: explicit provider-neutral ToolSpec, strict observation projection, injected clock, and fail-closed provider/sensor errors.
+- `PhyAgentOS/forge/capability_runtime/__init__.py`, `examples/forge-adapters/robotwin20/src/robotwin20_adapter/adapter.py`: core export and sanitized adapter boundary.
+- `tests/test_environment_adapter_observation.py`: observation contract, failure, and explicit registration coverage.
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`, `docs/forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md`: stage status and five-dimension review.
+
+### Validation
+
+- Repository tests: `161 passed`; observation seam: `10 passed`; RoboTwin dependency-free subset: `16 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Full RoboTwin runtime, real Gateway/Dora, geometry consumer, Action executor, and hardware remain deferred.
+- Commit: pending.
+
 ## [v3.10.0] - 2026-09-04
 
 完成 provider-neutral 抓取放置协议级证据闭环，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；不连接真实 Action executor、Dora、机器人或硬件。

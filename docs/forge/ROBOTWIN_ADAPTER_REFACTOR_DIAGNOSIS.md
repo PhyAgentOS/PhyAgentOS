@@ -505,14 +505,18 @@ SKILLRUNTIME/LESSONS renderer 不属于已完成的生产模块。抓取放置�
   或执行链；当前 GPT 语义 provider 与 LocateAnything/SAM2/depth composition 均已分别验收，
   但尚未在同一次调用中运行 GPT 语义到真实 mask/metric localization/grasp 的完整 live 链路。
 
+EnvironmentAdapter 的 reset/snapshot 与 provider-neutral `scene.observe` 核心 seam 已完成代码级接入和 no-motion
+边界验收：`ObservationEndpoint`、`OBSERVATION_TOOL_SPEC`、`ObservationSource` 以及 RoboTwin20 adapter 的
+camera/depth/state 投影均已通过专项验证；ToolSpec 仍需由部署方显式注册，未隐式连接 Gateway 或硬件。
+
 因此不能声称“六个 RoboTwin Skill 已接入”，也不能把 RoboTwin 的 ground truth 称为真实感知。准确表述是：
 
 > PAOS 公共能力契约、`pick-place-workflow` 编排、generic capability runtime 基础、RoboTwin
 > `scene.observe` runtime/provider conformance、adapter-side `scene.understand` GPT provider，以及独立环境
 > LocateAnything/SAM2/depth 单视角 composition 的代码与协议验收已完成；GraspGen 目前完成
 > provider-neutral adapter/worker conformance，Hephaestus 能力只作为 clean-room 重构的需求/行为参考。
-> 当前尚缺 verified GraspGen checkpoint 的 live 证据、模型碰撞/后续准备执行 provider、Gateway HTTP/Dora wiring，
-> 必须继续按本文顺序独立实现。
+> 当前尚缺 verified GraspGen checkpoint 的 live 证据、模型碰撞/后续准备执行 provider、真实 Gateway HTTP/Dora wiring，
+> 以及 `scene.understand` 消费正式 observation/geometry artifact 的跨模块 conformance，必须继续按本文顺序独立实现。
 
 ## 12. 识别、分割、定位与抓取位姿的模块归属
 

@@ -399,3 +399,21 @@ opaque identity，并要求 place 的 `acquire_invocation_ref` 与前一步成�
 
 完成后按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；下一阶段才可在独立 adapter/profile 门禁下讨论真实
 环境接入，任何物理动作仍需额外的 Runtime/Profile/Action admission 与硬件安全证据。
+
+## 13. EnvironmentAdapter 阶段状态与下一步
+
+EnvironmentAdapter 接入门禁已按上述顺序启动并完成首个 provider-neutral observation seam。核心
+`ObservationEndpoint` 负责 `scene.observe` Query 的输入、freshness、frame、calibration、scene revision、artifact
+和错误投影；`ObservationSource` 负责注入式传感器捕获；RoboTwin20 adapter 只负责 profile、reset/snapshot 与
+camera/depth/state artifact 投影。`OBSERVATION_TOOL_SPEC` 必须由部署方显式注册到 CapabilityRuntime，不能由
+HTTP transport 或 adapter 偷含环境语义。
+
+本阶段五维复审通过：架构集成无第二执行平面，provider 异常/不可用/stale/绑定漂移 fail-closed，RoboTwin actor/entity
+truth 不进入 observation，profile/path/calibration 不硬编码到核心 runtime，测试与错误码保持可维护。专项测试 10 passed，
+根仓库 161 passed，RoboTwin 无第三方依赖子集 16 passed；完整 RoboTwin 测试因当前 PAOS 环境缺少 `numpy` 与
+`pick_place_workflow` 路径未收集，不构成完整真实 adapter 验收。
+
+因此当前可确认的是“核心 observation contract 与 no-motion adapter 边界完成”，不是“真实 RoboTwin/Gateway/Dora 或
+硬件完成”。下一步按架构顺序是让 `scene.understand` 消费正式绑定的 observation/geometry artifacts，并以同样五维
+标准进行审查；之后才讨论真实 Gateway/Dora provider wiring。多视角 observation、GraspGen live checkpoint、prepare/action
+executor 和自主进化 promotion 继续后置。

@@ -344,3 +344,40 @@ criterion 与 recovery-context 指标均为 1.0，且无凭据泄漏。因为使
 - `python -m ruff check PhyAgentOS tests examples/forge-skills/pick-place-workflow/src examples/forge-skills/pick-place-workflow/tests`、`python -m compileall -q PhyAgentOS tests examples/forge-skills/pick-place-workflow/src`、`git diff --check` → 通过。
 
 五维复审无 Blocker/Major 遗留。该结果证明抓取放置的协议级证据闭环，不证明真实 Action executor、Dora/机器人互操作、物理成功或自主进化 promotion。
+
+## 13. EnvironmentAdapter / provider-neutral observation seam
+
+本阶段按既定顺序进入 EnvironmentAdapter 接入门禁，范围限定为 reset/snapshot 与无动作
+`scene.observe` Query。实现没有启动真实机器人、Dora、Action executor 或硬件，也没有把 RoboTwin
+actor/entity truth 写入公共 observation。
+
+### 实现结果
+
+- [架构集成] `ObservationEndpoint` 位于核心 capability runtime，通过注入的 `ObservationSource.capture()`
+  接收测量结果；`OBSERVATION_TOOL_SPEC` 与其他 generic ToolSpec 一样必须由调用方显式注册到
+  `CapabilityRuntime`，transport 不隐式创建环境依赖。RoboTwin20 adapter 只负责 profile、reset、snapshot
+  和 camera/depth/state artifact 投影。
+- [失败路径] 输入在 source 调用前校验；provider exception、`None`、`sensor_available=false`、缺失 revision/frame/
+  calibration/artifact、重复或 actor-like artifact、错误 observation binding、非法 timestamp、requested frame
+  不匹配和 stale observation 均 fail-closed。provider 详情不会回显，错误使用稳定 code；错误时间戳使用注入 clock。
+- [权威边界] endpoint 只投影 observation identity、revision、frame、calibration、freshness 与 artifact refs；不创建
+  AgentTask、Evidence、verdict、entity truth、candidate 或 action admission。RoboTwin backend 的 snapshot 仅返回 profile/
+  revision/status，ObservationSource 不转发 actors、segmentation 或内部 pose。
+- [配置] sensor refs、profile 名称、runtime/artifact 根目录和 calibration 由 adapter/profile/backend 提供；核心
+  ToolSpec 不含 RoboTwin、SAPIEN、模型、设备或路径。环境差异不会进入 Skill 或第二份配置源。
+- [可维护性] public schema 与 endpoint validator 同处一个 owner；错误投影、时钟和 provider port 可注入测试；显式
+  registration 避免重复 wiring。RoboTwin adapter 继续保持独立 package，PAOS 不依赖可选仿真/视觉库。
+
+### 验证与边界
+
+- `tests/test_environment_adapter_observation.py` → `10 passed`，覆盖成功投影、freshness、provider failure、sensor
+  unavailable、binding/artifact/calibration/timestamp/输入失败以及显式 runtime registration。
+- 根仓库测试 → `161 passed`；RoboTwin adapter 无第三方依赖子集 → `16 passed`；Ruff、compileall、`git diff --check` 通过。
+- RoboTwin adapter 完整测试仍受当前 PAOS 环境缺少 `numpy` 与 `pick_place_workflow` 路径影响，不能宣称完整 adapter
+  runtime 已验收；真实传感器、跨进程 Gateway/Dora、模型语义质量和硬件运动仍未完成。
+
+### 五维结论
+
+EnvironmentAdapter / observation seam 五维审查通过，无 Blocker/Major。该结论只表示核心 Query contract、adapter
+port 和 no-motion replay 边界已具备；下一步应按顺序审查并实现 `scene.understand` 对正式 observation/geometry artifact
+的消费，再进入真实 Gateway/Dora provider wiring。不得把本阶段结果表述为真实环境或抓取放置完成。

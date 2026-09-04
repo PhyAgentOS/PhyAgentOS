@@ -14,6 +14,11 @@ from .manipulation_prepare import (
     ManipulationPreparationEndpoint,
     PreparationSnapshot,
 )
+from .observation import (
+    OBSERVATION_TOOL_SPEC,
+    ObservationContractError,
+    ObservationEndpoint,
+)
 from .ports import (
     ActionAdmission,
     ActionEndpoint,
@@ -56,6 +61,9 @@ __all__ = [
     "GRASP_PROPOSAL_TOOL_SPEC",
     "MANIPULATION_TOOL_SPEC",
     "ManipulationPreparationEndpoint",
+    "ObservationContractError",
+    "ObservationEndpoint",
+    "OBSERVATION_TOOL_SPEC",
     "PreparationSnapshot",
     "Invocation",
     "ManipulationExecutor",
