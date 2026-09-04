@@ -21,7 +21,7 @@ Completed the independent readiness-worker evidence loop for Franka `blocks_rank
 
 ### Validation
 
-- Adapter readiness/backend tests: `46 passed`; repository with explicit async plugin: `161 passed`.
+- Adapter readiness/backend tests: `50 passed`; repository with explicit async plugin: `161 passed`.
 - External live profile → worker → PAOS `manipulation.prepare`: `available`, `50 prepared`, all checks `pass`, `motion_authorized=false`.
 - Ruff, compileall, and `git diff --check` passed. Evidence manifest: `afed01cf25c43c7a0a57aca766aa0c7b0d22478a72ebe20f25cf3de3267e0497`.
 
