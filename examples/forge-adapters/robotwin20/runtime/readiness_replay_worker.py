@@ -51,13 +51,15 @@ def _load_fixture(path: Path) -> tuple[str, tuple[dict[str, Any], ...]]:
     seen_keys: set[tuple[Any, ...]] = set()
     for case in cases:
         if not isinstance(case, Mapping) or set(case) != {
-            "observation_ref", "scene_revision", "frame_id", "candidate_set_ref",
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref", "candidate_set_ref",
             "candidate_refs", "prepared_candidates",
         }:
             raise ReplayFixtureError("readiness replay case fields are invalid")
         if (
             case["observation_ref"] != f"observation://{case['scene_revision']}/{case['frame_id']}"
             or case["candidate_set_ref"] != f"candidate-set://{case['scene_revision']}/{case['frame_id']}"
+            or not isinstance(case["calibration_ref"], str)
+            or not case["calibration_ref"].strip()
         ):
             raise ReplayFixtureError("readiness replay case identity is invalid")
         candidate_refs = case["candidate_refs"]
@@ -88,6 +90,7 @@ def _load_fixture(path: Path) -> tuple[str, tuple[dict[str, Any], ...]]:
             case_value["observation_ref"],
             case_value["scene_revision"],
             case_value["frame_id"],
+            case_value["calibration_ref"],
             case_value["candidate_set_ref"],
             tuple(tuple(item) for item in case_value["candidate_refs"]),
         )
@@ -168,7 +171,7 @@ def _validate_case_evidence(
     case_keys = {
         (
             case["observation_ref"], case["scene_revision"], case["frame_id"],
-            case["candidate_set_ref"],
+            case["calibration_ref"], case["candidate_set_ref"],
         )
         for case in cases
     }
@@ -176,7 +179,7 @@ def _validate_case_evidence(
     for case in cases:
         identity = (
             case["observation_ref"], case["scene_revision"], case["frame_id"],
-            case["candidate_set_ref"],
+            case["calibration_ref"], case["candidate_set_ref"],
         )
         for prepared in case["prepared_candidates"]:
             for artifact_ref in prepared["evidence"]:
@@ -187,7 +190,7 @@ def _validate_case_evidence(
                     raise ReplayFixtureError("readiness replay evidence reference is missing")
                 artifact_identity = (
                     artifact["observation_ref"], artifact["scene_revision"],
-                    artifact["frame_id"], artifact["candidate_set_ref"],
+                    artifact["frame_id"], artifact["calibration_ref"], artifact["candidate_set_ref"],
                 )
                 if artifact_identity != identity:
                     raise ReplayFixtureError("readiness replay evidence identity is unbound")
@@ -195,7 +198,7 @@ def _validate_case_evidence(
     for artifact in evidence.values():
         if (
             artifact["observation_ref"], artifact["scene_revision"], artifact["frame_id"],
-            artifact["candidate_set_ref"],
+            artifact["calibration_ref"], artifact["candidate_set_ref"],
         ) not in case_keys:
             raise ReplayFixtureError("readiness evidence manifest contains an unknown case")
 
@@ -213,6 +216,7 @@ def _case_key(request: Mapping[str, Any]) -> tuple[Any, ...]:
         request.get("observation_ref"),
         request.get("scene_revision"),
         request.get("frame_id"),
+        request.get("calibration_ref"),
         request.get("candidate_set_ref"),
         tuple(refs),
     )
@@ -224,6 +228,7 @@ def _handle_factory(worker_id: str, cases: tuple[dict[str, Any], ...]):
             case["observation_ref"],
             case["scene_revision"],
             case["frame_id"],
+            case["calibration_ref"],
             case["candidate_set_ref"],
             tuple(tuple(item) for item in case["candidate_refs"]),
         ): case

@@ -7,6 +7,17 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.3.3] - 2026-09-04
+
+修复 readiness replay 中 calibration identity 未完整绑定的问题；fixture、request、manifest 现在三方一致校验。
+
+Fixed incomplete calibration identity binding in readiness replay; fixture, request, and manifest now require three-way consistency.
+
+### Validation
+
+- Readiness/replay/process: `34 passed`; dependency-free adapter subset: `44 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+
 ## [v4.3.2] - 2026-09-04
 
 回写 v4.3.1 日志维护提交哈希 `8833784`；没有修改实现、测试或执行顺序。

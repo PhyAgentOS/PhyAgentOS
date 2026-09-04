@@ -59,6 +59,7 @@ def _fixture(tmp_path: Path, *, worker_id="robotwin20-readiness-replay/v1", prep
                 "observation_ref": "observation://scene-7/camera_front",
                 "scene_revision": "scene-7",
                 "frame_id": "camera_front",
+                "calibration_ref": "calibration://front/v3",
                 "candidate_set_ref": "candidate-set://scene-7/camera_front",
                 "candidate_refs": [["candidate://bottle-1/1", "entity://bottle-1"]],
                 "prepared_candidates": prepared_items,
@@ -219,8 +220,7 @@ def test_evidence_identity_drift_fails_closed(tmp_path):
     fixture = _fixture(tmp_path, prepared=_prepared())
     manifest = fixture.with_name("evidence.json")
     value = json.loads(manifest.read_text(encoding="utf-8"))
-    value["artifacts"][0]["frame_id"] = "camera_rear"
-    value["artifacts"][0]["observation_ref"] = "observation://scene-7/camera_rear"
+    value["artifacts"][0]["calibration_ref"] = "calibration://front/v4"
     manifest.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
     manifest.chmod(0o600)
     profile = _profile(tmp_path, fixture)
