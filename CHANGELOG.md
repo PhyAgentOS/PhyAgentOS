@@ -7,6 +7,12 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.5.4] - 2026-09-05
+
+回写 v4.5.3 GraspGen 验收日志维护提交哈希 `36d940d`；没有修改实现、测试或执行顺序。
+
+Recorded the v4.5.3 GraspGen acceptance-log maintenance commit hash `36d940d`; implementation, tests, and execution order are unchanged.
+
 ## [v4.5.1] - 2026-09-05
 
 回写 v4.5.0 provider no-motion 真实链路验收提交哈希 `9a2af2e`；没有修改实现、测试或执行顺序。
@@ -23,6 +29,12 @@ Fixed GraspGen worker JSONL stdout conformance and completed a no-motion `grasp.
 
 - Adapter: `104 passed`; repository: `161 passed`; pick-place: `256 passed`; Ruff and compileall passed.
 - Evidence manifest: `a7627a6d8583bf4da502dfe1deaf8c3ec1e978f8f274ede545446614f43ae336`.
+
+## [v4.5.3] - 2026-09-05
+
+回写 v4.5.2 GraspGen live provider seam 实现提交哈希 `aff62a5`；没有修改实现、测试或执行顺序。
+
+Recorded the v4.5.2 GraspGen live provider seam implementation commit hash `aff62a5`; implementation, tests, and execution order are unchanged.
 
 ## [v4.5.0] - 2026-09-05
 
