@@ -23,7 +23,7 @@ Added an independent route-evidence verifier that consumes artifacts from an aut
 
 - Verifier focus: `10 passed`; combined route/readiness/action focus: `80 passed`; repository: `164 passed`.
 - Ruff, compileall, and `git diff --check` passed. No RoboTwin `play_once`, Dora, Gateway motion, or hardware was started.
-- Commit: pending (current working tree; to be recorded after commit).
+- Commit: `3d72b98` on `feature/long-horizon-workflow`.
 
 ## [v4.10.0] - 2026-09-05
 
