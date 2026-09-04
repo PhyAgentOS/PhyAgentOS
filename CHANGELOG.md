@@ -25,6 +25,7 @@ Completed provider-neutral no-motion Gateway/Dora wiring and reviewed it across 
 - Repository tests: `150 passed`; pick-place tests: `243 passed`; conformance subset: `11 passed`.
 - Ruff, compileall, and `git diff --check` passed.
 - Real Dora/Gateway, Action executor, hardware motion, pick-place closure, and autonomous-evolution promotion remain deferred.
+- Commit: `dd1ee70` on `feature/long-horizon-workflow`.
 
 ## [v3.8.3] - 2026-09-04
 
