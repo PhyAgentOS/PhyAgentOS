@@ -617,3 +617,36 @@ readiness worker，发现以下问题必须先关闭，不能直接接入 `play_
 
 本轮只完成诊断文档更新和 no-motion 复核，不启动仿真运动，不修改
 `motion_authorized=false`，也不把现有 readiness evidence 升级为执行成功证据。
+
+本阶段第 1 步已实现为生命周期基础：通用 `CapabilityRuntime` 的
+`ActionAdmission.start` 回调在 invocation/attempt 写入后才执行；pick-place endpoint
+新增 `validate`/`execute` 分离，Fake Gateway 通过显式 `defer_action_execution=True`
+在 invocation 创建后、首次状态/结果轮询时启动 provider。取消或停止发生在首次轮询前时，
+provider 不会启动；启动异常会投影为带 invocation/attempt 的终态失败。默认 Fake Gateway
+仍保持旧的同步 no-motion fixture 行为，避免无意改变既有回放语义。
+
+该实现关闭了“provider 在 invocation 创建前启动”的生命周期缺口，但不改变运动授权：
+现有 readiness gate 仍固定 no-motion，RoboTwin backend 仍不调用 `play_once`。因此它是
+仿真执行前的必要基础，不是仿真动作或抓取放置闭环完成证明。
+
+## 22. simulation-motion authorization profile/schema（2026-09-05）
+
+按修订顺序新增了独立的 `paos-robotwin20-simulation-motion/v1` profile loader 和
+`profiles/robotwin20/simulation-motion.yaml`。该 profile 与现有 no-motion readiness/action
+gate 分离，只声明未来仿真动作需要满足的边界：Franka/task/scene 身份、runtime profile
+digest、四类尚未关闭的证据 scope（attached-object collision、完整
+transport/descent/retreat、接触动力学、执行后 snapshot/语义验收）、实际 evidence manifest
+及其 SHA-256、worker/超时/停止策略以及 before/after snapshot 要求。
+
+loader 严格校验字段集合、绝对非符号链接路径、runtime digest、seed/scene/embodiment
+绑定、证据 scope 完整性、停止策略和 snapshot/semantic verifier 必选项。默认 profile 为
+`state: disabled`、`motion_authorized: false` 且不配置 worker；只有未来独立人工审批记录
+满足专用 approval schema、profile identity、完整证据 scope、evidence manifest 摘要和 worker 配置时，profile 才能
+被解析为 `approved` 声明。即使如此，loader 也不启动 worker、RoboTwin、Dora，不创建
+Gateway invocation，不改变 Action admission；运动权限仍由未来 Gateway/Runtime executor
+和执行后 reconciliation 持有。
+
+这一阶段关闭的是“运动授权配置与 no-motion readiness 混用”的边界问题，不代表
+attached-object readiness、连续路线、接触动力学、before/after snapshot 或语义成功已经实现。
+下一步仍是让外部 worker 产生这些独立证据，之后才可在人工审核后实现受控 simulation
+motion executor。

@@ -337,3 +337,22 @@ decision, manifest/evidence digests, same-scene identity, all three readiness
 checks, and `motion_authorized=false`. Rejections occur before invocation
 allocation. This path is still no-motion: providers must not call
 `play_once`, Dora, or hardware, and `world_change_started` remains `false`.
+
+### Simulation-motion authorization profile (disabled)
+
+The next-stage contract is declared separately in
+`profiles/robotwin20/simulation-motion.yaml` and loaded with
+`load_simulation_motion_profile(...)`. It binds the runtime profile digest to
+the `blocks_ranking_rgb` Franka scene and names the four evidence scopes that
+must be independently produced and reviewed before any motion request:
+attached-object collision, complete transport/descent/retreat, contact
+dynamics, and after-snapshot semantic verification. It also requires explicit
+stop/unknown handling and before/after snapshot artifacts.
+
+The checked-in profile is deliberately `state: disabled`,
+`motion_authorized: false`, and has no worker. Loading it is validation only:
+it does not start RoboTwin, `play_once`, Dora, Gateway, or hardware. An
+approved profile additionally needs a dedicated approval record bound to the
+profile identity, an evidence-manifest SHA-256, and all evidence scopes, but that record is still not a
+replacement for Gateway/Runtime action admission. The profile does not claim
+that the missing readiness, contact, or semantic execution evidence exists.

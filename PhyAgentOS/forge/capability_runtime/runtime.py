@@ -204,6 +204,8 @@ class CapabilityRuntime:
             raise ToolContractError("Action ToolEndpoint returned an invalid admission")
         if isinstance(admission.pending_polls, bool) or admission.pending_polls < 0:
             raise ToolContractError("Action admission pending_polls must be non-negative")
+        if admission.start is not None and not callable(admission.start):
+            raise ToolContractError("Action admission start callback must be callable")
         invocation_id = f"invocation://{tool_id.replace('.', '-')}/{uuid4().hex[:16]}"
         attempt_id = f"attempt://{tool_id.replace('.', '-')}/{uuid4().hex[:16]}"
         invocation = Invocation(
@@ -222,6 +224,51 @@ class CapabilityRuntime:
             ),
         )
         self._invocations[invocation_id] = invocation
+        if admission.start is not None:
+            try:
+                started = admission.start(invocation_id, attempt_id)
+            except Exception:
+                invocation.status = "failed"
+                invocation.terminal_result = {
+                    "invocation_id": invocation_id,
+                    "attempt_id": attempt_id,
+                    "status": "failed",
+                    "failure_owner": "execution",
+                    "failure_code": "action_start_failed",
+                }
+            else:
+                if not isinstance(started, ActionAdmission):
+                    invocation.status = "failed"
+                    invocation.terminal_result = {
+                        "invocation_id": invocation_id,
+                        "attempt_id": attempt_id,
+                        "status": "failed",
+                        "failure_owner": "execution",
+                        "failure_code": "invalid_action_start_result",
+                    }
+                    raise ToolContractError("Action start callback returned an invalid admission")
+                if isinstance(started.pending_polls, bool) or started.pending_polls < 0:
+                    invocation.status = "failed"
+                    invocation.terminal_result = {
+                        "invocation_id": invocation_id,
+                        "attempt_id": attempt_id,
+                        "status": "failed",
+                        "failure_owner": "execution",
+                        "failure_code": "invalid_action_start_result",
+                    }
+                    raise ToolContractError("Action start pending_polls must be non-negative")
+                if started.start is not None:
+                    invocation.status = "failed"
+                    invocation.terminal_result = {
+                        "invocation_id": invocation_id,
+                        "attempt_id": attempt_id,
+                        "status": "failed",
+                        "failure_owner": "execution",
+                        "failure_code": "invalid_action_start_result",
+                    }
+                    raise ToolContractError("nested Action start callbacks are not supported")
+                invocation.pending_polls = started.pending_polls
+                invocation.terminal_result = dict(started.terminal_result)
         return {
             "invocation_id": invocation_id,
             "attempt_id": attempt_id,

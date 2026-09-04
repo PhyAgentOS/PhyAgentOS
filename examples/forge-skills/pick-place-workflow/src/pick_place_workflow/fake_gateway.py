@@ -34,9 +34,11 @@ from .object_acquire import (
     AcquireAdmission,
     AcquireProvider,
     AcquireRejection,
+    AcquireSnapshot,
     ActionReadinessGate,
     ObjectAcquireEndpoint,
 )
+from .object_acquire import terminal_result as acquire_terminal_result
 from .object_place import (
     PLACE_TOOL_ID,
     PLACE_TOOL_SPEC,
@@ -44,7 +46,9 @@ from .object_place import (
     PlaceAdmission,
     PlaceProvider,
     PlaceRejection,
+    PlaceSnapshot,
 )
+from .object_place import terminal_result as place_terminal_result
 from .object_place import (
     validate_arguments as validate_place_arguments,
 )
@@ -268,6 +272,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         acquire_provider: AcquireProvider | None = None,
         place_provider: PlaceProvider | None = None,
         readiness_gate: ActionReadinessGate | None = None,
+        defer_action_execution: bool = False,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
@@ -294,6 +299,9 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             if place_provider is not None
             else None
         )
+        if not isinstance(defer_action_execution, bool):
+            raise TypeError("defer_action_execution must be boolean")
+        self.defer_action_execution = defer_action_execution
         self.invocations: dict[str, dict[str, Any]] = {}
         self.requests: list[httpx.Request] = []
 
@@ -486,9 +494,36 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         except json.JSONDecodeError:
             return self._fail(400, "invalid_json", "request body must be JSON")
         arguments = payload.get("arguments") if isinstance(payload, dict) else None
-        admitted = self.acquire_endpoint.admit(arguments)
+        admitted = (
+            self.acquire_endpoint.validate(arguments)
+            if self.defer_action_execution
+            else self.acquire_endpoint.admit(arguments)
+        )
         if isinstance(admitted, AcquireRejection):
             return self._fail(admitted.status_code, admitted.code, admitted.message)
+        if self.defer_action_execution:
+            assert isinstance(admitted, dict)
+            invocation_id = f"invocation://object-acquire/{uuid4().hex[:16]}"
+            attempt_id = f"attempt://object-acquire/{uuid4().hex[:16]}"
+            self.invocations[invocation_id] = {
+                "tool_id": ACQUIRE_TOOL_ID,
+                "attempt_id": attempt_id,
+                "arguments": dict(admitted),
+                "pending_polls": 0,
+                "terminal": False,
+                "cancel_requested": False,
+                "stop_requested": False,
+                "deferred": True,
+                "started": False,
+                "result": None,
+            }
+            return httpx.Response(
+                202,
+                json={
+                    "ok": True,
+                    "data": {"invocation_id": invocation_id, "attempt_id": attempt_id, "phase": "accepted"},
+                },
+            )
         assert isinstance(admitted, AcquireAdmission)
         invocation_id = f"invocation://object-acquire/{uuid4().hex[:16]}"
         attempt_id = f"attempt://object-acquire/{uuid4().hex[:16]}"
@@ -534,9 +569,36 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         if binding_error is not None:
             status_code, code, message = binding_error
             return self._fail(status_code, code, message)
-        admitted = self.place_endpoint.admit(arguments)
+        admitted = (
+            self.place_endpoint.validate(arguments)
+            if self.defer_action_execution
+            else self.place_endpoint.admit(arguments)
+        )
         if isinstance(admitted, PlaceRejection):
             return self._fail(admitted.status_code, admitted.code, admitted.message)
+        if self.defer_action_execution:
+            assert isinstance(admitted, dict)
+            invocation_id = f"invocation://object-place/{uuid4().hex[:16]}"
+            attempt_id = f"attempt://object-place/{uuid4().hex[:16]}"
+            self.invocations[invocation_id] = {
+                "tool_id": PLACE_TOOL_ID,
+                "attempt_id": attempt_id,
+                "arguments": dict(admitted),
+                "pending_polls": 0,
+                "terminal": False,
+                "cancel_requested": False,
+                "stop_requested": False,
+                "deferred": True,
+                "started": False,
+                "result": None,
+            }
+            return httpx.Response(
+                202,
+                json={
+                    "ok": True,
+                    "data": {"invocation_id": invocation_id, "attempt_id": attempt_id, "phase": "accepted"},
+                },
+            )
         assert isinstance(admitted, PlaceAdmission)
         invocation_id = f"invocation://object-place/{uuid4().hex[:16]}"
         attempt_id = f"attempt://object-place/{uuid4().hex[:16]}"
@@ -605,10 +667,47 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         record = self.invocations.get(invocation_id)
         if record is None:
             return self._fail(404, "not_found", "invocation was not found")
+        if (
+            not record["terminal"]
+            and record.get("deferred")
+            and not record.get("started")
+            and not record["cancel_requested"]
+            and not record["stop_requested"]
+        ):
+            self._start_deferred(record)
         if record["cancel_requested"] or record["stop_requested"]:
             record["terminal"] = True
-            result = dict(record["result"])
             status = "cancelled" if record["cancel_requested"] else "stopped"
+            if record["result"] is None:
+                if record["tool_id"] == ACQUIRE_TOOL_ID:
+                    record["result"] = acquire_terminal_result(
+                        record["arguments"],
+                        AcquireSnapshot(
+                            capability_phase="none",
+                            status=status,
+                            failure_owner="operator",
+                            failure_code=(
+                                "cancelled_by_operator"
+                                if status == "cancelled"
+                                else "stopped_by_operator"
+                            ),
+                        ),
+                    )
+                else:
+                    record["result"] = place_terminal_result(
+                        record["arguments"],
+                        PlaceSnapshot(
+                            capability_phase="none",
+                            status=status,
+                            failure_owner="operator",
+                            failure_code=(
+                                "cancelled_by_operator"
+                                if status == "cancelled"
+                                else "stopped_by_operator"
+                            ),
+                        ),
+                    )
+            result = dict(record["result"])
             result["status"] = status
             summary = result.get("capability_outcome_summary", {})
             result["capability_outcome_summary"] = {
@@ -648,6 +747,47 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                 "result": result,
             }
         )
+
+    def _start_deferred(self, record: dict[str, Any]) -> None:
+        """Start an Action provider only after invocation identity exists."""
+        record["started"] = True
+        arguments = record["arguments"]
+        try:
+            if record["tool_id"] == ACQUIRE_TOOL_ID:
+                assert self.acquire_endpoint is not None
+                admitted = self.acquire_endpoint.execute(arguments)
+            else:
+                assert record["tool_id"] == PLACE_TOOL_ID
+                assert self.place_endpoint is not None
+                admitted = self.place_endpoint.execute(arguments)
+        except Exception:
+            admitted = None
+        if isinstance(admitted, AcquireAdmission):
+            record["pending_polls"] = admitted.snapshot.pending_polls
+            record["result"] = admitted.terminal_result
+            return
+        if isinstance(admitted, PlaceAdmission):
+            record["pending_polls"] = admitted.snapshot.pending_polls
+            record["result"] = admitted.terminal_result
+            return
+        code = admitted.code if isinstance(admitted, (AcquireRejection, PlaceRejection)) else "action_start_failed"
+        if record["tool_id"] == ACQUIRE_TOOL_ID:
+            snapshot = AcquireSnapshot(
+                capability_phase="none",
+                status="failed",
+                failure_owner="execution",
+                failure_code=code,
+            )
+            record["result"] = acquire_terminal_result(arguments, snapshot)
+        else:
+            snapshot = PlaceSnapshot(
+                capability_phase="none",
+                status="failed",
+                failure_owner="execution",
+                failure_code=code,
+            )
+            record["result"] = place_terminal_result(arguments, snapshot)
+        record["pending_polls"] = 0
 
     def _cancel_invocation(self, request: httpx.Request) -> httpx.Response:
         return self._control_invocation(request, "cancel")

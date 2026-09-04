@@ -7,6 +7,50 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.9.0] - 2026-09-05
+
+新增独立的 simulation-motion authorization profile/schema。`simulation_authorization.py` 严格绑定 runtime/evidence manifest digest、任务/场景/Franka 本体身份、四类 readiness scope、审批记录、停止策略和 before/after semantic snapshot；默认配置为 disabled/no-motion，不启动任何 worker 或动作。
+
+Added an isolated simulation-motion authorization profile/schema. `simulation_authorization.py` binds runtime/evidence-manifest digests, task/scene/Franka identity, four readiness scopes, approval records, stop policy, and before/after semantic snapshots; the checked-in profile is disabled/no-motion and starts no worker or action.
+
+### Detailed changes
+
+- Added `examples/forge-adapters/robotwin20/src/robotwin20_adapter/simulation_authorization.py:L1-L443`, `profiles/robotwin20/simulation-motion.yaml:L1-L47`, and `tests/test_simulation_authorization.py:L1-L238`.
+- Exported the schema/profile loader from `robotwin20_adapter/__init__.py:L55-L64,L143-L149`.
+- Updated architecture diagnosis, five-dimension review, adapter README, and `changelog/2026-09_part2.md`.
+
+### Validation
+
+- Simulation profile conformance: `10 passed`; readiness/action/Gateway focused suite: `81 passed`; repository: `164 passed`.
+- Ruff, compileall, and `git diff --check` passed. No RoboTwin `play_once`, Dora, Gateway motion executor, or hardware was started.
+
+## [v4.8.0] - 2026-09-05
+
+将 Action 生命周期改为 invocation-first：先创建 invocation/attempt，再启动 deferred provider；保留失败、取消、超时和 unknown 语义。
+
+Changed the Action lifecycle to invocation-first: allocate invocation/attempt before starting deferred providers while preserving failure, cancel, timeout, and unknown semantics.
+
+### Detailed changes
+
+- Updated `PhyAgentOS/forge/capability_runtime/ports.py:L17-L23`, `runtime.py:L204-L270`, and pick-place endpoints/gateway at `object_acquire.py:L51-L60,L410-L488`, `object_place.py:L56-L65,L487-L565`, `fake_gateway.py:L272-L307,L494-L795`.
+- Added provider identity/start-failure/deferred cancel-stop conformance and documented the five-dimension review.
+
+### Validation
+
+- Focused Action/Gateway tests: `58 passed`; repository: `164 passed`; pick-place suite: `256 passed`.
+- No simulation motion, Dora, or hardware execution was enabled.
+
+## [v4.7.14] - 2026-09-05
+
+记录仿真 motion executor 的前置阻断，修订顺序为 invocation-first、独立 simulation authorization、完整 readiness、before/after snapshot 与语义验收后再运动。
+
+Recorded simulation motion-executor blockers and revised the order to invocation-first, isolated simulation authorization, complete readiness, before/after snapshots, and semantic verification before motion.
+
+### Detailed changes
+
+- Updated `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L585-L630` and `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L606-L628`.
+- Verified no-motion Action/Gateway `52 passed` and repository `161 passed`; no RoboTwin motion stepping.
+
 ## [v4.7.10] - 2026-09-05
 
 回写 v4.7.9 Action readiness gate 实现提交哈希 `83c74ff`；未修改运行逻辑，用户目录 `.codegraph/` 与 `.cursor/` 未纳入提交。

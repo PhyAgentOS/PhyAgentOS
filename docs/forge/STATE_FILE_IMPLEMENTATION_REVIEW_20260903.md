@@ -626,3 +626,53 @@ executor，并继续保存每次 invocation 的中间证据。
 profile/schema，随后实现 attached-object 与完整路线 readiness、before/after snapshot 和
 语义 Verifier，最后才在人工审核后启用 RoboTwin stepping。当前不修改运动授权，不启动
 `play_once`、Dora 或硬件。
+
+## 25. invocation-first Action 生命周期五维验收（2026-09-05）
+
+本阶段已完成第 1 步生命周期基础，并按五个维度复审：
+
+- **架构集成：通过。** `ActionAdmission.start` 属于通用 capability runtime；pick-place
+  endpoint 将输入/readiness validation 与 provider execute 分离；Fake Gateway 仅在显式
+  deferred 模式下延迟 provider，未新增执行平面或改变 Gateway invocation owner。
+- **失败路径：通过。** invocation 分配后 provider 启动；启动异常投影为带身份的失败；
+  首次轮询前 cancel/stop 不启动 provider；provider 返回非法 snapshot、不可用或 no-motion
+  world-change 继续 fail-closed。通用 runtime 对非法 deferred admission 保留可查询失败状态。
+- **权威边界：通过。** `motion_authorized=false`、readiness evidence gate 和 Gateway
+  lifecycle owner 未被绕过；deferred callback 只返回 bounded admission，不拥有 invocation
+  状态，也不能授予仿真或硬件运动权限。
+- **配置：通过。** deferred 行为通过 `FakeGatewayTransport(defer_action_execution=...)`
+  注入，未硬编码模型、URL、设备或路径；默认值保持现有 no-motion fixture 兼容性。
+- **可维护性：通过。** 新增 `validate`/`execute` 使 provider 启动边界显式，通用
+  `ActionAdmission` 保持向后兼容；专项测试覆盖启动身份、启动失败和取消前启动。
+
+专项与全量验证均通过（`58 passed`、根仓库 `164 passed`、pick-place `256 passed`）。
+该验收只关闭 invocation-before-provider 生命周期门禁；simulation authorization、attached
+object route readiness、真实运动和 after-snapshot/语义验收仍是后续独立阶段。
+
+## 26. simulation-motion authorization profile 五维验收（2026-09-05）
+
+本阶段实现了独立的 `simulation_authorization.py` profile/schema loader，并提供
+`profiles/robotwin20/simulation-motion.yaml` 作为 disabled 配置样例。审查结论如下：
+
+- **架构集成：通过。** profile 属于 RoboTwin adapter 配置边界；它不注册 Tool、Gateway
+  route、Watchdog、AgentTask 或第二套生命周期事实源。返回的 dataclass 只是声明，未来
+  executor 仍必须走标准 Gateway invocation/reconcile。
+- **失败路径：通过。** 非法字段、缺失/相对/符号链接路径、runtime/evidence manifest digest 漂移、身份漂移、
+  不完整证据 scope、缺失 scope artifact、非法 timeout/unknown policy、缺失 snapshot 约束和损坏/不匹配审批记录
+  均 fail-closed；disabled/pending 状态禁止携带 approval record，approved 状态必须同时提供
+  worker 和专用 approval schema。
+- **权威边界：通过。** 当前样例固定 `state=disabled`、`motion_authorized=false`；approved
+  profile 还必须绑定 `paos-robotwin20-simulation-motion-evidence/v1` manifest 及每个 scope 的 artifact 摘要；profile
+  loader 不启动任何进程，也不产生 motion authority。审批记录只证明未来可申请的配置条件，
+  不能替代 Gateway/Runtime admission 或执行后语义 Verifier。
+- **配置：通过。** runtime/artifact 路径、digest、worker 和停止参数全部外置；disabled
+  profile 不硬编码模型、URL、设备或凭据。严格 schema 防止把 no-motion readiness evidence
+  误当成 simulation approval。
+- **可维护性：通过。** 新模块复用现有 process-worker 配置校验，使用 dataclass 表达声明，
+  将四个缺失证据 scope 和停止/快照策略集中命名；专项测试覆盖 disabled、approved、篡改和
+  配置边界，未引入 RoboTwin/SAPIEN 依赖。
+
+专项 profile conformance 为 `10 passed`。没有发现 Blocker/Major。仍未实现 attached-object
+route readiness、接触动力学、RoboTwin motion worker、before/after snapshot 或语义验收；因此
+不能启动 `play_once`、Dora、硬件或宣称抓取放置闭环完成。下一步按文档进入外部 worker 的
+完整路线/附着物体证据阶段。

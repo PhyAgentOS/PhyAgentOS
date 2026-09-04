@@ -1,0 +1,49 @@
+schema_version: paos-robotwin20-simulation-motion/v1
+profile_id: robotwin20-franka-blocks-ranking-simulation-v1
+
+# This profile is intentionally disabled.  It records the contract required by
+# a future motion executor; loading it never grants Gateway or simulator motion.
+runtime:
+  profile: ${ROBOTWIN20_RUNTIME_PROFILE}
+  profile_sha256: ${ROBOTWIN20_RUNTIME_PROFILE_SHA256}
+
+scope:
+  task_name: blocks_ranking_rgb
+  seed: 0
+  scene_revision: blocks_ranking_rgb-0-1
+  embodiment_binding:
+    robot_identity: franka-panda
+    gripper_identity: panda-gripper
+    embodiment_topology: two-single-arm
+    planner_profile: curobo
+    profile_digest: ${ROBOTWIN20_EMBODIMENT_PROFILE_DIGEST}
+
+authorization:
+  state: disabled
+  motion_authorized: false
+  approval_record: null
+  approval_record_sha256: null
+  evidence_manifest: null
+  evidence_manifest_sha256: null
+  required_evidence_scopes:
+    - after_snapshot_semantic_verification
+    - attached_object_collision
+    - complete_transport_descent_retreat
+    - contact_dynamics
+
+execution:
+  # A worker is only allowed once state=approved and a separate executor
+  # implementation has passed the readiness and reconciliation review.
+  worker: null
+  max_duration_s: 300
+
+stop:
+  cancel_timeout_s: 5
+  hard_stop_timeout_s: 15
+  unknown_policy: halt_and_reconcile
+
+snapshot:
+  artifact_root: ${ROBOTWIN20_SIMULATION_ARTIFACT_ROOT}
+  before_required: true
+  after_required: true
+  semantic_verifier_required: true

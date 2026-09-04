@@ -496,7 +496,8 @@ class ObjectPlaceEndpoint:
         self.provider = provider
         self.readiness_gate = readiness_gate
 
-    def admit(self, arguments: Any) -> PlaceAdmission | PlaceRejection:
+    def validate(self, arguments: Any) -> dict[str, Any] | PlaceRejection:
+        """Validate inputs and readiness without starting the provider."""
         error = validate_arguments(arguments)
         if error is not None:
             status_code = {
@@ -526,6 +527,10 @@ class ObjectPlaceEndpoint:
                     readiness_error,
                     "readiness evidence is not admissible for this Action",
                 )
+        return dict(arguments)
+
+    def execute(self, arguments: dict[str, Any]) -> PlaceAdmission | PlaceRejection:
+        """Start the provider after the Gateway has allocated invocation identity."""
         try:
             snapshot = self.provider.place(dict(arguments))
         except Exception:
@@ -566,6 +571,12 @@ class ObjectPlaceEndpoint:
                 "no-motion Action provider reported world change",
             )
         return PlaceAdmission(snapshot, terminal_result(arguments, snapshot))
+
+    def admit(self, arguments: Any) -> PlaceAdmission | PlaceRejection:
+        validated = self.validate(arguments)
+        if isinstance(validated, PlaceRejection):
+            return validated
+        return self.execute(validated)
 
     def invoke(self, arguments: Any) -> PlaceAdmission | PlaceRejection:
         """Alias used by Gateway adapters that call every operation ``invoke``."""

@@ -82,6 +82,14 @@ from .single_view_perception import (
     WorkerProposalProvider,
     WorkerSegmentationProvider,
 )
+from .simulation_authorization import (
+    SIMULATION_APPROVAL_SCHEMA_VERSION,
+    SIMULATION_AUTHORIZATION_PROFILE_SCHEMA_VERSION,
+    SIMULATION_EVIDENCE_MANIFEST_SCHEMA_VERSION,
+    SimulationAuthorizationError,
+    SimulationMotionAuthorizationProfile,
+    load_simulation_motion_profile,
+)
 from .understanding import (
     RoboTwinSceneUnderstandingProvider,
     RoboTwinUnderstandingSnapshot,
@@ -160,4 +168,10 @@ __all__ = [
     "readiness_replay_artifact_id",
     "validate_readiness_replay_artifact",
     "write_readiness_replay_artifact",
+    "SIMULATION_AUTHORIZATION_PROFILE_SCHEMA_VERSION",
+    "SIMULATION_APPROVAL_SCHEMA_VERSION",
+    "SIMULATION_EVIDENCE_MANIFEST_SCHEMA_VERSION",
+    "SimulationAuthorizationError",
+    "SimulationMotionAuthorizationProfile",
+    "load_simulation_motion_profile",
 ]

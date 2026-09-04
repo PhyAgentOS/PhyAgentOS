@@ -271,3 +271,69 @@ async def test_place_action_reuses_the_same_reviewed_gate_and_acquire_identity(t
         placed = await client.invoke_action("object.place", _place_request(acquire_ref))
         result = await client.invocation_result(placed["data"]["invocation_id"])
     assert result["data"]["result"]["capability_outcome_summary"]["world_change_started"] is False
+
+
+@pytest.mark.asyncio
+async def test_deferred_gateway_starts_provider_only_after_invocation_allocation(tmp_path):
+    manifest, review = _write_reviewed_evidence(tmp_path)
+    gate = ReadinessEvidenceGate.from_files(manifest, review)
+    provider = AcquireProvider()
+    transport = FakeGatewayTransport(
+        type("Observation", (), {"observe": lambda self, sensor_ref: None})(),
+        acquire_provider=provider,
+        readiness_gate=gate,
+        defer_action_execution=True,
+    )
+    async with ForgeToolClient("http://fake", transport=transport) as client:
+        accepted = await client.invoke_action("object.acquire", _acquire_request())
+        invocation_id = accepted["data"]["invocation_id"]
+        assert provider.calls == 0
+        assert invocation_id in transport.invocations
+        result = await client.invocation_result(invocation_id)
+    assert provider.calls == 1
+    assert result["data"]["result"]["status"] == "succeeded"
+    assert transport.invocations[invocation_id]["started"] is True
+
+
+@pytest.mark.asyncio
+async def test_deferred_gateway_cancel_before_first_poll_never_starts_provider(tmp_path):
+    manifest, review = _write_reviewed_evidence(tmp_path)
+    gate = ReadinessEvidenceGate.from_files(manifest, review)
+    provider = AcquireProvider()
+    transport = FakeGatewayTransport(
+        type("Observation", (), {"observe": lambda self, sensor_ref: None})(),
+        acquire_provider=provider,
+        readiness_gate=gate,
+        defer_action_execution=True,
+    )
+    async with ForgeToolClient("http://fake", transport=transport) as client:
+        accepted = await client.invoke_action("object.acquire", _acquire_request())
+        invocation_id = accepted["data"]["invocation_id"]
+        await client.cancel_invocation(invocation_id)
+        result = await client.invocation_result(invocation_id)
+    assert provider.calls == 0
+    assert result["data"]["result"]["status"] == "cancelled"
+    assert transport.invocations[invocation_id]["started"] is False
+
+
+@pytest.mark.asyncio
+async def test_deferred_gateway_provider_start_failure_is_a_bound_terminal_failure(tmp_path):
+    manifest, review = _write_reviewed_evidence(tmp_path)
+    gate = ReadinessEvidenceGate.from_files(manifest, review)
+
+    class FailingProvider:
+        def acquire(self, request):
+            raise RuntimeError("simulated provider start failure")
+
+    transport = FakeGatewayTransport(
+        type("Observation", (), {"observe": lambda self, sensor_ref: None})(),
+        acquire_provider=FailingProvider(),
+        readiness_gate=gate,
+        defer_action_execution=True,
+    )
+    async with ForgeToolClient("http://fake", transport=transport) as client:
+        accepted = await client.invoke_action("object.acquire", _acquire_request())
+        invocation_id = accepted["data"]["invocation_id"]
+        result = await client.invocation_result(invocation_id)
+    assert result["data"]["result"]["status"] == "failed"
+    assert result["data"]["result"]["capability_outcome_summary"]["failure_code"] == "acquire_provider_error"

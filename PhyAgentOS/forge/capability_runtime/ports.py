@@ -8,7 +8,7 @@ never imports those providers.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,10 @@ class ActionAdmission:
 
     pending_polls: int = 0
     terminal_result: Mapping[str, Any] = field(default_factory=dict)
+    # Deferred providers are started only after the Gateway has allocated the
+    # invocation and attempt identities.  The callback returns the provider's
+    # bounded admission snapshot and never owns lifecycle state.
+    start: Callable[[str, str], "ActionAdmission"] | None = None
 
 
 class ObservationSource(Protocol):

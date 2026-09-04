@@ -45,6 +45,39 @@ class Action:
         )
 
 
+class DeferredAction:
+    def __init__(self, runtime):
+        self.runtime = runtime
+        self.started_with = None
+
+    def admit(self, arguments):
+        def start(invocation_id, attempt_id):
+            self.started_with = (invocation_id, attempt_id)
+            assert invocation_id in self.runtime._invocations
+            return ActionAdmission(
+                terminal_result={
+                    "status": "succeeded",
+                    "invocation_id": invocation_id,
+                    "attempt_id": attempt_id,
+                }
+            )
+
+        return ActionAdmission(start=start)
+
+
+class FailingDeferredAction:
+    def admit(self, arguments):
+        def start(invocation_id, attempt_id):
+            raise RuntimeError("simulated provider start failure")
+
+        return ActionAdmission(start=start)
+
+
+class MalformedDeferredAction:
+    def admit(self, arguments):
+        return ActionAdmission(start=lambda invocation_id, attempt_id: {"status": "succeeded"})
+
+
 @pytest.mark.asyncio
 async def test_http_discovery_query_identity_and_action_lifecycle_are_no_motion():
     runtime = CapabilityRuntime()
@@ -65,6 +98,50 @@ async def test_http_discovery_query_identity_and_action_lifecycle_are_no_motion(
         result = await client.invocation_result(invocation_id)
         assert result["data"]["status"] == "succeeded"
     assert all(request.method != "POST" or ":invoke" in request.url.path for request in transport.requests)
+
+
+@pytest.mark.asyncio
+async def test_deferred_action_starts_after_invocation_identity_is_allocated():
+    runtime = CapabilityRuntime()
+    action = DeferredAction(runtime)
+    runtime.register_tool(ACTION, action)
+    transport = CapabilityRuntimeTransport(runtime)
+    async with ForgeToolClient("http://runtime", transport=transport) as client:
+        accepted = await client.invoke_action("object.acquire", {})
+        invocation_id = accepted["data"]["invocation_id"]
+        assert action.started_with is not None
+        assert action.started_with[0] == invocation_id
+        result = await client.invocation_result(invocation_id)
+        assert result["data"]["status"] == "succeeded"
+        assert result["data"]["result"]["attempt_id"] == action.started_with[1]
+
+
+@pytest.mark.asyncio
+async def test_deferred_action_start_failure_is_terminal_failure_with_identity():
+    runtime = CapabilityRuntime()
+    runtime.register_tool(ACTION, FailingDeferredAction())
+    transport = CapabilityRuntimeTransport(runtime)
+    async with ForgeToolClient("http://runtime", transport=transport) as client:
+        accepted = await client.invoke_action("object.acquire", {})
+        invocation_id = accepted["data"]["invocation_id"]
+        result = await client.invocation_result(invocation_id)
+        assert result["data"]["status"] == "failed"
+        assert result["data"]["result"]["failure_code"] == "action_start_failed"
+
+
+@pytest.mark.asyncio
+async def test_malformed_deferred_start_leaves_a_queryable_failed_invocation():
+    runtime = CapabilityRuntime()
+    runtime.register_tool(ACTION, MalformedDeferredAction())
+    transport = CapabilityRuntimeTransport(runtime)
+    async with ForgeToolClient("http://runtime", transport=transport) as client:
+        with pytest.raises(Exception):
+            await client.invoke_action("object.acquire", {})
+        assert len(runtime._invocations) == 1
+        invocation_id = next(iter(runtime._invocations))
+        result = await client.invocation_result(invocation_id)
+        assert result["data"]["status"] == "failed"
+        assert result["data"]["result"]["failure_code"] == "invalid_action_start_result"
 
 
 @pytest.mark.asyncio
