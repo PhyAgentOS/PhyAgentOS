@@ -204,7 +204,9 @@ builds the same evaluator through `readiness_replay_worker.py` and the existing
 JSONL process client. Set `READINESS_FIXTURE`, its exact
 `READINESS_FIXTURE_SHA256`, `READINESS_EVIDENCE_MANIFEST`,
 `READINESS_EVIDENCE_MANIFEST_SHA256`, `READINESS_WORKER_PYTHON`, and
-`PAOS_ROBOTWIN20_ADAPTER_ROOT` in the deployment environment. The fixture and
+`PAOS_ROBOTWIN20_ADAPTER_ROOT` in the deployment environment. Also set
+`ROBOTWIN20_RUNTIME_PROFILE` to the absolute, read-only runtime profile file;
+its SHA-256 must equal `embodiment_binding.profile_digest`. The fixture and
 evidence manifest must be external regular files with no group/world write bits.
 The worker matches the complete observation/candidate identity and validates
 each evidence reference against the manifest's revision, frame, calibration,

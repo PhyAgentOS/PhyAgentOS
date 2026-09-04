@@ -135,7 +135,7 @@ def build_readiness_evaluator(
     environ: Mapping[str, str] | None = None,
 ) -> RoboTwinReadinessEvaluator:
     required = {
-        "schema_version", "fixture", "fixture_sha256", "evidence_manifest",
+        "schema_version", "runtime_profile", "fixture", "fixture_sha256", "evidence_manifest",
         "evidence_manifest_sha256", "worker", "worker_id", "embodiment_binding",
     }
     if not isinstance(profile, Mapping) or set(profile) != required:
@@ -143,6 +143,24 @@ def build_readiness_evaluator(
     if profile.get("schema_version") != READINESS_PROFILE_SCHEMA_VERSION:
         raise ReadinessProfileError("readiness profile schema_version is unsupported")
     variables = dict(os.environ if environ is None else environ)
+    embodiment_binding = _validate_binding(profile.get("embodiment_binding"), "embodiment_binding")
+    raw_runtime_profile = profile.get("runtime_profile")
+    if not isinstance(raw_runtime_profile, str) or not raw_runtime_profile:
+        raise ReadinessProfileError("runtime_profile must be a path string")
+    try:
+        runtime_profile_input = Path(_expand(raw_runtime_profile, variables)).expanduser()
+        runtime_profile = _absolute_path(
+            str(runtime_profile_input), variables, "runtime_profile", must_be_file=True
+        )
+    except PerceptionProfileError as exc:
+        raise ReadinessProfileError(str(exc)) from exc
+    if runtime_profile.is_symlink() or not stat.S_ISREG(runtime_profile.stat().st_mode):
+        raise ReadinessProfileError("runtime_profile must be a regular file")
+    if runtime_profile.stat().st_mode & 0o022:
+        raise ReadinessProfileError("runtime_profile must not be group/world writable")
+    runtime_digest = hashlib.sha256(runtime_profile.read_bytes()).hexdigest()
+    if runtime_digest != embodiment_binding["profile_digest"]:
+        raise ReadinessProfileError("runtime_profile sha256 does not match embodiment binding")
     raw_fixture = profile.get("fixture")
     if not isinstance(raw_fixture, str) or not raw_fixture:
         raise ReadinessProfileError("fixture must be a path string")
@@ -197,7 +215,6 @@ def build_readiness_evaluator(
     worker_id = profile.get("worker_id")
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ReadinessProfileError("worker_id must be a non-empty string")
-    embodiment_binding = _validate_binding(profile.get("embodiment_binding"), "embodiment_binding")
     config = replace(
         worker_config,
         command=(

@@ -521,6 +521,10 @@ readiness binding，不复制 Skill、ToolSpec、AgentTask 或生命周期事实
 evidence + 人工审核 → Action/Gateway no-motion wiring → RoboTwin motion
 simulation → 后续 benchmark 与受控自主进化。
 
+为避免 profile 漂移，readiness profile 还校验只读 runtime profile 文件的
+SHA-256 与 `embodiment_binding.profile_digest` 一致；任务或本体配置变更会
+使旧 evidence 在 worker 启动前失效。
+
 ## 19. 已接入 provider 的真实 no-motion 链路验收
 
 按架构集成、失败路径、权威边界、配置、可维护性五个维度自审，无 Blocker/Major；当前门禁仍是“真实/独立 readiness

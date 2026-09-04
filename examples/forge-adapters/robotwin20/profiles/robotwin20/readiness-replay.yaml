@@ -1,5 +1,6 @@
 schema_version: paos-robotwin20-readiness/v1
 worker_id: robotwin20-readiness-replay/v1
+runtime_profile: ${ROBOTWIN20_RUNTIME_PROFILE}
 embodiment_binding:
   robot_identity: franka-panda
   gripper_identity: panda-gripper

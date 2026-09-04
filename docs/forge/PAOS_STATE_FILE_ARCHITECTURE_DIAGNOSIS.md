@@ -527,3 +527,8 @@ wiring，再做 RoboTwin motion simulation；`stack_blocks_two` 和
 因此，PAOS 已有可替换的通用 EnvironmentAdapter/Profile seam，但此前没有
 完整的 RoboTwin embodiment profile 和 readiness 身份门禁；本轮完成的是
 adapter 层补齐，而不是把机器人本体提升为 PAOS 核心事实源。
+
+readiness profile 现在还必须显式指向只读的 runtime profile 文件，并要求
+该文件 SHA-256 等于 `embodiment_binding.profile_digest`。因此修改任务、本体、
+拓扑或 planner 后，旧 readiness evidence 会在 worker 启动前失效，不能被
+静默复用。

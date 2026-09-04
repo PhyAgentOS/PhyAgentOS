@@ -25,7 +25,7 @@ BINDING = {
     "gripper_identity": "panda-gripper",
     "embodiment_topology": "two-single-arm",
     "planner_profile": "curobo",
-    "profile_digest": "a" * 64,
+    "profile_digest": hashlib.sha256(b"runtime profile fixture\n").hexdigest(),
 }
 
 
@@ -107,9 +107,13 @@ def _fixture(tmp_path: Path, *, worker_id="robotwin20-readiness-replay/v1", prep
 def _profile(tmp_path: Path, fixture: Path, *, worker_id="robotwin20-readiness-replay/v1"):
     artifact = fixture.read_bytes()
     manifest = fixture.with_name("evidence.json")
+    runtime_profile = fixture.with_name("runtime-profile.yaml")
+    runtime_profile.write_text("runtime profile fixture\n", encoding="utf-8")
+    runtime_profile.chmod(0o600)
     return {
         "schema_version": READINESS_PROFILE_SCHEMA_VERSION,
         "worker_id": worker_id,
+        "runtime_profile": str(runtime_profile),
         "fixture": str(fixture),
         "fixture_sha256": hashlib.sha256(artifact).hexdigest(),
         "evidence_manifest": str(manifest),
