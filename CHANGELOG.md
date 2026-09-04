@@ -7,6 +7,12 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.3.4] - 2026-09-04
+
+回写 v4.3.3 readiness calibration identity 修复提交哈希 `20c6ad6`；没有修改实现、测试或执行顺序。
+
+Recorded the v4.3.3 readiness calibration-identity fix commit hash `20c6ad6`; implementation, tests, and execution order were unchanged.
+
 ## [v4.3.3] - 2026-09-04
 
 修复 readiness replay 中 calibration identity 未完整绑定的问题；fixture、request、manifest 现在三方一致校验。
