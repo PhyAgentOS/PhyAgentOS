@@ -7,6 +7,12 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.2.1] - 2026-09-04
+
+回写 v4.2.0 readiness replay 实现提交哈希 `103db24`；没有修改实现、测试或执行顺序。
+
+Recorded the v4.2.0 readiness replay implementation commit hash `103db24`; implementation, tests, and execution order were unchanged.
+
 ## [v4.2.0] - 2026-09-04
 
 完成 readiness evidence replay worker/profile 的 no-motion conformance，并按五个维度复审通过；保持 PAOS projection 和动作权限边界不变。
