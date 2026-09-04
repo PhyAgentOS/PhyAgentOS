@@ -24,7 +24,7 @@ Hardened `scene.understand` consumption of `scene.observe` identity and artifact
 - Scene-understand tests: `21 passed`; repository tests: `161 passed`; pick-place tests: `250 passed`.
 - RoboTwin provider tests: `7 passed, 1 skipped`; Ruff, compileall, and `git diff --check` passed.
 - Real model, Gateway/Dora, Action executor, and hardware remain deferred.
-- Commit: pending.
+- Commit: `2ba3a21` on `feature/long-horizon-workflow`.
 
 ## [v3.10.2] - 2026-09-04
 
