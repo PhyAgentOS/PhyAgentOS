@@ -7,6 +7,12 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.7.1] - 2026-09-04
+
+回写 v4.7.0 本体 profile 与 readiness identity 实现提交哈希 `30bf3ed`；没有修改实现行为。
+
+Recorded the v4.7.0 embodiment-profile and readiness-identity implementation commit hash `30bf3ed`; implementation behavior is unchanged.
+
 ## [v4.7.0] - 2026-09-04
 
 完成 RoboTwin adapter 的可替换 embodiment profile 与 readiness 身份绑定。
