@@ -188,6 +188,17 @@ provider itself depends only on the generic `PointCloudArtifactResolver` and
 same provider with its own artifact resolver/profile; no RoboTwin or SAPIEN
 object is part of the provider API.
 
+The adapter also exposes `RoboTwinReadinessEvaluator` as the independent seam
+for `manipulation.prepare`. It accepts the frozen observation/candidate request
+and delegates to an injected no-motion evaluator, such as a separately
+provisioned IK/collision/workspace worker. It returns only prepared candidates,
+three passing readiness checks, and opaque evidence references. Invalid or
+unbound candidates, unknown/failing checks, duplicate references, provider
+specific fields, and evaluator failures remain fail-closed at the PAOS endpoint.
+The evaluator never imports PAOS, RoboTwin, SAPIEN, Hephaestus, or an actuator,
+and never authorizes motion. A real evaluator must be profile-owned and
+independently conformance-tested before any Action provider is considered.
+
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
 `check_success`, segmentation APIs, actor/entity APIs, or any action route.

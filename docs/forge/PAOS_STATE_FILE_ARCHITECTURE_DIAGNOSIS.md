@@ -440,3 +440,9 @@ Evidence、Verifier 和 adapter/profile 分层持有。
 五维审查无 Blocker/Major，专项 60 passed、根仓库 161 passed、pick-place 256 passed。该结果仅证明 candidate → readiness 的
 协议闭环，不证明真实 IK/碰撞/轨迹/物理可达性或真实 Gateway/Dora/硬件。下一步是独立 adapter `ReadinessEvaluator` conformance，
 之后才讨论真实 Action/Gateway wiring，最后才是基于执行证据的受控自主进化。
+
+`robotwin20_adapter.RoboTwinReadinessEvaluator` 现已完成独立 adapter conformance：它以 mapping 形式接收公共 preparation
+request，严格复核 observation/candidate-set identity、candidate/entity 绑定和 provider 返回的全通过 checks/evidence，
+并通过深拷贝隔离 evaluator 请求。PAOS endpoint 可规范化该 mapping，但仍是唯一的公共 projection 和 no-motion owner。
+专项测试 14 passed；没有引入 Hephaestus 运行时依赖，也没有连接 IK/碰撞引擎、Action、Gateway、Dora 或硬件。五维复审无
+Blocker/Major；下一步是独立 readiness worker 的真实 evidence/replay 证据，之后才考虑 Action/Gateway wiring。

@@ -7,6 +7,25 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.1.0] - 2026-09-04
+
+完成 RoboTwin20 独立 `ReadinessEvaluator` conformance，并按五个维度复审通过；保持 provider-neutral、dry-run/no-motion。Hephaestus 仅作 clean-room 语义参考，未接入运行时代码。
+
+Implemented the independent RoboTwin20 `ReadinessEvaluator` conformance and passed the five-dimension review; kept provider-neutral, dry-run/no-motion behavior. Hephaestus was used only as a clean-room semantic reference, with no runtime code integrated.
+
+### Detailed changes
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/readiness.py`: strict request/result binding, evidence validation, evaluator isolation, and fail-closed adapter boundary.
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py`: strict normalization of adapter mappings while preserving PAOS ownership of projection and `motion_authorized=false`.
+- `examples/forge-adapters/robotwin20/tests/test_readiness.py`: readiness and PAOS integration conformance coverage.
+- `examples/forge-adapters/robotwin20/README.md`, `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`: updated implementation order and reference boundary.
+
+### Validation
+
+- Readiness tests: `14 passed`; dependency-free adapter subset: `30 passed`; repository: `161 passed`; pick-place: `256 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No real IK/collision engine, Action, Gateway, Dora, hardware, or motion path was started.
+
 ## [v4.0.0] - 2026-09-04
 
 完成 `manipulation.prepare` candidate consumer 的协议加固，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 Query/no-motion。Hephaestus 仅作为 clean-room 行为参考，未接入其运行时代码。

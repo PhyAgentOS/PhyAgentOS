@@ -459,3 +459,26 @@ Query、dry-run/no-motion；没有执行 IK、碰撞准入、Action、Dora 或�
 本阶段没有把 Hephaestus 源码作为 PAOS 运行时依赖接入，也没有复制其 executor、receipt、state store、ToolRegistry、CLI execution path 或 provider-specific payload。仅以 Hephaestus 已验证的行为语义作为 clean-room 参考：执行前准入、失败族显式化、证据绑定和动作默认拒绝。后续若接入真实 adapter，仍须通过 PAOS 自有 profile/runtime/action admission 与独立 no-motion 证据。
 
 下一步是独立 adapter `ReadinessEvaluator` 的证据与 conformance；其后才可讨论真实 Gateway/Dora wiring 或物理 Action。自主进化 promotion 继续后置，必须依赖可归因、独立评估的执行证据。
+
+## 17. RoboTwin20 adapter ReadinessEvaluator conformance
+
+本阶段完成独立 `robotwin20_adapter.RoboTwinReadinessEvaluator`。它只接收冻结的 provider-neutral
+`manipulation.prepare` request，验证 observation/candidate-set identity 与 candidate/entity 绑定，调用注入的
+no-motion evaluator，并输出 prepared candidates、三项通过的 readiness checks 和 opaque evidence。PAOS endpoint 新增
+mapping normalization，以便 adapter 不依赖 PAOS dataclass。
+
+五维复审结论：架构上 evaluator 位于独立 adapter，PAOS 仍拥有最终 schema/动作边界；失败路径覆盖 provider 异常、
+unknown/fail check、重复/越权 candidate、非法 evidence、provider-specific 字段和 identity 漂移并全部 fail-closed；
+权威边界保持 `motion_authorized=false`，不创建 Action；配置通过注入 evaluator/profile 承载，不硬编码模型、URL、设备
+或 Hephaestus 路径；可维护性通过 strict projection、deep-copy request 和 mapping normalization 保持跨进程兼容。
+
+验证：adapter readiness 专项 `14 passed`；PAOS manipulation.prepare 专项 `60 passed`；根仓库 `161 passed`；pick-place
+全量 `256 passed`；Ruff、compileall、`git diff --check` 均通过。该结果只证明 adapter→PAOS readiness evidence conformance，
+不证明真实 IK、碰撞、轨迹、物理可达性、Action/Gateway/Dora 或硬件执行。Hephaestus 仍仅作为 clean-room 语义参考，未作为
+运行时依赖接入。
+
+完整 RoboTwin20 adapter 集合仍无法在当前 PAOS 环境收集依赖 NumPy 的 GraspGen/数值感知测试；该可选依赖缺失单独记录，
+不影响本阶段 readiness conformance 的无第三方依赖验证。
+
+下一步仍是对真实/独立 readiness worker 的 evidence 进行受控 no-motion 适配验证；只有该证据稳定后，才可讨论真实 Action/Gateway
+wiring，之后才是物理执行和执行证据驱动的自主进化 promotion。

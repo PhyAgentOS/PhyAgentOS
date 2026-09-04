@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 from PhyAgentOS.forge.capability_runtime.grasp_proposal import _validate_candidate
 
@@ -26,7 +26,7 @@ _PREPARED_KEYS = {"candidate_ref", "entity_ref", "checks", "evidence", "qualific
 
 
 class PreparationProvider(Protocol):
-    def prepare(self, request: dict[str, Any]) -> "PreparationSnapshot | None": ...
+    def prepare(self, request: dict[str, Any]) -> "PreparationSnapshot | Mapping[str, Any] | None": ...
 
 
 @dataclass(frozen=True)
@@ -351,6 +351,27 @@ def validate_snapshot(
     return None
 
 
+def normalize_snapshot(snapshot: Any) -> PreparationSnapshot | None:
+    """Normalize an adapter mapping without importing adapter implementation details."""
+    if isinstance(snapshot, PreparationSnapshot):
+        return snapshot
+    if not isinstance(snapshot, Mapping):
+        return None
+    allowed = {"prepared_candidates", "provider_available"}
+    if set(snapshot) - allowed or set(snapshot) != allowed:
+        return None
+    prepared = snapshot.get("prepared_candidates")
+    if not isinstance(prepared, (list, tuple)) or any(not isinstance(item, Mapping) for item in prepared):
+        return None
+    provider_available = snapshot["provider_available"]
+    if not isinstance(provider_available, bool):
+        return None
+    return PreparationSnapshot(
+        prepared_candidates=tuple(dict(item) for item in prepared),
+        provider_available=provider_available,
+    )
+
+
 class ManipulationPreparationEndpoint:
     """Read-only readiness evaluation; never authorizes or produces motion."""
 
@@ -414,7 +435,8 @@ class ManipulationPreparationEndpoint:
                 "manipulation preparation provider is unavailable",
                 observation_ref=observation_ref,
             )
-        if not isinstance(snapshot, PreparationSnapshot):
+        snapshot = normalize_snapshot(snapshot)
+        if snapshot is None:
             return _error(
                 "invalid_snapshot",
                 "manipulation preparation provider returned an invalid snapshot",
@@ -470,5 +492,6 @@ __all__ = [
     "MANIPULATION_TOOL_SPEC",
     "PreparationProvider",
     "PreparationSnapshot",
+    "normalize_snapshot",
     "ManipulationPreparationEndpoint",
 ]
