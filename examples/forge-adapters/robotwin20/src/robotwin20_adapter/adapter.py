@@ -128,7 +128,7 @@ class RoboTwinObservationSource:
         sensor_ref = request.get("sensor_ref")
         try:
             snapshot = self.adapter.capture(sensor_ref)
-        except (AdapterConfigurationError, AdapterSensorError):
+        except AdapterSensorError:
             return None
         return {
             "captured_at": snapshot.captured_at,
