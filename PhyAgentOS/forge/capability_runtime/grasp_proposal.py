@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 
@@ -285,8 +286,10 @@ def _finite_unit_interval(value: Any) -> bool:
 
 
 def _artifact_refs(values: Any) -> bool:
-    return isinstance(values, list) and all(
-        isinstance(ref, str) and _ARTIFACT_REF.fullmatch(ref) is not None for ref in values
+    if not isinstance(values, list) or not values or any(not isinstance(ref, str) for ref in values):
+        return False
+    return len(set(values)) == len(values) and all(
+        _ARTIFACT_REF.fullmatch(ref) is not None for ref in values
     )
 
 
@@ -334,6 +337,7 @@ def _validate_target(
     geometry = target.get("geometry_artifacts", [])
     if not isinstance(geometry, list):
         return "invalid_geometry_artifacts"
+    seen_geometry: set[str] = set()
     for artifact in geometry:
         if (
             not isinstance(artifact, dict)
@@ -343,6 +347,7 @@ def _validate_target(
             }
             or not isinstance(artifact.get("artifact_ref"), str)
             or _ARTIFACT_REF.fullmatch(artifact["artifact_ref"]) is None
+            or artifact["artifact_ref"] in seen_geometry
             or artifact.get("kind") not in {"object_point_cloud", "fused_entity_perception"}
             or artifact.get("observation_ref") != observation_ref
             or artifact.get("scene_revision") != scene_revision
@@ -352,6 +357,7 @@ def _validate_target(
             or not _artifact_refs(artifact.get("provenance"))
         ):
             return "invalid_geometry_artifacts"
+        seen_geometry.add(artifact["artifact_ref"])
     return None
 
 
@@ -379,6 +385,12 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         return _error(
             "missing_calibration",
             "calibration_ref is required",
+            observation_ref=observation_ref,
+        )
+    if observation_ref != f"observation://{arguments['scene_revision']}/{arguments['frame_id']}":
+        return _error(
+            "invalid_observation_binding",
+            "observation_ref must match scene_revision and frame_id",
             observation_ref=observation_ref,
         )
     if any(
@@ -414,6 +426,7 @@ def _validate_candidate(
     frame_id: str,
     requested_entity_refs: set[str],
     seen_candidate_refs: set[str],
+    allowed_provenance: set[str] | None = None,
 ) -> str | None:
     if not isinstance(candidate, dict) or set(candidate) != _CANDIDATE_KEYS:
         return "invalid_candidate"
@@ -478,6 +491,10 @@ def _validate_candidate(
         not isinstance(candidate.get("provenance"), list)
         or not candidate["provenance"]
         or not _artifact_refs(candidate["provenance"])
+        or (
+            allowed_provenance is not None
+            and any(ref not in allowed_provenance for ref in candidate["provenance"])
+        )
     ):
         return "invalid_provenance"
     if candidate.get("qualification") not in _QUALIFICATIONS:
@@ -518,6 +535,7 @@ def validate_snapshot(
     *,
     frame_id: str,
     requested_entity_refs: set[str],
+    allowed_provenance: set[str] | None = None,
 ) -> str | None:
     snapshot = normalize_snapshot(snapshot)
     if snapshot is None:
@@ -527,12 +545,14 @@ def validate_snapshot(
     if not isinstance(snapshot.ambiguities, (tuple, list)):
         return "invalid_snapshot"
     seen_candidate_refs: set[str] = set()
+    allowed_provenance = allowed_provenance or set()
     for candidate in snapshot.candidates:
         candidate_error = _validate_candidate(
             candidate,
             frame_id=frame_id,
             requested_entity_refs=requested_entity_refs,
             seen_candidate_refs=seen_candidate_refs,
+            allowed_provenance=allowed_provenance,
         )
         if candidate_error is not None:
             return candidate_error
@@ -611,7 +631,7 @@ class GraspProposalEndpoint:
                 "ambiguities": [],
             }
         try:
-            snapshot = self.provider.propose(dict(arguments))
+            snapshot = self.provider.propose(deepcopy(arguments))
         except Exception:
             # Provider failures are unavailable, never an implicit Gateway 500 or success.
             return _error(
@@ -646,10 +666,22 @@ class GraspProposalEndpoint:
                 observation_ref=observation_ref,
             )
         requested_entity_refs = {target["entity_ref"] for target in arguments["targets"]}
+        allowed_provenance = {
+            ref
+            for target in arguments["targets"]
+            for ref in target["spatial_envelope"]["provenance"]
+        }
+        allowed_provenance.update(
+            ref
+            for target in arguments["targets"]
+            for artifact in target.get("geometry_artifacts", [])
+            for ref in artifact["provenance"]
+        )
         snapshot_error = validate_snapshot(
             snapshot,
             frame_id=arguments["frame_id"],
             requested_entity_refs=requested_entity_refs,
+            allowed_provenance=allowed_provenance,
         )
         if snapshot_error:
             return _error(

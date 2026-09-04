@@ -421,3 +421,7 @@ executor 和自主进化 promotion 继续后置。
 `scene.understand` 的正式 observation consumer 现已完成边界加固：请求 observation identity、artifact refs、provenance
 和 spatial frame 均做确定性绑定，provider 不能修改原始请求绕过校验。该阶段仍是 Query/no-motion；下一步才是让已验证的
 geometry artifact 被 `grasp.propose` 消费，随后再考虑真实 Gateway/Dora provider wiring。
+
+`grasp.propose` 现已完成对 `scene.understand` geometry artifact 的 consumer 加固：candidate provenance 必须绑定当前
+target 的 observation evidence，candidate-set 与 observation identity 严格一致，provider request 使用隔离副本。该阶段仍
+只产生抓取候选证据，不授权 IK、碰撞或动作；下一步进入 `manipulation.prepare` 的正式 candidate consumer。

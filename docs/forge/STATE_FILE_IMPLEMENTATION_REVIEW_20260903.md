@@ -406,3 +406,31 @@ port 和 no-motion replay 边界已具备；下一步应按顺序审查并实现
   root）；Ruff、compileall、`git diff --check` 通过。
 - 五维复审无 Blocker/Major。该阶段证明 observation→understanding 的协议绑定和 no-motion 边界，不证明真实模型语义质量、
   GraspGen live、Gateway/Dora 互操作或物理执行。
+
+## 15. grasp.propose geometry-artifact consumer hardening
+
+本阶段按执行顺序让 `grasp.propose` 消费 `scene.understand` 产生的正式 geometry artifact，继续保持 provider-neutral
+Query、dry-run/no-motion；没有执行 IK、碰撞准入、Action、Dora 或硬件运动。
+
+### 五维代码审查结论
+
+- [架构集成] `GraspProposalEndpoint` 位于核心 capability runtime；target 的 `geometry_artifacts` 只允许 observation-bound
+  `object_point_cloud`/`fused_entity_perception`，adapter-side provider 通过 `PointCloudArtifactResolver` 与独立 worker
+  port 消费，不把模型实现带入 PAOS。
+- [失败路径] observation_ref 必须匹配 revision/frame；target 与 geometry artifact 的 entity/revision/frame/calibration
+  必须一致；artifact refs 和 candidate provenance 必须非空、唯一并绑定输入 provenance；provider 异常、不可用、invalid
+  snapshot、stale/empty 与 cleanup 失败均 fail-closed，不伪造候选。
+- [权威边界] Endpoint 只投影 candidate-set、candidate refs、姿态候选和 provenance，不执行 IK、碰撞、workspace 或 motion
+  admission；provider 接收深拷贝请求，不能改变公共 binding。
+- [配置] worker、模型 variant、artifact root、阈值、NMS 和 collision-filter flag 仍由 adapter/profile 注入；核心
+  contract 未增加 RoboTwin、GraspGen、设备、路径或凭据字段。
+- [可维护性] provenance validator 统一处理非空/唯一引用；`allowed_provenance` 提供兼容默认值，避免破坏
+  `manipulation.prepare` 复用的内部 candidate validator。
+
+### 验证与边界
+
+- `test_grasp_propose.py` → `61 passed`；根仓库 → `161 passed`；pick-place 全量 → `253 passed`。
+- adapter GraspGen 专项无法在当前 PAOS 环境收集，原因是缺少可选 `numpy`；因此不宣称 verified checkpoint live inference
+  或完整 adapter GraspGen 验收。Ruff、compileall、`git diff --check` 通过。
+- 五维复审无 Blocker/Major。下一步是独立 adapter geometry consumer 证据，再进入 `manipulation.prepare` 正式消费；本阶段
+  不等同于抓取位姿可执行或抓取成功。

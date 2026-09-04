@@ -359,6 +359,36 @@ async def test_unavailable_provider_fails_closed_without_fabricated_candidates()
     assert data["candidates"] == []
 
 
+def test_observation_ref_must_bind_to_scene_revision_and_frame():
+    provider = Provider(proposal_snapshot())
+    result = GraspProposalEndpoint(provider).invoke(
+        request_payload(observation_ref="observation://other/camera_front")
+    )
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_observation_binding"
+    assert provider.calls == 0
+
+
+def test_candidate_provenance_must_bind_to_requested_target_artifacts():
+    invalid = candidate(1, provenance=["artifact://unrelated/rgb"])
+    provider = Provider(proposal_snapshot(candidates=(invalid,)))
+    result = GraspProposalEndpoint(provider).invoke(request_payload())
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_provenance"
+
+
+def test_provider_request_mutation_cannot_change_public_binding():
+    class MutatingProvider(Provider):
+        def propose(self, request):
+            request["scene_revision"] = "attacker"
+            return super().propose(request)
+
+    provider = MutatingProvider(proposal_snapshot())
+    result = GraspProposalEndpoint(provider).invoke(request_payload())
+    assert result["status"] == "available"
+    assert result["scene_revision"] == "scene-7"
+
+
 @pytest.mark.asyncio
 async def test_provider_exception_fails_closed_without_gateway_error():
     _, _, result, _ = await query(RaisingProvider(), request_payload())

@@ -26,6 +26,24 @@ Hardened `scene.understand` consumption of `scene.observe` identity and artifact
 - Real model, Gateway/Dora, Action executor, and hardware remain deferred.
 - Commit: `2ba3a21` on `feature/long-horizon-workflow`.
 
+## [v3.11.0] - 2026-09-04
+
+加固 `grasp.propose` 对 `scene.understand` geometry artifact 的消费，并按五个维度复审通过；保持 Query/no-motion。
+
+Hardened `grasp.propose` consumption of `scene.understand` geometry artifacts and passed the five-dimension review; kept Query/no-motion.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/capability_runtime/grasp_proposal.py`: strict identity/provenance validation and isolated provider request.
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py`: binding, provenance, and mutation regressions.
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`: stage status and review.
+
+### Validation
+
+- Grasp proposal tests: `61 passed`; repository: `161 passed`; pick-place: `253 passed`.
+- Adapter GraspGen live tests remain blocked by missing optional `numpy`; no live checkpoint claim.
+- Commit: pending.
+
 ## [v3.10.2] - 2026-09-04
 
 完成 EnvironmentAdapter/provider-neutral `scene.observe` 核心 seam，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 no-motion，不连接真实机器人、Dora 或硬件。
