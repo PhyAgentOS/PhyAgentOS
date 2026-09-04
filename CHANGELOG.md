@@ -26,6 +26,7 @@ Wired the independent key-file capability into the `paos agent` main configurati
 - No-tool `paos agent` connectivity check completed successfully with `gpt-5.6-sol/high`.
 - Repository tests: `147 passed`; Ruff, compileall, and `git diff --check` passed.
 - The LiteLLM SOCKS cost-map warning is non-fatal; no Gateway, Dora, Action, hardware, or motion path was started.
+- Commit: `9c1b955` on `feature/long-horizon-workflow`.
 
 ## [v3.8.0] - 2026-09-04
 
