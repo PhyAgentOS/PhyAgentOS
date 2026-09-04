@@ -425,3 +425,18 @@ geometry artifact 被 `grasp.propose` 消费，随后再考虑真实 Gateway/Dor
 `grasp.propose` 现已完成对 `scene.understand` geometry artifact 的 consumer 加固：candidate provenance 必须绑定当前
 target 的 observation evidence，candidate-set 与 observation identity 严格一致，provider request 使用隔离副本。该阶段仍
 只产生抓取候选证据，不授权 IK、碰撞或动作；下一步进入 `manipulation.prepare` 的正式 candidate consumer。
+
+## 14. manipulation.prepare 阶段结论（2026-09-04）
+
+`manipulation.prepare` 已完成 provider-neutral candidate consumer 的协议加固：observation/candidate-set identity 必须与
+scene revision 和 frame 精确一致，prepared candidate 必须唯一且绑定输入 candidate/entity，三项 readiness check 必须全部
+通过，provider 请求使用隔离副本，所有失败保持 fail-closed，输出固定 `motion_authorized=false`。这不是五个 Markdown 状态文件的
+再次实现，也不是将 Hephaestus executor 接入 PAOS。
+
+Hephaestus 在本阶段只作为 clean-room 行为参考（Query/no-motion、执行前准入、失败语义和证据边界）；PAOS 不复制 Hephaestus
+executor、receipt、state store、ToolRegistry、CLI execution path 或 provider payload。权威事实仍由 PAOS 的 Runtime、Gateway、
+Evidence、Verifier 和 adapter/profile 分层持有。
+
+五维审查无 Blocker/Major，专项 60 passed、根仓库 161 passed、pick-place 256 passed。该结果仅证明 candidate → readiness 的
+协议闭环，不证明真实 IK/碰撞/轨迹/物理可达性或真实 Gateway/Dora/硬件。下一步是独立 adapter `ReadinessEvaluator` conformance，
+之后才讨论真实 Action/Gateway wiring，最后才是基于执行证据的受控自主进化。

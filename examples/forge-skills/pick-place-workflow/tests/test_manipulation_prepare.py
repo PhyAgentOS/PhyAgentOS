@@ -249,6 +249,28 @@ async def test_successful_preparation_returns_evidence_without_motion_authority(
     ]
 
 
+def test_observation_ref_must_bind_to_scene_revision_and_frame():
+    provider = Provider(preparation_snapshot())
+    result = ManipulationPreparationEndpoint(provider).invoke(
+        request_payload(observation_ref="observation://other/camera_front")
+    )
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_observation_binding"
+    assert provider.calls == 0
+
+
+def test_provider_cannot_mutate_request_used_for_public_binding():
+    class MutatingProvider(Provider):
+        def prepare(self, request):
+            request["scene_revision"] = "attacker"
+            return super().prepare(request)
+
+    provider = MutatingProvider(preparation_snapshot())
+    result = ManipulationPreparationEndpoint(provider).invoke(request_payload())
+    assert result["status"] == "available"
+    assert result["scene_revision"] == "scene-7"
+
+
 @pytest.mark.asyncio
 async def test_partial_preparation_returns_only_ready_candidates():
     provider = Provider(preparation_snapshot(prepared_candidates=(prepared(2),)))
@@ -436,6 +458,7 @@ def test_non_finite_candidate_coordinates_fail_closed_at_the_endpoint(coordinate
 @pytest.mark.parametrize(
     ("snapshot", "code"),
     [
+        (preparation_snapshot(prepared_candidates=(prepared(1), prepared(1))), "invalid_candidate_ref"),
         (preparation_snapshot(prepared_candidates=(prepared(1, candidate_ref="bottle-1/1"),)), "invalid_candidate_ref"),
         (
             preparation_snapshot(prepared_candidates=(prepared(1, candidate_ref="candidate://cup-9/1"),)),

@@ -7,6 +7,24 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.0.0] - 2026-09-04
+
+完成 `manipulation.prepare` candidate consumer 的协议加固，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 Query/no-motion。Hephaestus 仅作为 clean-room 行为参考，未接入其运行时代码。
+
+Hardened the `manipulation.prepare` candidate consumer and passed review across architecture integration, failure paths, authority boundaries, configuration, and maintainability; kept Query/no-motion. Hephaestus was used only as a clean-room behavioral reference, with no runtime code integrated.
+
+### Detailed changes
+
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py`: strict observation/candidate-set identity, duplicate prepared-candidate rejection, provider request isolation, and fail-closed readiness projection.
+- `examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py`: revision/frame drift, provider mutation, and duplicate-candidate regression coverage.
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`: implementation status, five-dimension review, execution order, and Hephaestus reference boundary.
+
+### Validation
+
+- Manipulation-prepare tests: `60 passed`; repository tests: `161 passed`; pick-place tests: `256 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No real IK, collision engine, Gateway, Dora, Action executor, hardware, or motion path was started.
+
 ## [v3.10.8] - 2026-09-04
 
 加固 `scene.understand` 对 `scene.observe` identity 与 artifact lineage 的消费边界，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；保持 Query/no-motion。

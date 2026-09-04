@@ -434,3 +434,28 @@ Query、dry-run/no-motion；没有执行 IK、碰撞准入、Action、Dora 或�
   或完整 adapter GraspGen 验收。Ruff、compileall、`git diff --check` 通过。
 - 五维复审无 Blocker/Major。下一步是独立 adapter geometry consumer 证据，再进入 `manipulation.prepare` 正式消费；本阶段
   不等同于抓取位姿可执行或抓取成功。
+
+## 16. manipulation.prepare candidate consumer hardening
+
+本阶段按既定执行顺序进入 `manipulation.prepare` 的正式 candidate consumer。范围仍是 provider-neutral Query、dry-run/no-motion；
+没有连接真实 Hephaestus executor、IK/碰撞引擎、Gateway、Dora、Action 或硬件。
+
+### 五维代码审查结论
+
+- [架构集成] `ManipulationPreparationEndpoint` 位于核心 capability runtime，复用 `grasp.propose` 的 candidate validator；`PreparationProvider` 通过注入的 `ReadinessEvaluator` 边界提供结果，不创建第二套执行平面。
+- [失败路径] `observation_ref` 必须精确匹配 revision/frame，`candidate_set_ref` 同样绑定当前 revision/frame；重复 prepared candidate、候选实体漂移、非法 check/evidence、provider exception/unavailable/invalid snapshot、stale observation 均 fail-closed。
+- [权威边界] 三项 readiness check（kinematic/collision/workspace）必须全部为 `pass` 才能投影 prepared candidate；endpoint 固定返回 `motion_authorized=false`，不创建 Action invocation，也不把 provider 结果升级为物理真值。
+- [配置] 核心 runtime 不包含模型、设备、URL、凭据或 Hephaestus 路径；未来 IK、碰撞和 workspace 能力由 adapter/profile 注入 `PreparationProvider`。
+- [可维护性] provider 请求使用 `deepcopy` 隔离，避免原地修改公共 binding；错误码、schema 与 validator 位于同一 owner，candidate validator 提供兼容默认参数。
+
+### 验证与边界
+
+- `test_manipulation_prepare.py` → `60 passed`；根仓库 → `161 passed`；pick-place 全量 → `256 passed`。
+- `python -m ruff check ...`、`python -m compileall -q ...`、`git diff --check` 均通过。
+- 本阶段只证明 candidate → readiness 的协议闭环和 no-motion 边界；不证明真实 IK、碰撞、轨迹可执行、物理可达、抓取成功或真实 Dora/Gateway 互操作。
+
+### Hephaestus 参考边界
+
+本阶段没有把 Hephaestus 源码作为 PAOS 运行时依赖接入，也没有复制其 executor、receipt、state store、ToolRegistry、CLI execution path 或 provider-specific payload。仅以 Hephaestus 已验证的行为语义作为 clean-room 参考：执行前准入、失败族显式化、证据绑定和动作默认拒绝。后续若接入真实 adapter，仍须通过 PAOS 自有 profile/runtime/action admission 与独立 no-motion 证据。
+
+下一步是独立 adapter `ReadinessEvaluator` 的证据与 conformance；其后才可讨论真实 Gateway/Dora wiring 或物理 Action。自主进化 promotion 继续后置，必须依赖可归因、独立评估的执行证据。

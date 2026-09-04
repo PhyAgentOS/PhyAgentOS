@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -242,6 +243,12 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         )
     if not isinstance(arguments.get("frame_id"), str) or not arguments["frame_id"].strip():
         return _error("invalid_frame", "frame_id must be a non-empty string", observation_ref=observation_ref)
+    if observation_ref != f"observation://{arguments['scene_revision']}/{arguments['frame_id']}":
+        return _error(
+            "invalid_observation_binding",
+            "observation_ref must match scene_revision and frame_id",
+            observation_ref=observation_ref,
+        )
     if not isinstance(arguments.get("calibration_ref"), str) or not arguments["calibration_ref"].strip():
         return _error(
             "missing_calibration",
@@ -307,12 +314,16 @@ def validate_snapshot(
         return "invalid_snapshot"
     if not isinstance(snapshot.prepared_candidates, (tuple, list)):
         return "invalid_snapshot"
+    seen_prepared: set[str] = set()
     for item in snapshot.prepared_candidates:
         if not isinstance(item, dict) or set(item) != _PREPARED_KEYS:
             return "invalid_prepared_candidate"
         candidate_ref = item.get("candidate_ref")
         if not isinstance(candidate_ref, str) or _CANDIDATE_REF.fullmatch(candidate_ref) is None:
             return "invalid_candidate_ref"
+        if candidate_ref in seen_prepared:
+            return "invalid_candidate_ref"
+        seen_prepared.add(candidate_ref)
         if candidate_ref not in candidate_entities:
             return "invalid_candidate_binding"
         entity_ref = item.get("entity_ref")
@@ -389,7 +400,7 @@ class ManipulationPreparationEndpoint:
                 "motion_authorized": False,
             }
         try:
-            snapshot = self.provider.prepare(dict(arguments))
+            snapshot = self.provider.prepare(deepcopy(arguments))
         except Exception:
             # Provider failures are unavailable, never an implicit Gateway 500 or success.
             return _error(
@@ -461,4 +472,3 @@ __all__ = [
     "PreparationSnapshot",
     "ManipulationPreparationEndpoint",
 ]
-
