@@ -15,6 +15,12 @@ Completed the Franka `blocks_ranking_rgb` readiness-input audit: the capture lac
 
 详细记录见 [FRANKA_READINESS_INPUT_AUDIT_20260904](docs/forge/FRANKA_READINESS_INPUT_AUDIT_20260904.md)。
 
+## [v4.7.5] - 2026-09-04
+
+回写 v4.7.4 Franka readiness 输入审计提交哈希 `ee2144e`；实现和执行顺序不变。
+
+Recorded the v4.7.4 Franka readiness-input audit commit hash `ee2144e`; implementation and execution order are unchanged.
+
 ## [v4.7.1] - 2026-09-04
 
 回写 v4.7.0 本体 profile 与 readiness identity 实现提交哈希 `30bf3ed`；没有修改实现行为。
