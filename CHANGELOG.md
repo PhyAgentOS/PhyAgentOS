@@ -7,6 +7,32 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.8.3] - 2026-09-04
+
+完成完整 `gpt-5.6-sol/high` held-out + hazard 真实模型语义评估并关闭 Verification 质量门禁；保留一个 replan/inconclusive 残余质量风险，不连接 Gateway、Dora、Action 或硬件。
+
+Completed the full `gpt-5.6-sol/high` held-out + hazard real-model semantic evaluation and closed the Verification quality gate; retained one replan/inconclusive residual quality risk, with no Gateway, Dora, Action, or hardware connected.
+
+### Detailed changes
+
+- `artifacts/evals/verification/20260904T034715.434600Z-42a21625/run_manifest.json`: full 7-case run bound to commit `2722d78d1f21d43f12c0213811376ee8f8bf57a8`, exact custom provider binding, and redacted file credential source.
+- `artifacts/evals/verification/20260904T034715.434600Z-42a21625/metrics.json`: `quality_gate_eligible=true`, `quality_gate_passed=true`, contract/criterion/recovery-context `1.0`, false-positive rate `0`, overall verdict accuracy `0.8571428571428571`.
+- `docs/forge/VERIFICATION_MODEL_EVALUATION.md`, `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`: recorded per-case review, residual replan error, and the next Gateway/Dora no-motion integration stage.
+
+### Validation
+
+- All 7 held-out/hazard cases completed; no credential or Bearer leakage found in artifacts.
+- The held-out `replan_required` case was returned as `inconclusive` (`held_out` accuracy `0.75`), above the configured overall `0.8` threshold but retained as follow-up risk.
+- Verification gate closure does not authorize physical execution, pick-place closure, or autonomous-evolution promotion.
+
+## [v3.8.2] - 2026-09-04
+
+回写 v3.8.1 实现提交 `9c1b955`，不修改实现或评估行为。
+
+Recorded v3.8.1 implementation commit `9c1b955`; implementation and evaluation behavior were unchanged.
+
+- Commit: `2722d78` on `feature/long-horizon-workflow`.
+
 ## [v3.8.1] - 2026-09-04
 
 将独立 key 文件能力接入 `paos agent` 主配置，修正评估文档与日志中的当前状态，并验证 Agent 配置链路。

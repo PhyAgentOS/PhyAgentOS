@@ -97,5 +97,16 @@ case IDs 和指标路径。`results.jsonl` 每个 attempt 一行并在写入后 
 verdict、criterion 和 recovery-context 均通过。该运行使用 `--max-cases 1`，因此固定不具备质量门禁资格。
 
 `paos agent` 使用 `~/.PhyAgentOS/config.json`，不会自动读取 `evals/verification/` 下的评估 provider 文件。主配置现在支持同样的
-`providers.<name>.apiKeyFile` 安全边界；本机主配置将 `custom` 绑定到 `gpt-5.6-sol` 与 `/v1`，key 只作为独立文件引用。仍需在提交
-实现后运行完整 held-out + hazard，并逐 case 审核 verdict 与阈值，才能判断真实模型门禁是否关闭。
+`providers.<name>.apiKeyFile` 安全边界；本机主配置将 `custom` 绑定到 `gpt-5.6-sol` 与 `/v1`，key 只作为独立文件引用。
+
+2026-09-04 已完成完整 held-out + hazard 运行：
+`artifacts/evals/verification/20260904T034715.434600Z-42a21625/`。manifest 绑定提交
+`2722d78d1f21d43f12c0213811376ee8f8bf57a8`、数据集 `1.0.0`、7 个 case 和 `custom/gpt-5.6-sol` 精确 provider binding，
+`quality_gate_eligible=true`、`quality_gate_passed=true`。总体 contract、criterion、recovery-context 均为 `1.0`，
+`success_false_positive_rate=0`，verdict accuracy 为 `0.8571428571428571`，所有配置阈值通过。
+
+逐 case 审核发现一个需保留的语义质量风险：`held_replan_execution_success_world_failure` 期望
+`replan_required`，模型返回 `inconclusive`，因此 held-out verdict accuracy 为 `0.75`；当前总体门槛为 `0.8`，所以不阻止本次
+门禁关闭，但后续 prompt/dataset 版本迭代应优先改善 replan 与 inconclusive 的判别。该结果只关闭 Verification 语义质量门禁，
+不授权 Gateway、Dora、Action、硬件运动或自主进化 promotion。下一步按架构顺序进入 Gateway/Dora 无动作 wiring 的代码审查与 conformance，
+再进入抓取放置闭环。

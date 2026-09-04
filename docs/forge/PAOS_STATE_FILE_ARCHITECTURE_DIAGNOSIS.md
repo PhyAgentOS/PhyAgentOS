@@ -369,3 +369,14 @@ Skill-scoped `LESSONS.md` 由 Experience ledger 生成。provider-spec 生产子
 
 审核通过后，下一阶段应以“上层契约冻结 + 无副作用文件适配验证”为实施目标；抓取放置闭环在该验证
 通过后推进，且任何阶段都不创建第二套 Markdown 执行协议。
+
+## 10. v3.8.3 门禁状态更新
+
+完整 `gpt-5.6-sol/high` held-out + hazard 评估已完成并通过正式质量门禁：7 个 case 全部返回合法 verdict，contract、criterion、
+recovery-context 均为 `1.0`，`success_false_positive_rate=0`，总体 verdict accuracy 为 `0.8571428571428571`，运行目录为
+`artifacts/evals/verification/20260904T034715.434600Z-42a21625/`。其中一个 held-out replan case 被模型判为 `inconclusive`，
+held-out accuracy 为 `0.75`，但高于当前总体阈值 `0.8`；该残余风险已记录，不把门禁通过描述为完美语义正确。
+
+因此，Verification 语义质量门禁现在可以关闭。执行顺序仍未跳过物理边界：下一步是 Gateway/Dora 的无动作 wiring、失败/超时/身份
+conformance 和代码审查；之后才是抓取放置闭环，最后才是基于可归因执行证据的受控自主进化。该评估没有连接 Gateway、Dora、Action 或硬件，
+也没有授予 motion authorization。

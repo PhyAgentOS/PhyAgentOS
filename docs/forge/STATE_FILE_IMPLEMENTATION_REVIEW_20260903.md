@@ -284,5 +284,21 @@ OpenAI-compatible endpoint 的单 case 连通性验证中解除；完整 held-ou
 `unmet_criteria`、`preserved_constraints`、`guidance` 三个字段，未放宽 schema。再次运行同一 hazard case 后 contract、verdict、
 criterion 与 recovery-context 指标均为 1.0，且无凭据泄漏。因为使用 `--max-cases 1`，该证据只证明连通性和契约可用，不能关闭门禁。
 
-下一步仍是先提交并复审 v3.8.0，再执行完整 held-out + hazard 真实模型评估；只有逐 case 审核和全部阈值通过后，才进入后续
-Gateway/Dora 阶段。
+该历史记录之后，完整 held-out + hazard 评估已在 v3.8.3 完成；详见下方最新审计记录。
+
+## 10. v3.8.3 完整真实模型语义质量门禁
+
+运行目录：`artifacts/evals/verification/20260904T034715.434600Z-42a21625/`。
+
+- manifest 绑定完整提交 `2722d78d1f21d43f12c0213811376ee8f8bf57a8`、数据集版本 `1.0.0`、7 个 held-out/hazard case、
+  `custom` provider、模型 `gpt-5.6-sol`、`https://api.shuaiapi.com/v1`、`reasoning_effort=high`，并记录 file credential source
+  的引用而非 key 值。
+- `quality_gate_eligible=true`、`quality_gate_passed=true`；总体 contract validity、criterion accuracy、recovery-context
+  validity 均为 `1.0`，`success_false_positive_rate=0`，verdict accuracy `0.8571428571428571`，阈值逐项通过。
+- 逐 case 审核确认 7 条结果均为合法结构化 verdict，evidence refs 未越权，未发现凭据/Bearer 泄漏。唯一语义误差是
+  `held_replan_execution_success_world_failure`：期望 `replan_required`，实际为 `inconclusive`；held-out accuracy 为 `0.75`，
+  仍高于配置的总体门槛 `0.8`，但构成后续 replan/inconclusive 质量改进项。
+
+本次门禁可以关闭 Verification 语义质量 gate，但不能推导出 Gateway/Dora、Action executor、抓取放置或硬件运动已经实现。
+按照已批准执行顺序，下一步是 Gateway/Dora 的无动作 wiring、身份/超时/失败 conformance 和代码审查；该阶段通过后才进入抓取放置
+闭环，之后才讨论基于执行证据的受控自主进化。
