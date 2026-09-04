@@ -10,8 +10,8 @@ PhyAgentOS 支持 Python 3.11 和 3.12。Forge Gateway、Dora、机器人驱动�
 制品在机器人 Skill 需要时独立部署。
 
 ```bash
-git clone https://github.com/PhyAgentOS/PhyAgentOS.git
-cd PhyAgentOS
+git clone https://github.com/PhyAgentOS/PhyAgentOS-core.git
+cd PhyAgentOS-core
 python -m pip install -e .
 paos onboard
 ```

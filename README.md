@@ -4,11 +4,11 @@
   <h3>Recursive Self-Improvement Infrastructure for Physical Agents</h3>
 
   <p>
-    <a href="https://github.com/PhyAgentOS/PhyAgentOS/stargazers">
-      <img src="https://img.shields.io/github/stars/PhyAgentOS/PhyAgentOS?style=social" alt="Stars">
+    <a href="https://github.com/PhyAgentOS/PhyAgentOS-core/stargazers">
+      <img src="https://img.shields.io/github/stars/PhyAgentOS/PhyAgentOS-core?style=social" alt="Stars">
     </a>
-    <a href="https://github.com/PhyAgentOS/PhyAgentOS/network/members">
-      <img src="https://img.shields.io/github/forks/PhyAgentOS/PhyAgentOS?style=social" alt="Forks">
+    <a href="https://github.com/PhyAgentOS/PhyAgentOS-core/network/members">
+      <img src="https://img.shields.io/github/forks/PhyAgentOS/PhyAgentOS-core?style=social" alt="Forks">
     </a>
   </p>
   <p>
@@ -21,7 +21,7 @@
     <a href="https://phy-agent-os.net/">
       <img src="https://img.shields.io/badge/Website-online-FF6B35" alt="Website">
     </a>
-    <a href="https://github.com/PhyAgentOS/PhyAgentOS">
+    <a href="https://github.com/PhyAgentOS/PhyAgentOS-core">
       <img src="https://img.shields.io/badge/PRs-Welcome-2EA44F" alt="PRs">
     </a>
   <p>
@@ -130,8 +130,8 @@ The system keeps three records separate:
 ### 1. Install
 
 ```bash
-git clone https://github.com/PhyAgentOS/PhyAgentOS.git
-cd PhyAgentOS
+git clone https://github.com/PhyAgentOS/PhyAgentOS-core.git
+cd PhyAgentOS-core
 python -m pip install -e .
 
 # Development and tests
