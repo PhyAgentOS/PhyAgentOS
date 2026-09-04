@@ -7,6 +7,24 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v3.10.0] - 2026-09-04
+
+完成 provider-neutral 抓取放置协议级证据闭环，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；不连接真实 Action executor、Dora、机器人或硬件。
+
+Completed the provider-neutral protocol-level pick-and-place evidence closure and passed review across architecture integration, failure paths, authority boundaries, configuration, and maintainability; no real Action executor, Dora, robot, or hardware connected.
+
+### Detailed changes
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py:L24-L27,L78-L89,L194-L231,L301-L316`: terminal-response ref extraction, strict acquire identity equality, destination schema, and post-release evidence gate.
+- `examples/forge-skills/pick-place-workflow/tests/test_long_horizon.py:L59-L70,L123-L145`: binding-drift, evidence-missing, and terminal-response replay coverage.
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`, `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`: stage status and five-dimension review.
+
+### Validation
+
+- Repository tests: `151 passed`; pick-place tests: `245 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Real physical execution and autonomous-evolution promotion remain deferred.
+
 ## [v3.9.0] - 2026-09-04
 
 完成 Gateway/Dora provider-neutral 无动作 wiring，并按架构集成、失败路径、权威边界、配置、可维护性五个维度完成审查；不连接真实 Dora、Gateway、Action 或硬件。

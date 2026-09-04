@@ -324,3 +324,23 @@ criterion 与 recovery-context 指标均为 1.0，且无凭据泄漏。因为使
 - `python -m ruff check PhyAgentOS/forge/capability_runtime tests/test_gateway_dora_no_motion_conformance.py`、`python -m compileall -q PhyAgentOS tests`、`git diff --check` → 通过。
 
 该阶段通过五维验收，但仍不等同于真实 Dora/Gateway 进程互操作、Action executor、抓取放置闭环或硬件安全证明；这些保持后置。
+
+## 12. v3.10.0 抓取放置证据闭环与五维复审
+
+本阶段实现聚焦 provider-neutral `grasp.propose → manipulation.prepare → object.acquire → object.place` 的闭环投影，继续保持 dry-run/no-motion；没有连接真实机器人或硬件。
+
+### 实现与代码审查结论
+
+- [架构集成] `LongHorizonWorkflow.record_terminal_response()` 直接消费标准 Gateway terminal response，复用既有六步 reducer，不新增 Gateway、Session 或 Markdown 执行平面。
+- [失败路径] blocked/failed/cancelled/unknown 继续停止自动推进；recovery 只能创建新 revision；terminal place 缺少完整 post-release evidence 或 acquire identity 不一致时 fail-closed。
+- [权威边界] observation、candidate-set、preparation、acquire invocation、place invocation 和 post-release artifact 均通过显式引用关联；workflow 仅保留 opaque refs，不承载坐标、provider payload 或物理真值。
+- [配置] destination 使用严格 `destination://` schema；新增入口不引入 URL、凭据、Dora、设备或控制器硬编码。
+- [可维护性] terminal-response adapter 消除手工 refs 拼接；测试覆盖完整链路、跨场景漂移、恢复、acquire/place 绑定和 post-release evidence 缺失。
+
+### 验收结果
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests` → `151 passed`。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=examples/forge-skills/pick-place-workflow/src python -m pytest -p pytest_asyncio.plugin -q examples/forge-skills/pick-place-workflow/tests` → `245 passed`。
+- `python -m ruff check PhyAgentOS tests examples/forge-skills/pick-place-workflow/src examples/forge-skills/pick-place-workflow/tests`、`python -m compileall -q PhyAgentOS tests examples/forge-skills/pick-place-workflow/src`、`git diff --check` → 通过。
+
+五维复审无 Blocker/Major 遗留。该结果证明抓取放置的协议级证据闭环，不证明真实 Action executor、Dora/机器人互操作、物理成功或自主进化 promotion。

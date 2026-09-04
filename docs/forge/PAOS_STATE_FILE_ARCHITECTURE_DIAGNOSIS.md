@@ -390,3 +390,12 @@ projection/input 与 SQLite、Gateway、Evidence、Runtime、experience ledger �
 Gateway/Dora 无动作 wiring 已通过 provider-neutral `CapabilityRuntimeTransport` 接入既有 Runtime/ToolClient，覆盖
 discovery/context、Query、Action/Session 生命周期、身份关联、timeout/unknown、cancel/stop、并发和 no-POST recovery。
 该结果只证明协议与边界实现，不证明真实 Dora 进程或物理执行可用；抓取放置闭环与受控自主进化仍按顺序后置。
+
+## 12. v3.10.0 抓取放置阶段状态
+
+抓取放置阶段现已完成协议级证据闭环：固定六步 workflow reducer 可从标准 Gateway terminal response 提取
+opaque identity，并要求 place 的 `acquire_invocation_ref` 与前一步成功 acquire 一致；成功 place 还必须提供完整
+`post_release_evidence` artifact。该阶段仍是 no-motion/replay 语义，未连接真实 Dora、Action executor、机器人或硬件。
+
+完成后按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过；下一阶段才可在独立 adapter/profile 门禁下讨论真实
+环境接入，任何物理动作仍需额外的 Runtime/Profile/Action admission 与硬件安全证据。

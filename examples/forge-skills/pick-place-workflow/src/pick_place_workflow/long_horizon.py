@@ -15,6 +15,8 @@ _CANDIDATE_SET_REF = re.compile(r"^candidate-set://([^/]+)/(.+)$")
 _PREPARATION_REF = re.compile(r"^preparation://([^/]+)/(.+)$")
 _ACQUIRE_INVOCATION_REF = re.compile(r"^invocation://object-acquire/[^/]+$")
 _PLACE_INVOCATION_REF = re.compile(r"^invocation://object-place/[^/]+$")
+_ARTIFACT_REF = re.compile(r"^artifact://[^/]+/.+$")
+_DESTINATION_REF = re.compile(r"^destination://[^\s]+$")
 
 _STEP_SPECS = (
     ("observe", "scene.observe", "query"),
@@ -83,6 +85,7 @@ def _references_dict(references: dict[str, Any]) -> dict[str, str]:
         "acquire_invocation_ref",
         "invocation_ref",
         "destination_ref",
+        "post_release_evidence_ref",
     }
     if set(references) - allowed:
         raise WorkflowBindingError("workflow references contain an unknown field")
@@ -160,6 +163,47 @@ class LongHorizonWorkflow:
             block_reason=None,
         )
         return self._state
+
+    def record_terminal_response(self, step_id: str, response: dict[str, Any]) -> WorkflowState:
+        """Record a standard Gateway terminal response without hand-built references.
+
+        The caller must pass the ``data`` object returned by ForgeToolClient's
+        status/result endpoint.  Only opaque IDs and typed evidence references
+        are retained; provider payloads and coordinates never enter workflow state.
+        """
+        if not isinstance(response, dict):
+            raise WorkflowBindingError("terminal response must be an object")
+        result = response.get("result") if isinstance(response.get("result"), dict) else {}
+        status = response.get("status") or result.get("status")
+        if not isinstance(status, str):
+            phase = response.get("phase")
+            status = "succeeded" if phase == "completed" else phase
+        if not isinstance(status, str):
+            raise WorkflowBindingError("terminal response status is required")
+        refs: dict[str, str] = {}
+        for key in ("observation_ref", "candidate_set_ref", "preparation_ref", "destination_ref"):
+            value = result.get(key)
+            if isinstance(value, str):
+                refs[key] = value
+        invocation_id = response.get("invocation_id")
+        if isinstance(invocation_id, str):
+            refs["invocation_ref"] = invocation_id
+        if step_id == "place":
+            acquire_ref = result.get("acquire_invocation_ref")
+            if isinstance(acquire_ref, str):
+                refs["acquire_invocation_ref"] = acquire_ref
+            summary = result.get("capability_outcome_summary")
+            evidence = summary.get("post_release_evidence") if isinstance(summary, dict) else None
+            evidence_refs = evidence.get("artifact_refs") if isinstance(evidence, dict) else None
+            if (
+                isinstance(evidence, dict)
+                and evidence.get("availability") == "complete"
+                and isinstance(evidence_refs, list)
+                and evidence_refs
+                and isinstance(evidence_refs[0], str)
+            ):
+                refs["post_release_evidence_ref"] = evidence_refs[0]
+        return self.record(step_id, status, refs)
 
     def begin_recovery(self, revision_id: str) -> "LongHorizonWorkflow":
         """Append a PlanRevision after a failed/cancelled step without rewriting history."""
@@ -261,8 +305,15 @@ class LongHorizonWorkflow:
                 raise WorkflowBindingError("place requires the successful acquire invocation")
             if place_ref is None or _PLACE_INVOCATION_REF.fullmatch(place_ref) is None:
                 raise WorkflowBindingError("place requires an object.place invocation_ref")
-            if refs.get("destination_ref") is None or not refs["destination_ref"].startswith("destination://"):
+            if acquire_ref != self._state.steps[4].references.get("invocation_ref"):
+                raise WorkflowBindingError("place acquire_invocation_ref differs from acquire")
+            if refs.get("destination_ref") is None or _DESTINATION_REF.fullmatch(refs["destination_ref"]) is None:
                 raise WorkflowBindingError("place requires an opaque destination_ref")
+            evidence_ref = refs.get("post_release_evidence_ref")
+            if evidence_ref is None or _ARTIFACT_REF.fullmatch(evidence_ref) is None:
+                raise WorkflowBindingError(
+                    "successful place requires a post_release_evidence_ref"
+                )
 
 
 __all__ = [
