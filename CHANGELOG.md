@@ -7,6 +7,12 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.5.1] - 2026-09-05
+
+回写 v4.5.0 provider no-motion 真实链路验收提交哈希 `9a2af2e`；没有修改实现、测试或执行顺序。
+
+Recorded the v4.5.0 provider no-motion live-chain acceptance commit hash `9a2af2e`; implementation, tests, and execution order are unchanged.
+
 ## [v4.5.0] - 2026-09-05
 
 完成已接入 provider 的真实 RoboTwin no-motion 链路验收，并修复 runtime stdout 可审计性；按架构集成、失败路径、权威边界、配置、可维护性五维复审无 Blocker/Major。当前仍未进入 Action/Gateway、Dora 或机器人运动。
