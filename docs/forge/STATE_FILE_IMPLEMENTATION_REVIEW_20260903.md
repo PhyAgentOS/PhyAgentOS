@@ -520,3 +520,13 @@ SHA-256 记录在 `run_manifest.json`，manifest digest 为 `da7a81bd2efccbf7031
 GraspGen 因缺少 `GRASPGEN_PYTHON` 配置、readiness replay 因缺少 `READINESS_FIXTURE` 配置而 unavailable；`object.acquire`/
 `object.place` 未尝试。所有 motion flags 均为 false。结论是 observation→understanding→single-view perception 的真实
 no-motion 链路已验证，但不等于真实抓取位姿、IK/碰撞 readiness、Action executor、Gateway/Dora 或仿真动作成功。
+
+## 20. GraspGen live provider seam review
+
+外部 GraspGen workspace 已通过 profile 环境变量接入 adapter；首次跨进程验证发现第三方 logger 写入 stdout，修复后 worker
+stdout 严格保持 JSONL，模型日志进入 stderr。对真实 RoboTwin `entity://red-rectangular-block-1` 点云执行
+`GraspGenProposalProvider` no-motion `grasp.propose` 成功，返回 24 个 provider-neutral candidates，funnel `24/24/24/24`。
+
+证据保存于 `/home/yanxu/robotwin20-runtime/artifacts/paos-graspgen-live-20260905T0040Z/`，manifest digest 为
+`a7627a6d8583bf4da502dfe1deaf8c3ec1e978f8f274ede545446614f43ae336`。所有 motion flags 为 false；未调用 IK、碰撞、Action、
+Gateway、Dora 或硬件。该阶段通过后仍只能进入 readiness worker evidence，不能直接进入 Action/Gateway wiring。

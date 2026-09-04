@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -122,7 +123,19 @@ def main(argv: list[str] | None = None) -> int:
     _OPTIONS = _parser().parse_args(argv)
     if not _OPTIONS.stdio_worker:
         raise SystemExit("--stdio-worker is required")
-    return serve("graspgen", _load, _handle, schema_version="paos-grasp-worker/v1")
+
+    # GraspGen and its dependencies may log informational messages to stdout.
+    # Keep the JSONL process boundary machine-readable by routing model-owned
+    # output to stderr; ``serve`` retains stdout for protocol events/replies.
+    def quiet_load() -> None:
+        with redirect_stdout(sys.stderr):
+            _load()
+
+    def quiet_handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        with redirect_stdout(sys.stderr):
+            return _handle(request)
+
+    return serve("graspgen", quiet_load, quiet_handle, schema_version="paos-grasp-worker/v1")
 
 
 if __name__ == "__main__":

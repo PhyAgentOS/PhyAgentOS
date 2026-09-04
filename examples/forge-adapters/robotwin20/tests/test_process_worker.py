@@ -52,3 +52,47 @@ def test_worker_config_rejects_path_lookup_and_relative_cwd(tmp_path):
         ProcessWorkerConfig(command=("python", str(FIXTURE)))
     with pytest.raises(ValueError, match="absolute directory"):
         ProcessWorkerConfig(command=(sys.executable, str(FIXTURE)), cwd=Path("relative"))
+
+
+def test_graspgen_model_output_isolated_from_jsonl_stdout(monkeypatch, capsys):
+    import importlib.util
+
+    worker_path = Path(__file__).parents[1] / "runtime" / "graspgen_worker.py"
+    monkeypatch.syspath_prepend(str(worker_path.parent))
+    spec = importlib.util.spec_from_file_location("graspgen_worker_for_test", worker_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def noisy_load():
+        print("model initialization log")
+
+    def noisy_handle(request):
+        print("model inference log")
+        return {"request_id": request["request_id"], "status": "empty", "candidates": [], "funnel": {"decoded": 0, "canonicalized": 0, "deduplicated": 0, "retained": 0}}
+
+    observed = {}
+
+    def fake_serve(provider, load, handle, *, schema_version):
+        observed["load"] = load
+        observed["handle"] = handle
+        observed["schema_version"] = schema_version
+        load()
+        handle({"request_id": "request-1"})
+        return 0
+
+    monkeypatch.setattr(module, "_load", noisy_load)
+    monkeypatch.setattr(module, "_handle", noisy_handle)
+    monkeypatch.setattr(module, "serve", fake_serve)
+    assert module.main(
+        [
+            "--stdio-worker",
+            "--checkpoint", "/tmp/checkpoint",
+            "--config", "/tmp/config",
+        ]
+    ) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "model initialization log" in captured.err
+    assert "model inference log" in captured.err
+    assert observed["schema_version"] == "paos-grasp-worker/v1"

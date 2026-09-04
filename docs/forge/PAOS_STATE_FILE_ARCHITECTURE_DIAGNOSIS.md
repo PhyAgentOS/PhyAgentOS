@@ -481,3 +481,22 @@ manifest SHA-256 为 `da7a81bd2efccbf70312428a3adeef10babe2d465734f63f7c90444297
 五维结论：架构集成保持 adapter/profile 与 PAOS authority 分离；失败路径在 provider 配置缺失时停止；权威边界仍由 PAOS
 contract 和 no-motion gate 持有；配置路径、模型和 key 不写入核心代码；中间结果可按 manifest 重放。RoboTwin 当前可用于
 传感器与感知 no-motion 验收，不能称为抓取放置动作验收。
+
+## 16. GraspGen live provider seam 验收（2026-09-05）
+
+根据真实链路硬门槛，恢复了独立 GraspGen workspace 的 profile 指向：Python 3.10.21、Torch/CUDA、source checkout、
+Panda generator/discriminator checkpoint 和配置均通过存在性检查。首次 adapter 重放暴露第三方 logger 污染 JSONL stdout；
+`graspgen_worker.py` 已将模型 load/inference 输出重定向到 stderr，保留 stdout 为逐行 JSON 协议，并增加回归测试。
+
+随后通过 `GraspGenProposalProvider` 对同一真实感知 artifact
+`entity://red-rectangular-block-1` 的 `object_point_cloud` 执行 no-motion `grasp.propose`：
+`provider_available=true`，返回 24 个 provider-neutral candidates，funnel 为 `24→24→24→24`；候选仅标记
+`proposed/low_confidence`，没有 IK、碰撞、Action、Gateway、Dora 或执行授权。
+
+完整证据目录为 `/home/yanxu/robotwin20-runtime/artifacts/paos-graspgen-live-20260905T0040Z/`，包含
+adapter request/result、配置摘要、worker clean stdout/stderr、原始 request JSONL 和 manifest。manifest SHA-256 为
+`a7627a6d8583bf4da502dfe1deaf8c3ec1e978f8f274ede545446614f43ae336`。
+
+该结果证明真实 grasp provider seam 已可用，不证明抓取位姿经过 IK/碰撞 readiness，也不证明任意抓取或抓取放置闭环；下一道门仍是
+真实或独立验证的 readiness worker evidence 及人工审核。GraspGen 配置中的 `random_seed=-1` 使候选具有随机性，后续应在不改变
+权限边界的前提下补充可复现 seed 绑定。

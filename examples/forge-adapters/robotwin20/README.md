@@ -235,6 +235,17 @@ stdout/stderr. The first three stages passed; GraspGen and readiness are
 explicitly unavailable because their required profile environment variables are
 not configured. No Action, Dora, or motion stage was attempted.
 
+The next provider-gated run restored the external GraspGen profile and
+replayed the real `entity://red-rectangular-block-1` point cloud through
+`GraspGenProposalProvider` without motion. It returned 24 normalized,
+provider-neutral candidates with funnel `24/24/24/24`. Evidence is stored at
+`/home/yanxu/robotwin20-runtime/artifacts/paos-graspgen-live-20260905T0040Z/`;
+the manifest SHA-256 is
+`a7627a6d8583bf4da502dfe1deaf8c3ec1e978f8f274ede545446614f43ae336`.
+The worker keeps JSONL on stdout and routes model logs to stderr. This is
+grasp-provider evidence only; IK/collision readiness, Action/Gateway, Dora,
+and physical execution remain gated.
+
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
 `check_success`, segmentation APIs, actor/entity APIs, or any action route.
