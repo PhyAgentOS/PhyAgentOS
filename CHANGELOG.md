@@ -42,7 +42,7 @@ Hardened `grasp.propose` consumption of `scene.understand` geometry artifacts an
 
 - Grasp proposal tests: `61 passed`; repository: `161 passed`; pick-place: `253 passed`.
 - Adapter GraspGen live tests remain blocked by missing optional `numpy`; no live checkpoint claim.
-- Commit: pending.
+- Commit: `88267b4` on `feature/long-horizon-workflow`.
 
 ## [v3.10.2] - 2026-09-04
 
