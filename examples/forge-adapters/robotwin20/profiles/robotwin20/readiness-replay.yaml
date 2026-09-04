@@ -1,0 +1,15 @@
+schema_version: paos-robotwin20-readiness/v1
+worker_id: robotwin20-readiness-replay/v1
+fixture: ${READINESS_FIXTURE}
+fixture_sha256: ${READINESS_FIXTURE_SHA256}
+
+worker:
+  python: ${READINESS_WORKER_PYTHON}
+  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/readiness_replay_worker.py
+  cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  startup_timeout_s: 10
+  request_timeout_s: 10
+  shutdown_timeout_s: 5
+  environment:
+    PYTHONUNBUFFERED: "1"
+  arguments: []

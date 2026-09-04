@@ -446,3 +446,8 @@ request，严格复核 observation/candidate-set identity、candidate/entity 绑
 并通过深拷贝隔离 evaluator 请求。PAOS endpoint 可规范化该 mapping，但仍是唯一的公共 projection 和 no-motion owner。
 专项测试 14 passed；没有引入 Hephaestus 运行时依赖，也没有连接 IK/碰撞引擎、Action、Gateway、Dora 或硬件。五维复审无
 Blocker/Major；下一步是独立 readiness worker 的真实 evidence/replay 证据，之后才考虑 Action/Gateway wiring。
+
+独立 readiness replay worker 现已完成：profile 对 fixture 执行绝对路径、不可写和 SHA-256 门禁，JSONL worker 对完整
+observation/candidate identity 做精确 case 匹配，client 校验 worker/schema/no-motion 后才向 PAOS 投影。该阶段证明可重复的
+协议 evidence，不证明真实 IK、碰撞规划或物理可达性；五维审查无 Blocker/Major，专项 `28 passed`，依赖隔离 adapter 子集
+`38 passed`。下一步是对真实或独立验证的 readiness worker 生成 evidence replay，之后才讨论 Action/Gateway wiring。

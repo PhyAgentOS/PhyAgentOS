@@ -482,3 +482,23 @@ unknown/fail check、重复/越权 candidate、非法 evidence、provider-specif
 
 下一步仍是对真实/独立 readiness worker 的 evidence 进行受控 no-motion 适配验证；只有该证据稳定后，才可讨论真实 Action/Gateway
 wiring，之后才是物理执行和执行证据驱动的自主进化 promotion。
+
+## 18. Readiness evidence replay worker conformance
+
+本阶段完成独立 JSONL readiness replay worker 与 profile wiring。`readiness_replay_worker.py` 只读取外部 hash-pinned
+fixture，根据完整 observation/candidate identity 返回 prepared evidence；`ReadinessReplayClient` 校验 request identity、
+worker identity、replay schema 和 no-motion 标志后，才投影为 `RoboTwinReadinessEvaluator` 的 provider mapping。fixture 要求
+绝对 regular file、不可被 group/world 写入，并通过 SHA-256 校验；重复 case identity、未知 case、malformed fixture 和 worker
+启动/响应失败均拒绝。
+
+五维复审无 Blocker/Major：架构上复用既有 `JsonlProcessWorkerClient`，不创建第二执行平面；失败路径覆盖 startup、timeout/
+shutdown、request/response identity、digest、路径和 fixture schema；权威边界保持 PAOS 最终 projection 与
+`motion_authorized=false`；配置通过 `readiness-replay.yaml` 外部变量和 profile 注入；可维护性通过统一 worker lifecycle、
+严格 schema 和独立 replay client 保持清晰。回放证据明确不是真实 IK、碰撞、轨迹或物理成功证明。
+
+验证：readiness/replay/process 专项 `28 passed`；依赖隔离 adapter 子集 `38 passed`；根仓库 `161 passed`；pick-place 全量
+`256 passed`；Ruff、compileall、`git diff --check` 均通过。完整 RoboTwin20 adapter 集合仍受当前环境缺少可选 `numpy` 且
+未注入 pick-place 源路径影响，未宣称 GraspGen/数值感知 live 验收。Hephaestus 仍仅作 clean-room 参考，未作为运行时依赖接入。
+
+下一步是对真实或经独立验证的 readiness worker 产生 evidence replay；在该证据完成人工审核前，不进入真实 Action/Gateway
+wiring 或硬件执行。

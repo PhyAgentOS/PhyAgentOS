@@ -120,6 +120,12 @@ class RoboTwinReadinessEvaluator:
     def prepare(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         return self.evaluate(request)
 
+    def release(self) -> None:
+        """Release an optional process-backed evaluator through the public port."""
+        release = getattr(self.evaluator, "release", None)
+        if callable(release):
+            release()
+
 
 def _validate_request(request: Mapping[str, Any]) -> None:
     if not isinstance(request, Mapping):

@@ -7,6 +7,27 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.2.0] - 2026-09-04
+
+完成 readiness evidence replay worker/profile 的 no-motion conformance，并按五个维度复审通过；保持 PAOS projection 和动作权限边界不变。
+
+Implemented no-motion conformance for the readiness evidence replay worker/profile and passed the five-dimension review; PAOS projection and motion-authority boundaries remain unchanged.
+
+### Detailed changes
+
+- `examples/forge-adapters/robotwin20/runtime/readiness_replay_worker.py`: hash-pinned fixture replay with complete case identity matching and no-motion output.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/readiness_profile.py`: fixture digest/path/permission gates and worker identity validation through the existing JSONL process boundary.
+- Existing `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py` mapping normalization remains the final PAOS owner.
+- `examples/forge-adapters/robotwin20/tests/test_readiness_replay.py`, `profiles/robotwin20/readiness-replay.yaml`: replay and profile conformance coverage.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/readiness.py`: expose explicit readiness adapter teardown for process-backed evaluators.
+
+### Validation
+
+- Replay/readiness/process tests: `28 passed`; dependency-free adapter subset: `38 passed`; repository: `161 passed`; pick-place: `256 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Replay is protocol evidence only; no real IK, collision engine, Action, Gateway, Dora, hardware, or motion path was started.
+- Full RoboTwin20 adapter collection remains environment-limited by optional `numpy` and missing pick-place source-path injection; this does not invalidate the dependency-free conformance subset.
+
 ## [v4.1.0] - 2026-09-04
 
 完成 RoboTwin20 独立 `ReadinessEvaluator` conformance，并按五个维度复审通过；保持 provider-neutral、dry-run/no-motion。Hephaestus 仅作 clean-room 语义参考，未接入运行时代码。
