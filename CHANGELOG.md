@@ -13,6 +13,17 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 
 Recorded the v4.5.0 provider no-motion live-chain acceptance commit hash `9a2af2e`; implementation, tests, and execution order are unchanged.
 
+## [v4.5.2] - 2026-09-05
+
+修复 GraspGen worker 的 JSONL stdout conformance，并通过真实 `entity://red-rectangular-block-1` 点云完成 no-motion `grasp.propose`，返回 24 个 provider-neutral candidates；未进入 readiness、Action 或运动。
+
+Fixed GraspGen worker JSONL stdout conformance and completed a no-motion `grasp.propose` on the real `entity://red-rectangular-block-1` point cloud, returning 24 provider-neutral candidates; readiness, Action, and motion remain gated.
+
+### Validation
+
+- Adapter: `104 passed`; repository: `161 passed`; pick-place: `256 passed`; Ruff and compileall passed.
+- Evidence manifest: `a7627a6d8583bf4da502dfe1deaf8c3ec1e978f8f274ede545446614f43ae336`.
+
 ## [v4.5.0] - 2026-09-05
 
 完成已接入 provider 的真实 RoboTwin no-motion 链路验收，并修复 runtime stdout 可审计性；按架构集成、失败路径、权威边界、配置、可维护性五维复审无 Blocker/Major。当前仍未进入 Action/Gateway、Dora 或机器人运动。
