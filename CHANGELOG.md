@@ -24,6 +24,7 @@ Completed the provider-neutral protocol-level pick-and-place evidence closure an
 - Repository tests: `151 passed`; pick-place tests: `245 passed`.
 - Ruff, compileall, and `git diff --check` passed.
 - Real physical execution and autonomous-evolution promotion remain deferred.
+- Commit: `a847cd7` on `feature/long-horizon-workflow`.
 
 ## [v3.9.0] - 2026-09-04
 
