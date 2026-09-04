@@ -22,6 +22,10 @@ from .readiness_replay import (
 
 READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-readiness/v1"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_BINDING_KEYS = frozenset({
+    "robot_identity", "gripper_identity", "embodiment_topology",
+    "planner_profile", "profile_digest",
+})
 
 
 class ReadinessProfileError(ValueError):
@@ -38,6 +42,7 @@ class ReadinessReplayClient:
         worker_id: str,
         fixture_sha256: str,
         evidence_manifest_sha256: str,
+        embodiment_binding: Mapping[str, str],
     ) -> None:
         self.client = client
         if not isinstance(worker_id, str) or not worker_id.strip():
@@ -51,6 +56,7 @@ class ReadinessReplayClient:
         self.worker_id = worker_id
         self.fixture_sha256 = fixture_sha256
         self.evidence_manifest_sha256 = evidence_manifest_sha256
+        self.embodiment_binding = _validate_binding(embodiment_binding, "embodiment_binding")
 
     def evaluate(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         if not isinstance(request, Mapping):
@@ -66,6 +72,8 @@ class ReadinessReplayClient:
             raise ReadinessProfileError("readiness replay response schema mismatch")
         if response.get("worker_id") != self.worker_id:
             raise ReadinessProfileError("readiness replay worker identity mismatch")
+        if response.get("embodiment_binding") != self.embodiment_binding:
+            raise ReadinessProfileError("readiness replay embodiment binding mismatch")
         if response.get("motion_authorized") is not False:
             raise ReadinessProfileError("readiness replay worker is not no-motion")
         return {
@@ -86,6 +94,7 @@ class ReadinessReplayClient:
             "worker_id": self.worker_id,
             "fixture_sha256": self.fixture_sha256,
             "evidence_manifest_sha256": self.evidence_manifest_sha256,
+            "embodiment_binding": dict(self.embodiment_binding),
             "motion_authorized": False,
             "request": dict(request),
             "result": {
@@ -127,7 +136,7 @@ def build_readiness_evaluator(
 ) -> RoboTwinReadinessEvaluator:
     required = {
         "schema_version", "fixture", "fixture_sha256", "evidence_manifest",
-        "evidence_manifest_sha256", "worker", "worker_id",
+        "evidence_manifest_sha256", "worker", "worker_id", "embodiment_binding",
     }
     if not isinstance(profile, Mapping) or set(profile) != required:
         raise ReadinessProfileError("readiness profile fields are invalid")
@@ -188,6 +197,7 @@ def build_readiness_evaluator(
     worker_id = profile.get("worker_id")
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ReadinessProfileError("worker_id must be a non-empty string")
+    embodiment_binding = _validate_binding(profile.get("embodiment_binding"), "embodiment_binding")
     config = replace(
         worker_config,
         command=(
@@ -202,6 +212,7 @@ def build_readiness_evaluator(
             worker_id=worker_id,
             fixture_sha256=expected,
             evidence_manifest_sha256=expected_manifest,
+            embodiment_binding=embodiment_binding,
         )
     )
 
@@ -213,3 +224,16 @@ __all__ = [
     "build_readiness_evaluator",
     "load_readiness_profile",
 ]
+
+
+def _validate_binding(value: Any, label: str) -> dict[str, str]:
+    if not isinstance(value, Mapping) or set(value) != _BINDING_KEYS:
+        raise ReadinessProfileError(f"{label} fields are invalid")
+    normalized = dict(value)
+    for key in _BINDING_KEYS:
+        item = normalized[key]
+        if not isinstance(item, str) or not item.strip():
+            raise ReadinessProfileError(f"{label}.{key} must be a non-empty string")
+    if _SHA256.fullmatch(normalized["profile_digest"]) is None:
+        raise ReadinessProfileError(f"{label}.profile_digest must be a lowercase SHA-256 digest")
+    return normalized

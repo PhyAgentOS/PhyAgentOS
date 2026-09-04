@@ -7,6 +7,29 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.7.0] - 2026-09-04
+
+完成 RoboTwin adapter 的可替换 embodiment profile 与 readiness 身份绑定。
+Franka `blocks_ranking_rgb`（`[franka-panda, franka-panda, 0.8]`）已通过实际
+no-motion preflight/scene capture；未接入 Action、Gateway、Dora 或硬件运动。
+
+Completed replaceable RoboTwin embodiment profiles and readiness identity
+bindings. Franka `blocks_ranking_rgb` (`[franka-panda, franka-panda, 0.8]`)
+passed real no-motion preflight/scene capture; Action, Gateway, Dora, and
+hardware motion remain disconnected.
+
+### Detailed changes
+
+- Backend/preflight now validate native dual-arm versus two-single-arm topology and load `franka-blocks-ranking.yaml`.
+- Readiness fixture, evidence manifest, worker response, and immutable replay artifact now require matching robot/gripper/topology/planner/profile-digest bindings.
+- Updated architecture diagnosis, execution order, and adapter replacement guidance.
+
+### Validation
+
+- Adapter conformance: `71 passed, 1 skipped`; focused backend/preflight/readiness: `37 passed`; repository: `161 passed` with `pytest_asyncio`.
+- RoboTwin20 Franka pair preflight: `ready=true`; no-motion capture produced RGB/depth/state/calibration.
+- Ruff, compileall, and `git diff --check` passed.
+
 ## [v4.5.4] - 2026-09-05
 
 回写 v4.5.3 GraspGen 验收日志维护提交哈希 `36d940d`，并完成 v4.5.4 索引提交 `0cfcd56`；没有修改实现、测试或执行顺序。

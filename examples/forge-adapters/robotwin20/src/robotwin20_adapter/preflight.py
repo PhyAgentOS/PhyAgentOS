@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
@@ -22,7 +24,7 @@ class PreflightConfig:
     runtime_python: Path
     task_name: str = "beat_block_hammer"
     task_config: str = "demo_clean"
-    embodiment: str = "aloha-agilex"
+    embodiment: "EmbodimentSpec" = "aloha-agilex"
     timeout_s: float = 30.0
 
 
@@ -53,6 +55,33 @@ class PreflightReport:
 
 
 CommandRunner = Callable[[Sequence[str], Path, float], subprocess.CompletedProcess[str]]
+
+EmbodimentSpec = str | tuple[str, str, float]
+_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def _normalize_embodiment(value: EmbodimentSpec | list[Any]) -> EmbodimentSpec:
+    if isinstance(value, str) and _IDENTIFIER.fullmatch(value):
+        return value
+    if isinstance(value, (tuple, list)) and len(value) == 3:
+        left, right, interval = value
+        if (
+            isinstance(left, str)
+            and _IDENTIFIER.fullmatch(left)
+            and isinstance(right, str)
+            and _IDENTIFIER.fullmatch(right)
+            and isinstance(interval, (int, float))
+            and not isinstance(interval, bool)
+            and math.isfinite(float(interval))
+            and interval > 0
+        ):
+            return left, right, float(interval)
+    raise ValueError("embodiment must be a name or [left_name, right_name, positive_interval]")
+
+
+def _embodiment_names(value: EmbodimentSpec) -> tuple[str, ...]:
+    normalized = _normalize_embodiment(value)
+    return (normalized,) if isinstance(normalized, str) else normalized[:2]
 
 _ASSET_DIRS = ("background_texture", "embodiments", "objects")
 _RUNTIME_MODULES = (
@@ -136,14 +165,9 @@ def _layout_checks(config: PreflightConfig) -> list[PreflightCheck]:
                 f"{asset_dir} files={count}",
             )
         )
-    embodiment_config = root / "assets" / "embodiments" / config.embodiment / "config.yml"
-    checks.append(
-        PreflightCheck(
-            "embodiment_config",
-            embodiment_config.is_file(),
-            str(embodiment_config),
-        )
-    )
+    for name in _embodiment_names(config.embodiment):
+        embodiment_config = root / "assets" / "embodiments" / name / "config.yml"
+        checks.append(PreflightCheck(f"embodiment_config:{name}", embodiment_config.is_file(), str(embodiment_config)))
     return checks
 
 
@@ -154,12 +178,18 @@ def run_preflight(
 ) -> PreflightReport:
     root = config.runtime_root.expanduser().resolve()
     runtime_python = config.runtime_python.expanduser().resolve()
+    try:
+        embodiment = _normalize_embodiment(config.embodiment)
+    except ValueError as exc:
+        return PreflightReport(
+            str(root), str(runtime_python), (PreflightCheck("embodiment", False, str(exc)),)
+        )
     normalized = PreflightConfig(
         runtime_root=root,
         runtime_python=runtime_python,
         task_name=config.task_name,
         task_config=config.task_config,
-        embodiment=config.embodiment,
+        embodiment=embodiment,
         timeout_s=config.timeout_s,
     )
     checks = _layout_checks(normalized)
@@ -245,6 +275,29 @@ def run_preflight(
         )
     )
 
+    topology_probe = (
+        "import json,pathlib,yaml;"
+        f"spec={embodiment!r};"
+        "names=(spec,) if isinstance(spec,str) else spec[:2];"
+        "values=[];"
+        "\nfor name in names:\n"
+        " value=yaml.safe_load((pathlib.Path('assets/embodiments')/name/'config.yml').read_text());"
+        "\n if not isinstance(value,dict): raise SystemExit('embodiment config is not a mapping');"
+        "\n values.append(value.get('dual_arm'));"
+        "\nif len(names)==1 and values[0] is not True: raise SystemExit('single embodiment must declare dual_arm=true');"
+        "\nif len(names)==2 and any(item is not False for item in values): raise SystemExit('pair embodiment requires single-arm configs');"
+        "\nprint(json.dumps({'names':names,'dual_arm':values}))"
+    )
+    checks.append(
+        _command_check(
+            "embodiment_topology",
+            (python, "-c", topology_probe),
+            cwd=root,
+            timeout_s=normalized.timeout_s,
+            runner=runner,
+        )
+    )
+
     checks.append(
         _command_check(
             "vulkan_device",
@@ -263,16 +316,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--runtime-python", type=Path, required=True)
     parser.add_argument("--task-name", default="beat_block_hammer")
     parser.add_argument("--task-config", default="demo_clean")
-    parser.add_argument("--embodiment", default="aloha-agilex")
+    parser.add_argument(
+        "--embodiment", nargs="+", default=["aloha-agilex"],
+        help="name or: left_name right_name interval",
+    )
     parser.add_argument("--timeout", type=float, default=30.0)
     args = parser.parse_args(argv)
+    if len(args.embodiment) == 1:
+        embodiment: EmbodimentSpec = args.embodiment[0]
+    elif len(args.embodiment) == 3:
+        try:
+            embodiment = (args.embodiment[0], args.embodiment[1], float(args.embodiment[2]))
+        except ValueError as exc:
+            parser.error(f"invalid embodiment interval: {exc}")
+    else:
+        parser.error("--embodiment expects NAME or LEFT RIGHT INTERVAL")
     report = run_preflight(
         PreflightConfig(
             runtime_root=args.runtime_root,
             runtime_python=args.runtime_python,
             task_name=args.task_name,
             task_config=args.task_config,
-            embodiment=args.embodiment,
+            embodiment=embodiment,
             timeout_s=args.timeout,
         )
     )

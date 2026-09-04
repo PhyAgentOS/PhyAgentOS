@@ -258,3 +258,42 @@ stable scene revision. On the RTX 5060 Ti host, SAPIEN emitted OIDN CUDA
 denoiser warnings during this smoke run, but the sensor artifacts were
 successfully persisted; this remains a runtime risk and is not treated as a
 perception-quality claim.
+
+### Franka and replaceable embodiment profiles
+
+RoboTwin's embodiment is adapter/profile configuration, not a PAOS ToolSpec
+field. The backend accepts either a native dual-arm name (for example
+`aloha-agilex`) or RoboTwin's two-single-arm form:
+
+```text
+embodiment: [franka-panda, franka-panda, 0.8]
+```
+
+The adapter validates topology before scene setup: a one-name profile must
+declare `dual_arm: true`, while a three-value profile must reference two
+`dual_arm: false` configs. This prevents a single Panda from being silently
+treated as a shared dual-arm robot. The first long-horizon profile is
+`profiles/robotwin20/franka-blocks-ranking.yaml` (`blocks_ranking_rgb`, seed
+0, head camera, Curobo). A different benchmark or robot is introduced by a
+new adapter-owned profile and matching planner/gripper/readiness binding; the
+public PAOS Skill, ToolSpec, task lifecycle, and Evidence schema remain
+unchanged.
+
+Readiness replay profiles carry an `embodiment_binding` containing robot,
+gripper, topology, planner, and profile-digest values. The fixture, evidence
+manifest, worker response, and immutable replay artifact must agree exactly.
+Any mismatch is unavailable/fail-closed and never becomes Action admission.
+
+The execution order is now:
+
+1. complete Franka profile and no-motion scene/observation for
+   `blocks_ranking_rgb`;
+2. obtain real or independently validated readiness-worker evidence and have
+   it manually reviewed;
+3. only then consider Action/Gateway no-motion wiring;
+4. run RoboTwin motion simulation and later benchmark expansion
+   (`stack_blocks_two`, then `stack_blocks_three`);
+5. keep autonomous evolution behind attributable, independently evaluated
+   execution evidence.
+
+No Action, Gateway, Dora, or hardware motion is enabled by this profile work.

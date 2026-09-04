@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -44,6 +45,76 @@ _CAMERA_REFS = {
     "camera/left_wrist": "left_camera",
     "camera/right_wrist": "right_camera",
 }
+
+
+EmbodimentSpec = str | tuple[str, str, float]
+RUNTIME_PROFILE_SCHEMA_VERSION = "paos-robotwin20-runtime-profile/v1"
+
+
+def _normalize_embodiment(value: EmbodimentSpec | list[Any]) -> EmbodimentSpec:
+    """Normalize RoboTwin's single- or two-single-arm embodiment syntax."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (tuple, list)) and len(value) == 3:
+        left, right, interval = value
+        if (
+            isinstance(left, str)
+            and isinstance(right, str)
+            and isinstance(interval, (int, float))
+            and not isinstance(interval, bool)
+            and math.isfinite(float(interval))
+            and interval > 0
+        ):
+            return (left, right, float(interval))
+    raise RoboTwinRuntimeError(
+        "embodiment must be a name or [left_name, right_name, positive_interval]"
+    )
+
+
+def load_runtime_profile(path: Path) -> dict[str, Any]:
+    """Load one adapter-owned task/embodiment profile without importing PAOS."""
+    if not path.is_absolute() or not path.is_file() or path.is_symlink():
+        raise RoboTwinRuntimeError("runtime profile must be an absolute regular file")
+    profile_yaml = yaml
+    if profile_yaml is None:
+        try:
+            import yaml as profile_yaml
+        except ModuleNotFoundError as exc:
+            raise RoboTwinRuntimeError("PyYAML is required to load a runtime profile") from exc
+    try:
+        value = profile_yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, profile_yaml.YAMLError) as exc:
+        raise RoboTwinRuntimeError("runtime profile could not be loaded") from exc
+    required = {
+        "schema_version", "task_name", "task_config", "embodiment", "sensor_ref", "seed",
+        "robot_identity", "gripper_identity", "embodiment_topology", "planner_profile",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise RoboTwinRuntimeError("runtime profile fields are invalid")
+    if value["schema_version"] != RUNTIME_PROFILE_SCHEMA_VERSION:
+        raise RoboTwinRuntimeError("runtime profile schema_version is unsupported")
+    try:
+        embodiment = _normalize_embodiment(value["embodiment"])
+    except RoboTwinRuntimeError:
+        raise
+    if (
+        not isinstance(value["task_name"], str)
+        or not _IDENTIFIER.fullmatch(value["task_name"])
+        or not isinstance(value["task_config"], str)
+        or not _IDENTIFIER.fullmatch(value["task_config"])
+        or not isinstance(value["sensor_ref"], str)
+        or value["sensor_ref"] not in _CAMERA_REFS
+        or not isinstance(value["seed"], int)
+        or isinstance(value["seed"], bool)
+    ):
+        raise RoboTwinRuntimeError("runtime profile task or sensor fields are invalid")
+    for field in ("robot_identity", "gripper_identity", "embodiment_topology", "planner_profile"):
+        if not isinstance(value[field], str) or not value[field].strip():
+            raise RoboTwinRuntimeError(f"runtime profile {field} is invalid")
+    expected_topology = "native-dual-arm" if isinstance(embodiment, str) else "two-single-arm"
+    if value["embodiment_topology"] != expected_topology:
+        raise RoboTwinRuntimeError("runtime profile embodiment_topology does not match embodiment")
+    return {**value, "embodiment": embodiment}
 
 
 @dataclass(frozen=True)
@@ -110,17 +181,18 @@ class RoboTwinRuntimeProfile:
     artifact_root: Path
     task_name: str = "beat_block_hammer"
     task_config: str = "demo_clean"
-    embodiment: str = "aloha-agilex"
+    embodiment: EmbodimentSpec = "aloha-agilex"
     forbidden_roots: tuple[Path, ...] = ()
 
     def validate(self) -> None:
-        for value, label in (
-            (self.task_name, "task_name"),
-            (self.task_config, "task_config"),
-            (self.embodiment, "embodiment"),
-        ):
+        for value, label in ((self.task_name, "task_name"), (self.task_config, "task_config")):
             if not isinstance(value, str) or _IDENTIFIER.fullmatch(value) is None:
                 raise RoboTwinRuntimeError(f"{label} must be a safe identifier")
+        spec = _normalize_embodiment(self.embodiment)
+        names = (spec,) if isinstance(spec, str) else spec[:2]
+        for name in names:
+            if _IDENTIFIER.fullmatch(name) is None:
+                raise RoboTwinRuntimeError("embodiment names must be safe identifiers")
         if not self.runtime_root.is_absolute() or not self.runtime_root.is_dir():
             raise RoboTwinRuntimeError("runtime_root must be an existing absolute directory")
         if not self.artifact_root.is_absolute():
@@ -135,6 +207,9 @@ class RoboTwinRuntimeProfile:
             forbidden_root = forbidden_root.resolve()
             if artifact_root == forbidden_root or forbidden_root in artifact_root.parents:
                 raise RoboTwinRuntimeError("artifact_root is inside a forbidden root")
+
+    def normalized_embodiment(self) -> EmbodimentSpec:
+        return _normalize_embodiment(self.embodiment)
 
 
 class RoboTwinSensorBackend:
@@ -201,9 +276,14 @@ class RoboTwinSensorBackend:
             raise RoboTwinRuntimeError("RoboTwin task configuration could not be read") from exc
         if not isinstance(task_config, dict) or not isinstance(embodiment_config, dict):
             raise RoboTwinRuntimeError("RoboTwin task configuration must be mappings")
-        embodiment_entry = embodiment_config.get(self.profile.embodiment)
-        if not isinstance(embodiment_entry, Mapping) or not embodiment_entry.get("file_path"):
-            raise RoboTwinRuntimeError("RoboTwin embodiment configuration is unavailable")
+        spec = self.profile.normalized_embodiment()
+        names = (spec,) if isinstance(spec, str) else spec[:2]
+        entries: list[Mapping[str, Any]] = []
+        for name in names:
+            entry = embodiment_config.get(name)
+            if not isinstance(entry, Mapping) or not entry.get("file_path"):
+                raise RoboTwinRuntimeError(f"RoboTwin embodiment configuration is unavailable: {name}")
+            entries.append(entry)
 
         args = dict(task_config)
         args.update(
@@ -228,16 +308,39 @@ class RoboTwinSensorBackend:
                 },
             }
         )
-        args["embodiment"] = [self.profile.embodiment]
-        robot_file = str(embodiment_entry["file_path"])
-        robot_path = (root / robot_file).resolve()
-        if root not in robot_path.parents or not robot_path.is_dir():
-            raise RoboTwinRuntimeError("RoboTwin embodiment path escapes runtime_root")
-        args["left_robot_file"] = robot_file
-        args["right_robot_file"] = robot_file
-        args["left_embodiment_config"] = self._read_embodiment(robot_path)
-        args["right_embodiment_config"] = args["left_embodiment_config"]
-        args["dual_arm_embodied"] = True
+        configs: list[dict[str, Any]] = []
+        robot_files: list[str] = []
+        for entry in entries:
+            robot_file = str(entry["file_path"])
+            robot_path = (root / robot_file).resolve()
+            if root not in robot_path.parents or not robot_path.is_dir():
+                raise RoboTwinRuntimeError("RoboTwin embodiment path escapes runtime_root")
+            robot_files.append(robot_file)
+            configs.append(self._read_embodiment(robot_path))
+        if isinstance(spec, str):
+            if configs[0].get("dual_arm") is not True:
+                raise RoboTwinRuntimeError(
+                    "single embodiment requires a native dual-arm config"
+                )
+            args["embodiment"] = [spec]
+            args["left_robot_file"] = robot_files[0]
+            args["right_robot_file"] = robot_files[0]
+            args["left_embodiment_config"] = configs[0]
+            args["right_embodiment_config"] = configs[0]
+            args["dual_arm_embodied"] = True
+        else:
+            left_name, right_name, interval = spec
+            if any(config.get("dual_arm") is not False for config in configs):
+                raise RoboTwinRuntimeError(
+                    "pair embodiment requires two single-arm configs"
+                )
+            args["embodiment"] = [left_name, right_name, interval]
+            args["left_robot_file"] = robot_files[0]
+            args["right_robot_file"] = robot_files[1]
+            args["left_embodiment_config"] = configs[0]
+            args["right_embodiment_config"] = configs[1]
+            args["embodiment_dis"] = interval
+            args["dual_arm_embodied"] = False
         args["now_ep_num"] = 0
         args["seed"] = 0 if seed is None else seed
         try:
@@ -362,9 +465,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Capture one no-motion RoboTwin observation")
     parser.add_argument("--runtime-root", type=Path, required=True)
     parser.add_argument("--artifact-root", type=Path, required=True)
-    parser.add_argument("--task-name", default="beat_block_hammer")
-    parser.add_argument("--task-config", default="demo_clean")
-    parser.add_argument("--embodiment", default="aloha-agilex")
+    parser.add_argument("--profile", type=Path)
+    parser.add_argument("--task-name")
+    parser.add_argument("--task-config")
+    parser.add_argument(
+        "--embodiment",
+        nargs="+",
+        default=None,
+        help="name or: left_name right_name interval",
+    )
     parser.add_argument(
         "--forbidden-root",
         action="append",
@@ -372,8 +481,8 @@ def main() -> int:
         default=[],
         help="Absolute root that must not receive runtime artifacts; repeatable.",
     )
-    parser.add_argument("--sensor-ref", default="camera/head")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--sensor-ref")
+    parser.add_argument("--seed", type=int)
     parser.add_argument(
         "--format",
         choices=("capture", "scene_observe"),
@@ -384,26 +493,50 @@ def main() -> int:
     # Third-party simulator/rendering libraries may write warnings to stdout.
     # Keep the machine-readable provider payload on stdout by redirecting all
     # runtime noise to stderr until the final JSON print below.
+    profile = load_runtime_profile(args.profile.resolve()) if args.profile else None
+    task_name = args.task_name or (profile["task_name"] if profile else "beat_block_hammer")
+    task_config = args.task_config or (profile["task_config"] if profile else "demo_clean")
+    sensor_ref = args.sensor_ref or (profile["sensor_ref"] if profile else "camera/head")
+    seed = args.seed if args.seed is not None else (profile["seed"] if profile else 0)
+    raw_embodiment = args.embodiment
+    if raw_embodiment is None and profile is not None:
+        normalized_profile_embodiment = profile["embodiment"]
+        raw_embodiment = (
+            [normalized_profile_embodiment]
+            if isinstance(normalized_profile_embodiment, str)
+            else list(normalized_profile_embodiment)
+        )
+    if raw_embodiment is None:
+        raw_embodiment = ["aloha-agilex"]
+    try:
+        if len(raw_embodiment) == 1:
+            embodiment: EmbodimentSpec = raw_embodiment[0]
+        elif len(raw_embodiment) == 3:
+            embodiment = (raw_embodiment[0], raw_embodiment[1], float(raw_embodiment[2]))
+        else:
+            parser.error("--embodiment expects NAME or LEFT RIGHT INTERVAL")
+    except ValueError as exc:
+        parser.error(f"invalid embodiment interval: {exc}")
     with redirect_stdout(sys.stderr):
         backend = RoboTwinSensorBackend(
             RoboTwinRuntimeProfile(
                 runtime_root=args.runtime_root.resolve(),
                 artifact_root=args.artifact_root.resolve(),
-                task_name=args.task_name,
-                task_config=args.task_config,
-                embodiment=args.embodiment,
+                task_name=task_name,
+                task_config=task_config,
+                embodiment=embodiment,
                 forbidden_roots=tuple(path.resolve() for path in args.forbidden_root),
             )
         )
         try:
-            backend.reset(seed=args.seed)
+            backend.reset(seed=seed)
             if args.format == "scene_observe":
-                snapshot = RoboTwinObservationProvider(backend).observe(args.sensor_ref)
+                snapshot = RoboTwinObservationProvider(backend).observe(sensor_ref)
                 if snapshot is None:
                     raise RoboTwinRuntimeError("requested RoboTwin sensor is unavailable")
                 output = _jsonable(asdict(snapshot))
             else:
-                output = _jsonable(backend.capture_sensors(args.sensor_ref).__dict__)
+                output = _jsonable(backend.capture_sensors(sensor_ref).__dict__)
         finally:
             backend.close()
     print(json.dumps(output, indent=2, default=str))

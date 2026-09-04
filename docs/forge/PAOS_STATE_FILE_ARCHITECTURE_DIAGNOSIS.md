@@ -500,3 +500,30 @@ adapter request/result、配置摘要、worker clean stdout/stderr、原始 requ
 该结果证明真实 grasp provider seam 已可用，不证明抓取位姿经过 IK/碰撞 readiness，也不证明任意抓取或抓取放置闭环；下一道门仍是
 真实或独立验证的 readiness worker evidence 及人工审核。GraspGen 配置中的 `random_seed=-1` 使候选具有随机性，后续应在不改变
 权限边界的前提下补充可复现 seed 绑定。
+
+## 17. 2026-09-04 自审与执行顺序修订：可替换本体边界
+
+本轮自我审核没有发现需要改变 PAOS 上层架构的 Blocker，但发现并修正了
+RoboTwin adapter 的三个 Major 集成缺口：preflight 原先只接受单字符串
+embodiment；backend 会把单臂 Panda 静默按共享双臂处理；readiness replay
+只绑定 worker/fixture，而没有绑定机器人、夹爪、拓扑和 planner profile。
+
+修订后的权威边界是：PAOS 公共 ToolSpec、Skill、AgentTask、Gateway 和
+Evidence schema 不增加 RoboTwin 字段；本体替换由 adapter-owned runtime
+profile 完成。profile 可以声明原生双臂或 RoboTwin 官方的
+`[left, right, interval]` 双单臂拓扑。preflight/backend 会校验对应
+`config.yml` 的 `dual_arm` 声明，防止拓扑误配。readiness worker、evidence
+manifest、worker response 和 immutable replay artifact 必须携带一致的
+`embodiment_binding`（robot_identity、gripper_identity、
+embodiment_topology、planner_profile、profile_digest），否则 fail-closed。
+
+首个 Franka 长程 profile 为 `blocks_ranking_rgb` +
+`[franka-panda, franka-panda, 0.8]`；它只推进 no-motion scene setup、
+observation 和 readiness 证据，不开启 Action/Gateway/Dora/硬件。获得并
+人工审核真实或独立 readiness evidence 之后，才进入 Action/Gateway 无动作
+wiring，再做 RoboTwin motion simulation；`stack_blocks_two` 和
+`stack_blocks_three` 作为后续复用同一 adapter 的 benchmark。
+
+因此，PAOS 已有可替换的通用 EnvironmentAdapter/Profile seam，但此前没有
+完整的 RoboTwin embodiment profile 和 readiness 身份门禁；本轮完成的是
+adapter 层补齐，而不是把机器人本体提升为 PAOS 核心事实源。

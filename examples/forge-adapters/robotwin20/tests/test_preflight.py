@@ -14,6 +14,7 @@ def runtime_layout(root: Path) -> tuple[Path, Path]:
         "env_cfg/task_config/_embodiment_config.yml",
         "assets/background_texture/example.png",
         "assets/embodiments/aloha-agilex/config.yml",
+        "assets/embodiments/franka-panda/config.yml",
         "assets/objects/example/model.json",
     ):
         path = root / relative
@@ -73,3 +74,27 @@ def test_preflight_propagates_runtime_probe_failure_without_running_actions(tmp_
     assert all("setup_demo" not in command for command in commands)
     assert all("play_once" not in command for command in commands)
     assert all("check_success" not in command for command in commands)
+
+
+def test_preflight_accepts_two_single_arm_embodiment_profile(tmp_path):
+    root, python = runtime_layout(tmp_path / "RoboTwin")
+    franka = root / "assets/embodiments/franka-panda/config.yml"
+    franka.write_text("dual_arm: false\n", encoding="utf-8")
+    report = run_preflight(
+        PreflightConfig(root, python, embodiment=("franka-panda", "franka-panda", 0.8)),
+        runner=passing_runner,
+    )
+    assert report.ready is True
+    assert {check.name for check in report.checks} >= {
+        "embodiment_config:franka-panda", "embodiment_topology"
+    }
+
+
+def test_preflight_rejects_non_finite_pair_interval(tmp_path):
+    root, python = runtime_layout(tmp_path / "RoboTwin")
+    report = run_preflight(
+        PreflightConfig(root, python, embodiment=("aloha-agilex", "aloha-agilex", float("nan"))),
+        runner=passing_runner,
+    )
+    assert report.ready is False
+    assert report.checks[0].name == "embodiment"

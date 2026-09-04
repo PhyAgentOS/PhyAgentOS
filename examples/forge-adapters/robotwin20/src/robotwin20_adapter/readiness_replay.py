@@ -35,6 +35,7 @@ _ARTIFACT_KEYS = frozenset(
         "worker_id",
         "fixture_sha256",
         "evidence_manifest_sha256",
+        "embodiment_binding",
         "motion_authorized",
         "request",
         "result",
@@ -43,6 +44,10 @@ _ARTIFACT_KEYS = frozenset(
 )
 _RESULT_KEYS = frozenset({"prepared_candidates", "provider_available"})
 _SHA256_CHARS = frozenset("0123456789abcdef")
+_BINDING_KEYS = frozenset({
+    "robot_identity", "gripper_identity", "embodiment_topology",
+    "planner_profile", "profile_digest",
+})
 
 
 class ReadinessReplayArtifactError(ValueError):
@@ -137,6 +142,12 @@ def validate_readiness_replay_artifact(artifact: Mapping[str, Any]) -> None:
             raise ReadinessReplayArtifactError(f"{field} must be a non-empty string")
     _check_sha256(artifact["fixture_sha256"], "fixture_sha256")
     _check_sha256(artifact["evidence_manifest_sha256"], "evidence_manifest_sha256")
+    binding = artifact["embodiment_binding"]
+    if not isinstance(binding, Mapping) or set(binding) != _BINDING_KEYS:
+        raise ReadinessReplayArtifactError("embodiment_binding fields are invalid")
+    if any(not isinstance(item, str) or not item.strip() for item in binding.values()):
+        raise ReadinessReplayArtifactError("embodiment_binding values are invalid")
+    _check_sha256(binding["profile_digest"], "embodiment_binding.profile_digest")
     if artifact["motion_authorized"] is not False:
         raise ReadinessReplayArtifactError("replay artifact must be no-motion")
     try:

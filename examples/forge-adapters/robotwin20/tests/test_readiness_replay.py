@@ -20,6 +20,13 @@ from robotwin20_adapter import (
 )
 
 WORKER = Path(__file__).parents[1] / "runtime" / "readiness_replay_worker.py"
+BINDING = {
+    "robot_identity": "franka-panda",
+    "gripper_identity": "panda-gripper",
+    "embodiment_topology": "two-single-arm",
+    "planner_profile": "curobo",
+    "profile_digest": "a" * 64,
+}
 
 
 def _request():
@@ -57,6 +64,7 @@ def _fixture(tmp_path: Path, *, worker_id="robotwin20-readiness-replay/v1", prep
         "schema_version": "paos-robotwin20-readiness-replay/v1",
         "worker_id": worker_id,
         "motion_authorized": False,
+        "embodiment_binding": BINDING,
         "cases": [
             {
                 "observation_ref": "observation://scene-7/camera_front",
@@ -76,6 +84,7 @@ def _fixture(tmp_path: Path, *, worker_id="robotwin20-readiness-replay/v1", prep
         "schema_version": "paos-robotwin20-readiness-evidence/v1",
         "worker_id": worker_id,
         "motion_authorized": False,
+        "embodiment_binding": BINDING,
         "artifacts": [
             {
                 "artifact_ref": ref,
@@ -105,6 +114,7 @@ def _profile(tmp_path: Path, fixture: Path, *, worker_id="robotwin20-readiness-r
         "fixture_sha256": hashlib.sha256(artifact).hexdigest(),
         "evidence_manifest": str(manifest),
         "evidence_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "embodiment_binding": BINDING,
         "worker": {
             "python": sys.executable,
             "script": str(WORKER),
@@ -278,6 +288,24 @@ def test_worker_identity_mismatch_fails_closed(tmp_path):
     with pytest.raises(ReadinessProfileError, match="worker identity"):
         evaluator.evaluate(_request())
     evaluator.release()
+
+
+def test_embodiment_binding_mismatch_fails_closed(tmp_path):
+    fixture = _fixture(tmp_path, prepared=_prepared())
+    profile = _profile(tmp_path, fixture)
+    profile["embodiment_binding"] = {**BINDING, "robot_identity": "other-arm"}
+    evaluator = build_readiness_evaluator(profile)
+    with pytest.raises(ReadinessProfileError, match="embodiment binding"):
+        evaluator.evaluate(_request())
+    evaluator.release()
+
+
+def test_profile_requires_complete_embodiment_binding(tmp_path):
+    fixture = _fixture(tmp_path)
+    profile = _profile(tmp_path, fixture)
+    profile["embodiment_binding"] = {"robot_identity": "franka-panda"}
+    with pytest.raises(ReadinessProfileError, match="binding fields"):
+        build_readiness_evaluator(profile)
 
 
 def test_missing_evidence_reference_fails_closed(tmp_path):

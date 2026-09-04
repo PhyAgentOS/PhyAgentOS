@@ -18,13 +18,30 @@ from worker_protocol import serve
 
 SCHEMA_VERSION = "paos-robotwin20-readiness-replay/v1"
 EVIDENCE_SCHEMA_VERSION = "paos-robotwin20-readiness-evidence/v1"
+_BINDING_KEYS = {
+    "robot_identity", "gripper_identity", "embodiment_topology",
+    "planner_profile", "profile_digest",
+}
+_SHA256 = set("0123456789abcdef")
 
 
 class ReplayFixtureError(ValueError):
     """The replay fixture is malformed or does not match a request."""
 
 
-def _load_fixture(path: Path) -> tuple[str, tuple[dict[str, Any], ...]]:
+def _validate_binding(value: Any, label: str) -> dict[str, str]:
+    if not isinstance(value, Mapping) or set(value) != _BINDING_KEYS:
+        raise ReplayFixtureError(f"{label} fields are invalid")
+    result = dict(value)
+    if any(not isinstance(item, str) or not item.strip() for item in result.values()):
+        raise ReplayFixtureError(f"{label} values are invalid")
+    digest = result["profile_digest"]
+    if len(digest) != 64 or any(char not in _SHA256 for char in digest):
+        raise ReplayFixtureError(f"{label}.profile_digest is invalid")
+    return result
+
+
+def _load_fixture(path: Path) -> tuple[str, dict[str, str], tuple[dict[str, Any], ...]]:
     if not path.is_absolute() or not path.is_file() or path.is_symlink():
         raise ReplayFixtureError("readiness replay fixture must be an absolute regular file")
     if not stat.S_ISREG(path.stat().st_mode) or path.stat().st_mode & 0o022:
@@ -34,7 +51,7 @@ def _load_fixture(path: Path) -> tuple[str, tuple[dict[str, Any], ...]]:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ReplayFixtureError("readiness replay fixture could not be loaded") from exc
     if not isinstance(value, Mapping) or set(value) != {
-        "schema_version", "worker_id", "motion_authorized", "cases"
+        "schema_version", "worker_id", "motion_authorized", "embodiment_binding", "cases"
     }:
         raise ReplayFixtureError("readiness replay fixture fields are invalid")
     if value["schema_version"] != SCHEMA_VERSION:
@@ -44,6 +61,7 @@ def _load_fixture(path: Path) -> tuple[str, tuple[dict[str, Any], ...]]:
         raise ReplayFixtureError("readiness replay fixture worker_id is invalid")
     if value["motion_authorized"] is not False:
         raise ReplayFixtureError("readiness replay fixture must be no-motion")
+    embodiment_binding = _validate_binding(value["embodiment_binding"], "readiness replay fixture embodiment_binding")
     cases = value["cases"]
     if not isinstance(cases, list) or not cases:
         raise ReplayFixtureError("readiness replay fixture cases must be non-empty")
@@ -98,10 +116,10 @@ def _load_fixture(path: Path) -> tuple[str, tuple[dict[str, Any], ...]]:
             raise ReplayFixtureError("readiness replay fixture contains duplicate case identity")
         seen_keys.add(case_key)
         normalized.append(case_value)
-    return worker_id, tuple(normalized)
+    return worker_id, embodiment_binding, tuple(normalized)
 
 
-def _load_evidence_manifest(path: Path) -> tuple[str, dict[str, dict[str, Any]]]:
+def _load_evidence_manifest(path: Path) -> tuple[str, dict[str, str], dict[str, dict[str, Any]]]:
     if not path.is_absolute() or not path.is_file() or path.is_symlink():
         raise ReplayFixtureError("readiness evidence manifest must be an absolute regular file")
     if not stat.S_ISREG(path.stat().st_mode) or path.stat().st_mode & 0o022:
@@ -111,7 +129,7 @@ def _load_evidence_manifest(path: Path) -> tuple[str, dict[str, dict[str, Any]]]
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ReplayFixtureError("readiness evidence manifest could not be loaded") from exc
     if not isinstance(value, Mapping) or set(value) != {
-        "schema_version", "worker_id", "motion_authorized", "artifacts"
+        "schema_version", "worker_id", "motion_authorized", "embodiment_binding", "artifacts"
     }:
         raise ReplayFixtureError("readiness evidence manifest fields are invalid")
     if value["schema_version"] != EVIDENCE_SCHEMA_VERSION:
@@ -121,6 +139,7 @@ def _load_evidence_manifest(path: Path) -> tuple[str, dict[str, dict[str, Any]]]
         raise ReplayFixtureError("readiness evidence manifest worker_id is invalid")
     if value["motion_authorized"] is not False:
         raise ReplayFixtureError("readiness evidence manifest must be no-motion")
+    embodiment_binding = _validate_binding(value["embodiment_binding"], "readiness evidence manifest embodiment_binding")
     artifacts = value["artifacts"]
     if not isinstance(artifacts, list):
         raise ReplayFixtureError("readiness evidence manifest artifacts must be an array")
@@ -161,7 +180,7 @@ def _load_evidence_manifest(path: Path) -> tuple[str, dict[str, dict[str, Any]]]
         if timestamp.tzinfo is None:
             raise ReplayFixtureError("readiness evidence manifest captured_at requires timezone")
         indexed[artifact_ref] = dict(artifact)
-    return worker_id, indexed
+    return worker_id, embodiment_binding, indexed
 
 
 def _validate_case_evidence(
@@ -222,7 +241,7 @@ def _case_key(request: Mapping[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def _handle_factory(worker_id: str, cases: tuple[dict[str, Any], ...]):
+def _handle_factory(worker_id: str, embodiment_binding: Mapping[str, str], cases: tuple[dict[str, Any], ...]):
     indexed = {
         (
             case["observation_ref"],
@@ -245,6 +264,7 @@ def _handle_factory(worker_id: str, cases: tuple[dict[str, Any], ...]):
             "schema_version": SCHEMA_VERSION,
             "status": "available",
             "worker_id": worker_id,
+            "embodiment_binding": dict(embodiment_binding),
             "motion_authorized": False,
             "prepared_candidates": case["prepared_candidates"],
             "provider_available": True,
@@ -258,15 +278,17 @@ def main() -> int:
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--evidence-manifest", type=Path, required=True)
     args = parser.parse_args()
-    worker_id, cases = _load_fixture(args.fixture.expanduser())
-    evidence_worker_id, evidence = _load_evidence_manifest(args.evidence_manifest.expanduser())
+    worker_id, embodiment_binding, cases = _load_fixture(args.fixture.expanduser())
+    evidence_worker_id, evidence_binding, evidence = _load_evidence_manifest(args.evidence_manifest.expanduser())
     if evidence_worker_id != worker_id:
         raise ReplayFixtureError("readiness evidence manifest worker identity mismatch")
+    if evidence_binding != embodiment_binding:
+        raise ReplayFixtureError("readiness evidence manifest embodiment binding mismatch")
     _validate_case_evidence(cases, evidence)
     return serve(
         "robotwin20-readiness-replay",
         lambda: None,
-        _handle_factory(worker_id, cases),
+        _handle_factory(worker_id, embodiment_binding, cases),
         schema_version=SCHEMA_VERSION,
     )
 

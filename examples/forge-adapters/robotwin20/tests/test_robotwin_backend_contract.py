@@ -24,6 +24,71 @@ def test_runtime_profile_rejects_unsafe_provider_identifiers(tmp_path):
         profile.validate()
 
 
+def test_runtime_profile_normalizes_two_single_arm_embodiment(tmp_path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    profile = backend_module.RoboTwinRuntimeProfile(
+        runtime_root=runtime,
+        artifact_root=tmp_path / "artifacts",
+        embodiment=["franka-panda", "franka-panda", 0.8],
+    )
+    assert profile.normalized_embodiment() == ("franka-panda", "franka-panda", 0.8)
+
+
+def test_runtime_profile_rejects_non_finite_embodiment_interval(tmp_path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    profile = backend_module.RoboTwinRuntimeProfile(
+        runtime_root=runtime,
+        artifact_root=tmp_path / "artifacts",
+        embodiment=["franka-panda", "franka-panda", float("nan")],
+    )
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match="embodiment"):
+        profile.validate()
+
+
+def test_runtime_profile_loader_validates_topology_and_metadata(tmp_path):
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        """
+schema_version: paos-robotwin20-runtime-profile/v1
+task_name: blocks_ranking_rgb
+task_config: demo_clean
+embodiment: [franka-panda, franka-panda, 0.8]
+sensor_ref: camera/head
+seed: 0
+robot_identity: franka-panda
+gripper_identity: panda-gripper
+embodiment_topology: two-single-arm
+planner_profile: curobo
+""",
+        encoding="utf-8",
+    )
+    loaded = backend_module.load_runtime_profile(profile_path)
+    assert loaded["embodiment"] == ("franka-panda", "franka-panda", 0.8)
+
+
+def test_runtime_profile_loader_rejects_topology_drift(tmp_path):
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        """
+schema_version: paos-robotwin20-runtime-profile/v1
+task_name: blocks_ranking_rgb
+task_config: demo_clean
+embodiment: [franka-panda, franka-panda, 0.8]
+sensor_ref: camera/head
+seed: 0
+robot_identity: franka-panda
+gripper_identity: panda-gripper
+embodiment_topology: native-dual-arm
+planner_profile: curobo
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match="topology"):
+        backend_module.load_runtime_profile(profile_path)
+
+
 def test_runtime_profile_requires_external_absolute_artifacts(tmp_path):
     profile = backend_module.RoboTwinRuntimeProfile(
         runtime_root=tmp_path,

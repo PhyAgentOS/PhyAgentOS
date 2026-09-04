@@ -558,3 +558,15 @@ contracts, generate read-only projections, run `TARGETS.md` shadow validation, c
 and exercise replay/failure gates. Only after explicit approval and idempotent validation may file input be promoted
 to AgentTask or future admission input. The pick-place evidence closure and guarded evolution follow afterwards;
 these adapters never become a second execution protocol or a motion authority.
+
+### 9.2 本体替换与当前执行门禁
+
+本体替换属于 RoboTwin adapter profile，而不是公共 PAOS ToolSpec。profile
+选择任务、单个原生双臂或两个单臂及间距，并绑定 robot/gripper、拓扑、
+planner 和 readiness evidence digest。更换 benchmark 时只新增 profile；
+PAOS 的 Skill、任务生命周期、Gateway contract 和经验事实源保持不变。
+
+当前首个 profile 是 `blocks_ranking_rgb` 的双 Franka-Panda。它只允许
+scene/observation no-motion 链路。必须先获得真实或独立验证的 readiness
+worker evidence 并完成人工审核，才可进入 Action/Gateway wiring；不能因
+上游 RoboTwin 支持 Franka 就宣称 PAOS 已完成 Franka policy 或抓取放置闭环。

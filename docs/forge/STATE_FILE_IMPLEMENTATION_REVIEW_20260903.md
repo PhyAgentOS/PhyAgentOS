@@ -506,6 +506,21 @@ wiring 或硬件执行。为支撑这一门禁，adapter 现在可将已通过 w
 canonical replay artifact，并绑定 fixture/manifest/request/result digest。该 artifact 仅用于 adapter-local 审计与回放，
 不冒充 PAOS EvidenceBundle、Verifier 物理成功判断或 Action admission；fixture replay 仍不等价于真实 IK/碰撞/轨迹证据。
 
+### 2026-09-04 自审结论与本体替换适配
+
+按架构集成、失败路径、权威边界、配置、可维护性五个维度复核后，确认
+PAOS 上层设置无需改为 RoboTwin 专属接口。需要修正的是 adapter-owned
+profile：preflight/backend 支持原生双臂和双单臂 pair 语法，并在 setup 前
+校验 `dual_arm` 拓扑；readiness replay 的 fixture、manifest、worker 和
+artifact 统一校验 robot/gripper/topology/planner/profile digest 绑定。
+
+本体替换因此只需替换 benchmark profile、embodiment config、planner 和
+readiness binding，不复制 Skill、ToolSpec、AgentTask 或生命周期事实。新增
+`franka-blocks-ranking.yaml` 作为首个长程场景（`blocks_ranking_rgb`），
+仍保持 no-motion。执行顺序修订为：Franka observation → 独立 readiness
+evidence + 人工审核 → Action/Gateway no-motion wiring → RoboTwin motion
+simulation → 后续 benchmark 与受控自主进化。
+
 ## 19. 已接入 provider 的真实 no-motion 链路验收
 
 按架构集成、失败路径、权威边界、配置、可维护性五个维度自审，无 Blocker/Major；当前门禁仍是“真实/独立 readiness
