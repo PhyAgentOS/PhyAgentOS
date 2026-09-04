@@ -23,6 +23,7 @@ Added an isolated simulation-motion authorization profile/schema. `simulation_au
 
 - Simulation profile conformance: `10 passed`; readiness/action/Gateway focused suite: `81 passed`; repository: `164 passed`.
 - Ruff, compileall, and `git diff --check` passed. No RoboTwin `play_once`, Dora, Gateway motion executor, or hardware was started.
+- Git commit: `0447dab` on `feature/long-horizon-workflow`.
 
 ## [v4.8.0] - 2026-09-05
 
