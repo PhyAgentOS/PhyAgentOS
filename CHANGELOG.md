@@ -7,6 +7,24 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.3.0] - 2026-09-04
+
+完成 readiness replay evidence manifest 的 no-motion 绑定校验，并按架构集成、失败路径、权威边界、配置、可维护性五个维度复审通过。
+
+Implemented no-motion binding validation for the readiness replay evidence manifest and passed review across architecture integration, failure paths, authority boundaries, configuration, and maintainability.
+
+### Detailed changes
+
+- `examples/forge-adapters/robotwin20/runtime/readiness_replay_worker.py`: strict hash-pinned evidence manifest validation for candidate-set, calibration, source, and timezone-aware capture timestamps.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/readiness_profile.py`: external manifest path, permission, digest, and duplicate-argument gates.
+- `examples/forge-adapters/robotwin20/tests/test_readiness_replay.py`, `profiles/robotwin20/readiness-replay.yaml`: manifest conformance and profile configuration.
+
+### Validation
+
+- Readiness/replay/process tests: `34 passed`; dependency-free adapter subset: `44 passed`; repository: `161 passed`; pick-place: `256 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- No real IK, collision engine, Action, Gateway, Dora, hardware, or motion path was started.
+
 ## [v4.2.1] - 2026-09-04
 
 回写 v4.2.0 readiness replay 实现提交哈希 `103db24`；没有修改实现、测试或执行顺序。

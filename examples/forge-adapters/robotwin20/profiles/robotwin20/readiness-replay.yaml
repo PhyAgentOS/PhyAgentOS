@@ -2,6 +2,8 @@ schema_version: paos-robotwin20-readiness/v1
 worker_id: robotwin20-readiness-replay/v1
 fixture: ${READINESS_FIXTURE}
 fixture_sha256: ${READINESS_FIXTURE_SHA256}
+evidence_manifest: ${READINESS_EVIDENCE_MANIFEST}
+evidence_manifest_sha256: ${READINESS_EVIDENCE_MANIFEST_SHA256}
 
 worker:
   python: ${READINESS_WORKER_PYTHON}

@@ -81,7 +81,10 @@ def build_readiness_evaluator(
     *,
     environ: Mapping[str, str] | None = None,
 ) -> RoboTwinReadinessEvaluator:
-    required = {"schema_version", "fixture", "fixture_sha256", "worker", "worker_id"}
+    required = {
+        "schema_version", "fixture", "fixture_sha256", "evidence_manifest",
+        "evidence_manifest_sha256", "worker", "worker_id",
+    }
     if not isinstance(profile, Mapping) or set(profile) != required:
         raise ReadinessProfileError("readiness profile fields are invalid")
     if profile.get("schema_version") != READINESS_PROFILE_SCHEMA_VERSION:
@@ -103,6 +106,8 @@ def build_readiness_evaluator(
         raise ReadinessProfileError(str(exc)) from exc
     if "--fixture" in worker_config.command[2:]:
         raise ReadinessProfileError("readiness worker arguments must not contain --fixture")
+    if "--evidence-manifest" in worker_config.command[2:]:
+        raise ReadinessProfileError("readiness worker arguments must not contain --evidence-manifest")
     if not stat.S_ISREG(fixture.stat().st_mode):
         raise ReadinessProfileError("fixture must be a regular file")
     if fixture.stat().st_mode & 0o022:
@@ -113,10 +118,40 @@ def build_readiness_evaluator(
     digest = hashlib.sha256(fixture.read_bytes()).hexdigest()
     if digest != expected:
         raise ReadinessProfileError("fixture sha256 does not match profile")
+    raw_manifest = profile.get("evidence_manifest")
+    if not isinstance(raw_manifest, str) or not raw_manifest:
+        raise ReadinessProfileError("evidence_manifest must be a path string")
+    try:
+        manifest_input = Path(_expand(raw_manifest, variables)).expanduser()
+    except PerceptionProfileError as exc:
+        raise ReadinessProfileError(str(exc)) from exc
+    if not manifest_input.is_absolute() or not manifest_input.is_file() or manifest_input.is_symlink():
+        raise ReadinessProfileError("evidence_manifest must be an existing regular file")
+    try:
+        manifest = _absolute_path(str(manifest_input), variables, "evidence_manifest", must_be_file=True)
+    except PerceptionProfileError as exc:
+        raise ReadinessProfileError(str(exc)) from exc
+    if not stat.S_ISREG(manifest.stat().st_mode):
+        raise ReadinessProfileError("evidence_manifest must be a regular file")
+    if manifest.stat().st_mode & 0o022:
+        raise ReadinessProfileError("evidence_manifest must not be group/world writable")
+    expected_manifest = profile.get("evidence_manifest_sha256")
+    if not isinstance(expected_manifest, str) or _SHA256.fullmatch(expected_manifest) is None:
+        raise ReadinessProfileError("evidence_manifest_sha256 must be a lowercase SHA-256 digest")
+    manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    if manifest_digest != expected_manifest:
+        raise ReadinessProfileError("evidence_manifest sha256 does not match profile")
     worker_id = profile.get("worker_id")
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ReadinessProfileError("worker_id must be a non-empty string")
-    config = replace(worker_config, command=(*worker_config.command, "--fixture", str(fixture)))
+    config = replace(
+        worker_config,
+        command=(
+            *worker_config.command,
+            "--fixture", str(fixture),
+            "--evidence-manifest", str(manifest),
+        ),
+    )
     return RoboTwinReadinessEvaluator(
         ReadinessReplayClient(JsonlProcessWorkerClient(config), worker_id=worker_id)
     )

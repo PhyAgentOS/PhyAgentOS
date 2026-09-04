@@ -202,13 +202,16 @@ independently conformance-tested before any Action provider is considered.
 For deterministic no-motion conformance, `profiles/robotwin20/readiness-replay.yaml`
 builds the same evaluator through `readiness_replay_worker.py` and the existing
 JSONL process client. Set `READINESS_FIXTURE`, its exact
-`READINESS_FIXTURE_SHA256`, `READINESS_WORKER_PYTHON`, and
-`PAOS_ROBOTWIN20_ADAPTER_ROOT` in the deployment environment. The fixture must
-be an external regular file with no group/world write bits. The worker matches
-the complete observation/candidate identity and returns only replay evidence;
-unknown cases, digest/path/schema mismatches, worker identity changes, and
-non-no-motion responses fail closed. Replay is protocol evidence only, not a
-claim of real IK, collision, trajectory, or physical success.
+`READINESS_FIXTURE_SHA256`, `READINESS_EVIDENCE_MANIFEST`,
+`READINESS_EVIDENCE_MANIFEST_SHA256`, `READINESS_WORKER_PYTHON`, and
+`PAOS_ROBOTWIN20_ADAPTER_ROOT` in the deployment environment. The fixture and
+evidence manifest must be external regular files with no group/world write bits.
+The worker matches the complete observation/candidate identity and validates
+each evidence reference against the manifest's revision, frame, calibration,
+source, and timezone-aware capture timestamp before returning replay evidence;
+unknown cases, digest/path/schema mismatches, worker identity changes, missing
+or drifted evidence, and non-no-motion responses fail closed. Replay is protocol
+evidence only, not a claim of real IK, collision, trajectory, or physical success.
 
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
