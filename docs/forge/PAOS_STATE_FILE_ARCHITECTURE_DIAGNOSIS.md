@@ -545,3 +545,17 @@ geometry 或 candidate set。已有 GraspGen 结果绑定的是
 artifact。下一步必须先完成 Franka geometry localization 和同 revision 的
 GraspGen，再恢复外部 IK/collision/workspace worker；人工审核 readiness
 evidence 前仍不得进入 Action/Gateway wiring。
+## 19. Franka readiness worker evidence 完成（2026-09-04）
+
+已按上述门禁完成首个 Franka 场景的四步 no-motion 证据链：
+
+1. `blocks_ranking_rgb-0-1/head_camera` capture 生成 12 个带 observation、scene revision、frame、calibration 的 derived artifact，其中 3 个 block point-cloud 文件真实存在；
+2. GraspGen 在同一 scene revision 上运行，返回 71 个候选，funnel 为 `72→72→71→71`；
+3. 独立 RoboTwin20 Python 3.10.21 进程重建双 Franka 场景，使用 Curobo 对 71 个候选执行左右臂 no-motion IK/collision/workspace probe，50 个候选获得 prepared evidence；
+4. 50 个 evidence artifact、PAOS `manipulation.prepare` projection、manifest 和人工审核记录均已保存，并通过 request、candidate-set、observation、scene revision、frame、calibration、worker 和 profile digest 的一致性检查。
+
+证据目录为 `/home/yanxu/robotwin20-runtime/artifacts/paos-franka-blocks-ranking-v470-20260904T/`。worker response schema 为 `paos-robotwin20-readiness-live/v1`；response、每个 evidence、preparation、manifest 和人工审核记录均固定 `motion_authorized=false`。人工审核决策为 `approved_readiness_evidence_for_next_no_motion_gate`，只允许进入下一阶段的 Action/Gateway no-motion 集成审查，不允许 Action stepping、Dora、硬件或物理执行。
+
+`profiles/robotwin20/readiness-live.yaml` 与 `build_live_readiness_evaluator` 已将该 worker 接入现有 bounded JSONL process seam；profile 仍要求只读 runtime profile 和一致的 profile digest。
+
+限制仍然有效：Curobo 当前碰撞范围只覆盖 robot self 与 table，未覆盖 attached object、完整 transport/descent/retreat、接触动力学或任务语义成功。因此这不是“任意抓取”或抓取放置闭环完成的证明；下一步是基于已审核 evidence 设计并审查 Action/Gateway 的 no-motion wiring，随后才可进行 RoboTwin 仿真动作接入。

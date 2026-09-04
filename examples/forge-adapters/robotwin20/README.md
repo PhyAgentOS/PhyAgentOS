@@ -281,10 +281,16 @@ new adapter-owned profile and matching planner/gripper/readiness binding; the
 public PAOS Skill, ToolSpec, task lifecycle, and Evidence schema remain
 unchanged.
 
-Readiness replay profiles carry an `embodiment_binding` containing robot,
+Readiness replay and live profiles carry an `embodiment_binding` containing robot,
 gripper, topology, planner, and profile-digest values. The fixture, evidence
 manifest, worker response, and immutable replay artifact must agree exactly.
 Any mismatch is unavailable/fail-closed and never becomes Action admission.
+For the independently provisioned Curobo worker, use
+`profiles/robotwin20/readiness-live.yaml` with absolute environment paths for
+the RoboTwin Python, runtime/profile/artifact roots, calibration reference, and
+workspace bounds; `build_live_readiness_evaluator` routes the process through
+the same bounded JSONL client and validates the live schema before PAOS
+projection.
 
 The execution order is now:
 
@@ -300,10 +306,15 @@ The execution order is now:
 
 No Action, Gateway, Dora, or hardware motion is enabled by this profile work.
 
-The current Franka readiness gate is explicitly `unavailable`: the verified
-capture contains RGB/depth/state/calibration only, while the available live
-GraspGen result belongs to the older `beat_block_hammer-0-1` scene revision.
-Do not reuse that candidate set. Complete geometry localization and a
-same-revision GraspGen run for `blocks_ranking_rgb` before starting an external
-IK/collision/workspace readiness worker. The audit is recorded in
-`docs/forge/FRANKA_READINESS_INPUT_AUDIT_20260904.md`.
+The Franka readiness gate for the first profiled scene is now complete for the
+no-motion review boundary. Capture geometry and point-cloud artifacts,
+GraspGen candidates, and the independent Curobo worker all bind
+`blocks_ranking_rgb-0-1/head_camera` and the same calibration. The worker
+prepared 50 of 71 candidates and wrote 50 unique evidence artifacts with
+kinematic, collision (robot self and table only), and workspace checks passing.
+The response schema is `paos-robotwin20-readiness-live/v1`; every response and
+evidence artifact has `motion_authorized=false`. The manifest and manual review
+are under `/home/yanxu/robotwin20-runtime/artifacts/paos-franka-blocks-ranking-v470-20260904T/`.
+The manual decision authorizes only the next no-motion Action/Gateway
+integration review. It does not authorize attached-object transport/contact,
+RoboTwin action stepping, Dora, hardware, or physical execution.

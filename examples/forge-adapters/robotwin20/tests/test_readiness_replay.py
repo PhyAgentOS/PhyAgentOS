@@ -9,8 +9,10 @@ import pytest
 from PhyAgentOS.forge.capability_runtime import ManipulationPreparationEndpoint
 
 from robotwin20_adapter import (
+    LIVE_READINESS_PROFILE_SCHEMA_VERSION,
     READINESS_PROFILE_SCHEMA_VERSION,
     ProcessWorkerError,
+    ReadinessLiveClient,
     ReadinessProfileError,
     ReadinessReplayArtifactError,
     build_readiness_evaluator,
@@ -380,3 +382,57 @@ def test_profile_loader_requires_absolute_regular_file(tmp_path):
     assert load_readiness_profile(profile_path) == _profile(tmp_path, fixture)
     with pytest.raises(ReadinessProfileError, match="absolute"):
         load_readiness_profile("profile.yaml")
+
+
+class _LiveClient:
+    def __init__(self, response):
+        self.response = response
+
+    def request(self, payload):
+        return {"request_id": payload["request_id"], **self.response}
+
+    def release(self):
+        pass
+
+
+def _live_response(**overrides):
+    value = {
+        "schema_version": LIVE_READINESS_PROFILE_SCHEMA_VERSION,
+        "status": "available",
+        "worker_id": "robotwin20-readiness-live/v1",
+        "embodiment_binding": BINDING,
+        "motion_authorized": False,
+        "prepared_candidates": [_prepared()],
+        "provider_available": True,
+    }
+    value.update(overrides)
+    return value
+
+
+def test_live_worker_projection_requires_live_schema_and_no_motion():
+    evaluator = ReadinessLiveClient(
+        _LiveClient(_live_response()),
+        worker_id="robotwin20-readiness-live/v1",
+        embodiment_binding=BINDING,
+    )
+    result = evaluator.evaluate(_request())
+    assert result["provider_available"] is True
+    assert result["prepared_candidates"][0]["candidate_ref"] == "candidate://bottle-1/1"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        _live_response(schema_version="paos-robotwin20-readiness-replay/v1"),
+        _live_response(motion_authorized=True),
+        _live_response(status="failed"),
+    ],
+)
+def test_live_worker_projection_rejects_schema_or_motion_drift(response):
+    evaluator = ReadinessLiveClient(
+        _LiveClient(response),
+        worker_id="robotwin20-readiness-live/v1",
+        embodiment_binding=BINDING,
+    )
+    with pytest.raises(ReadinessProfileError):
+        evaluator.evaluate(_request())

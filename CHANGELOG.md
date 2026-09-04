@@ -7,6 +7,24 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.7.6] - 2026-09-04
+
+完成 Franka `blocks_ranking_rgb` 的独立 readiness worker 证据闭环，并将 live worker 接入 adapter 的 bounded JSONL profile seam。相同 `blocks_ranking_rgb-0-1/head_camera` 上生成 12 个 geometry/point-cloud derived artifacts，GraspGen funnel 为 `72→72→71→71`，Curobo no-motion worker 为 `50/71` prepared；50 个 evidence ref 唯一且全部绑定 request、candidate-set、observation、scene、frame、calibration、worker 和 profile digest。
+
+Completed the independent readiness-worker evidence loop for Franka `blocks_ranking_rgb` and wired the live worker through the adapter's bounded JSONL profile seam. On the same `blocks_ranking_rgb-0-1/head_camera`, 12 geometry/point-cloud derived artifacts were verified, GraspGen produced funnel `72→72→71→71`, and the Curobo no-motion worker prepared `50/71`; all 50 evidence refs are unique and bound to request, candidate-set, observation, scene, frame, calibration, worker, and profile digest.
+
+### Detailed changes
+
+- Added `runtime/robotwin_readiness_worker.py` live schema, strict freshness/provenance/pose checks, and per-evidence no-motion bindings.
+- Added `profiles/robotwin20/readiness-live.yaml`, `ReadinessLiveClient`, and `build_live_readiness_evaluator`; added schema/motion-drift tests.
+- Updated architecture diagnosis, implementation review, and adapter README. Manual review authorizes only the next no-motion Action/Gateway review; no Action, Dora, attached-object transport, or hardware motion is authorized.
+
+### Validation
+
+- Adapter readiness/backend tests: `46 passed`; repository with explicit async plugin: `161 passed`.
+- External live profile → worker → PAOS `manipulation.prepare`: `available`, `50 prepared`, all checks `pass`, `motion_authorized=false`.
+- Ruff, compileall, and `git diff --check` passed. Evidence manifest: `afed01cf25c43c7a0a57aca766aa0c7b0d22478a72ebe20f25cf3de3267e0497`.
+
 ## [v4.7.4] - 2026-09-04
 
 完成 Franka `blocks_ranking_rgb` readiness 输入审计：capture 缺少同一 scene revision 的 geometry/candidate，现有 GraspGen 结果不可跨场景复用，因此安全记录 `unavailable`，未启动 IK/碰撞或动作链路。

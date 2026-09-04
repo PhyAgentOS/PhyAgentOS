@@ -561,3 +561,17 @@ geometry artifact 或 candidate set；现有 GraspGen live 结果属于
 Action/Gateway/Dora。完整记录见
 `docs/forge/FRANKA_READINESS_INPUT_AUDIT_20260904.md`。下一步按顺序为
 Franka geometry → 同 revision GraspGen → 外部 readiness evidence → 人工审核。
+
+## 22. Franka readiness worker evidence 五维复审（2026-09-04）
+
+本阶段四步证据闭环已完成：Franka `blocks_ranking_rgb` capture 的 3 个 block point cloud 与 12 个 derived artifact 均真实存在；同一 `blocks_ranking_rgb-0-1/head_camera` revision 上 GraspGen 生成 71 个候选；独立 RoboTwin20/Curobo worker 对 71 个候选执行 no-motion 左右臂 probe，50 个获得 prepared evidence；PAOS preparation、manifest 和人工审核记录均已保存。
+
+五维审查结论：
+
+- 架构集成：worker 位于 adapter-owned external runtime，复用 RoboTwin backend 与现有 JSONL worker 边界；PAOS `ManipulationPreparationEndpoint` 只消费 provider-neutral projection，不接入 Action/Gateway/Dora。
+- 失败路径：worker 对 request identity、scene revision、candidate-set、calibration、freshness/max-age、候选 pose、workspace 和 planner exception fail-closed；进程启动/超时/关闭由 process client 边界处理，evidence 写入失败不会伪造 prepared candidate。
+- 权威边界：worker response schema 为 `paos-robotwin20-readiness-live/v1`，每个 evidence、preparation、manifest 和人工审核记录均固定 `motion_authorized=false`；planner 成功不能升级为物理成功。
+- 配置：runtime root、profile、artifact root、worker id、calibration 和 workspace bounds 均由 `readiness-live.yaml`/CLI 注入；`build_live_readiness_evaluator` 复用 bounded JSONL client，profile digest 绑定 Franka 任务/拓扑/planner，未写入模型 key 或隐式硬件配置。
+- 可维护性：evidence 具有 request/candidate-set/observation/scene/frame/calibration/worker/profile/timestamp 绑定，50 个 artifact ref 唯一；现有 replay profile 仍只用于 replay，不冒充 live worker schema。
+
+没有发现需要阻断当前 no-motion 阶段的 Blocker/Major。人工审核仅批准进入下一阶段的 Action/Gateway no-motion 集成审查。Curobo 碰撞范围仍限于 robot self 与 table，未覆盖 attached-object、完整 transport/descent/retreat、接触动力学或语义成功；因此尚不能宣称任意抓取、抓取放置闭环或物理执行完成。

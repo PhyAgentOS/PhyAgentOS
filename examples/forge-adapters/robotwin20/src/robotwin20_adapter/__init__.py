@@ -40,9 +40,12 @@ from .perception_profile import (
 from .process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig, ProcessWorkerError
 from .readiness import ReadinessAdapterError, ReadinessEvaluator, RoboTwinReadinessEvaluator
 from .readiness_profile import (
+    LIVE_READINESS_PROFILE_SCHEMA_VERSION,
     READINESS_PROFILE_SCHEMA_VERSION,
+    ReadinessLiveClient,
     ReadinessProfileError,
     ReadinessReplayClient,
+    build_live_readiness_evaluator,
     build_readiness_evaluator,
     load_readiness_profile,
 )
@@ -132,8 +135,11 @@ __all__ = [
     "ReadinessEvaluator",
     "RoboTwinReadinessEvaluator",
     "READINESS_PROFILE_SCHEMA_VERSION",
+    "LIVE_READINESS_PROFILE_SCHEMA_VERSION",
     "ReadinessProfileError",
+    "ReadinessLiveClient",
     "ReadinessReplayClient",
+    "build_live_readiness_evaluator",
     "build_readiness_evaluator",
     "load_readiness_profile",
     "READINESS_REPLAY_ARTIFACT_SCHEMA_VERSION",

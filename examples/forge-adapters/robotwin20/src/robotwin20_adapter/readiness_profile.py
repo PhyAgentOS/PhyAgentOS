@@ -21,6 +21,7 @@ from .readiness_replay import (
 )
 
 READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-readiness/v1"
+LIVE_READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-readiness-live/v1"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _BINDING_KEYS = frozenset({
     "robot_identity", "gripper_identity", "embodiment_topology",
@@ -105,6 +106,53 @@ class ReadinessReplayClient:
         }
         artifact["artifact_id"] = readiness_replay_artifact_id(artifact)
         return write_readiness_replay_artifact(path, artifact)
+
+    def release(self) -> None:
+        self.client.release()
+
+
+class ReadinessLiveClient:
+    """Process client for an independently provisioned no-motion worker."""
+
+    def __init__(
+        self,
+        client: JsonlProcessWorkerClient,
+        *,
+        worker_id: str,
+        embodiment_binding: Mapping[str, str],
+    ) -> None:
+        if not isinstance(worker_id, str) or not worker_id.strip():
+            raise ValueError("worker_id must be a non-empty string")
+        self.client = client
+        self.worker_id = worker_id
+        self.embodiment_binding = _validate_binding(embodiment_binding, "embodiment_binding")
+
+    def evaluate(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        if not isinstance(request, Mapping):
+            raise ReadinessProfileError("readiness request must be an object")
+        payload = dict(request)
+        payload["request_id"] = uuid4().hex
+        response = self.client.request(payload)
+        if response.get("request_id") != payload["request_id"]:
+            raise ReadinessProfileError("readiness live response identity mismatch")
+        if response.get("schema_version") != LIVE_READINESS_PROFILE_SCHEMA_VERSION:
+            raise ReadinessProfileError("readiness live response schema mismatch")
+        if response.get("worker_id") != self.worker_id:
+            raise ReadinessProfileError("readiness live worker identity mismatch")
+        if response.get("embodiment_binding") != self.embodiment_binding:
+            raise ReadinessProfileError("readiness live embodiment binding mismatch")
+        if response.get("motion_authorized") is not False:
+            raise ReadinessProfileError("readiness live worker is not no-motion")
+        status = response.get("status")
+        if status not in {"available", "empty"}:
+            raise ReadinessProfileError("readiness live response status is invalid")
+        provider_available = response.get("provider_available")
+        prepared = response.get("prepared_candidates")
+        if not isinstance(provider_available, bool) or not isinstance(prepared, list):
+            raise ReadinessProfileError("readiness live response payload is invalid")
+        if status == "available" and not provider_available:
+            raise ReadinessProfileError("readiness live available response is unavailable")
+        return {"prepared_candidates": prepared, "provider_available": provider_available}
 
     def release(self) -> None:
         self.client.release()
@@ -234,11 +282,62 @@ def build_readiness_evaluator(
     )
 
 
+def build_live_readiness_evaluator(
+    profile: Mapping[str, Any],
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> RoboTwinReadinessEvaluator:
+    """Build the profile-owned live worker route without adding a PAOS dependency."""
+    required = {"schema_version", "runtime_profile", "worker_id", "embodiment_binding", "worker"}
+    if not isinstance(profile, Mapping) or set(profile) != required:
+        raise ReadinessProfileError("live readiness profile fields are invalid")
+    if profile.get("schema_version") != LIVE_READINESS_PROFILE_SCHEMA_VERSION:
+        raise ReadinessProfileError("live readiness profile schema_version is unsupported")
+    variables = dict(os.environ if environ is None else environ)
+    embodiment_binding = _validate_binding(profile.get("embodiment_binding"), "embodiment_binding")
+    try:
+        runtime_profile = _absolute_path(
+            str(_expand(profile.get("runtime_profile"), variables)),
+            variables,
+            "runtime_profile",
+            must_be_file=True,
+        )
+    except (PerceptionProfileError, TypeError) as exc:
+        raise ReadinessProfileError(str(exc)) from exc
+    if runtime_profile.is_symlink() or runtime_profile.stat().st_mode & 0o022:
+        raise ReadinessProfileError("runtime_profile must be a read-only regular file")
+    if hashlib.sha256(runtime_profile.read_bytes()).hexdigest() != embodiment_binding["profile_digest"]:
+        raise ReadinessProfileError("runtime_profile sha256 does not match embodiment binding")
+    worker_config = _worker_config(profile.get("worker"), variables, "readiness_worker")
+    args = worker_config.command[2:]
+    for option in ("--runtime-root", "--runtime-profile", "--artifact-root", "--worker-id", "--workspace-bounds"):
+        if args.count(option) != 1:
+            raise ReadinessProfileError(f"live readiness worker arguments must contain {option}")
+    worker_id = profile.get("worker_id")
+    if not isinstance(worker_id, str) or not worker_id.strip():
+        raise ReadinessProfileError("worker_id must be a non-empty string")
+    worker_id_index = args.index("--worker-id") + 1
+    if worker_id_index >= len(args) or args[worker_id_index] != worker_id:
+        raise ReadinessProfileError("live readiness worker identity argument does not match profile")
+    runtime_index = args.index("--runtime-profile") + 1
+    if runtime_index >= len(args) or Path(args[runtime_index]).resolve() != runtime_profile:
+        raise ReadinessProfileError("live readiness worker runtime profile argument does not match profile")
+    return RoboTwinReadinessEvaluator(
+        ReadinessLiveClient(
+            JsonlProcessWorkerClient(worker_config),
+            worker_id=worker_id,
+            embodiment_binding=embodiment_binding,
+        )
+    )
+
+
 __all__ = [
     "READINESS_PROFILE_SCHEMA_VERSION",
     "ReadinessProfileError",
     "ReadinessReplayClient",
+    "ReadinessLiveClient",
     "build_readiness_evaluator",
+    "build_live_readiness_evaluator",
     "load_readiness_profile",
 ]
 
