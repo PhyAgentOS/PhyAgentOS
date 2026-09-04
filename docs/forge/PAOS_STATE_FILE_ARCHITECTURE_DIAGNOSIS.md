@@ -458,3 +458,26 @@ manifest、请求和结果 digest。该文件只是 adapter-local audit/replay a
 不会改变 Verifier 的权威边界，也不会授予 Action admission。只有真实或独立验证 worker 的证据完成
 人工审核后，才可据此进入真实 Action/Gateway wiring；fixture replay 本身仍不能被描述为真实 IK、碰撞
 或物理可达性证据。
+
+## 15. 已接入 no-motion 真实链路自审与运行证据（2026-09-05）
+
+本次按五个维度重新自审，未发现需要阻断当前 no-motion 阶段的 Blocker/Major。文档中较早章节的“下一步”是历史阶段记录，
+当前有效门禁仍为：先取得真实/独立 readiness evidence 并人工审核，再进入 Action/Gateway wiring；不能因为 observation、
+语义或感知 provider 的单项 live 成功而提前改变顺序。
+
+独立 RoboTwin20 Python 3.10.21 环境真实运行唯一 run `paos-real-chain-20260905T0020Z`，任务为
+`beat_block_hammer/demo_clean`、seed `0`、`aloha-agilex`。preflight 的 runtime modules、Torch CUDA、SAPIEN renderer、
+Vulkan、task import 全部通过；真实 `scene.observe` 生成 RGB/depth/state/calibration；真实 `gpt-5.6-sol` 生成 4 个
+语义实体和 3 个 ambiguity；LocateAnything + SAM2 + RGB-D localization 生成 12 个派生 artifact。每一步的 request/result、
+原始 stdout/stderr、源/派生 artifact、profile digest 和版本绑定在：
+
+`/home/yanxu/robotwin20-runtime/artifacts/paos-real-chain-20260905T0020Z/run_manifest.json`
+
+manifest SHA-256 为 `da7a81bd2efccbf70312428a3adeef10babe2d465734f63f7c90444297389b46`，并固定
+`motion_authorized=false`、`simulation_motion_requested=false`、`simulation_motion_executed=false`。GraspGen 因
+`GRASPGEN_PYTHON` 未配置而 fail-closed 为 unavailable；readiness replay 因 `READINESS_FIXTURE` 未配置而 unavailable；
+因此没有伪造后续成功，也没有尝试 `object.acquire`/`object.place`。
+
+五维结论：架构集成保持 adapter/profile 与 PAOS authority 分离；失败路径在 provider 配置缺失时停止；权威边界仍由 PAOS
+contract 和 no-motion gate 持有；配置路径、模型和 key 不写入核心代码；中间结果可按 manifest 重放。RoboTwin 当前可用于
+传感器与感知 no-motion 验收，不能称为抓取放置动作验收。

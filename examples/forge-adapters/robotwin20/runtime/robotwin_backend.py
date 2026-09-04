@@ -15,7 +15,7 @@ import json
 import os
 import re
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -381,28 +381,32 @@ def main() -> int:
         help="Emit the raw capture metadata or the provider-neutral scene.observe snapshot.",
     )
     args = parser.parse_args()
-    backend = RoboTwinSensorBackend(
-        RoboTwinRuntimeProfile(
-            runtime_root=args.runtime_root.resolve(),
-            artifact_root=args.artifact_root.resolve(),
-            task_name=args.task_name,
-            task_config=args.task_config,
-            embodiment=args.embodiment,
-            forbidden_roots=tuple(path.resolve() for path in args.forbidden_root),
+    # Third-party simulator/rendering libraries may write warnings to stdout.
+    # Keep the machine-readable provider payload on stdout by redirecting all
+    # runtime noise to stderr until the final JSON print below.
+    with redirect_stdout(sys.stderr):
+        backend = RoboTwinSensorBackend(
+            RoboTwinRuntimeProfile(
+                runtime_root=args.runtime_root.resolve(),
+                artifact_root=args.artifact_root.resolve(),
+                task_name=args.task_name,
+                task_config=args.task_config,
+                embodiment=args.embodiment,
+                forbidden_roots=tuple(path.resolve() for path in args.forbidden_root),
+            )
         )
-    )
-    try:
-        backend.reset(seed=args.seed)
-        if args.format == "scene_observe":
-            snapshot = RoboTwinObservationProvider(backend).observe(args.sensor_ref)
-            if snapshot is None:
-                raise RoboTwinRuntimeError("requested RoboTwin sensor is unavailable")
-            print(json.dumps(_jsonable(asdict(snapshot)), indent=2, default=str))
-        else:
-            capture = backend.capture_sensors(args.sensor_ref)
-            print(json.dumps(_jsonable(capture.__dict__), indent=2, default=str))
-    finally:
-        backend.close()
+        try:
+            backend.reset(seed=args.seed)
+            if args.format == "scene_observe":
+                snapshot = RoboTwinObservationProvider(backend).observe(args.sensor_ref)
+                if snapshot is None:
+                    raise RoboTwinRuntimeError("requested RoboTwin sensor is unavailable")
+                output = _jsonable(asdict(snapshot))
+            else:
+                output = _jsonable(backend.capture_sensors(args.sensor_ref).__dict__)
+        finally:
+            backend.close()
+    print(json.dumps(output, indent=2, default=str))
     return 0
 
 

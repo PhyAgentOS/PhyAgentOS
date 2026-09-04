@@ -75,3 +75,44 @@ def test_runtime_calls_use_external_root_without_leaking_process_cwd(tmp_path):
     with backend._runtime_cwd():
         assert Path.cwd() == backend.profile.runtime_root
     assert Path.cwd() == original
+
+
+def test_cli_emits_one_json_document_and_redirects_runtime_stdout(tmp_path, monkeypatch, capsys):
+    class Backend:
+        def __init__(self, profile):
+            self.profile = profile
+
+        def reset(self, *, seed):
+            print("third-party runtime warning")
+
+        def capture_sensors(self, sensor_ref):
+            return backend_module.SensorCapture(
+                captured_at=backend_module.datetime.now(backend_module.timezone.utc),
+                scene_revision="scene-1",
+                frame_id="head_camera",
+                calibration_ref="artifact://scene-1/capture/calibration",
+                artifacts=(),
+            )
+
+        def close(self):
+            return None
+
+    runtime_root = tmp_path / "runtime"
+    runtime_root.mkdir()
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(backend_module, "RoboTwinSensorBackend", Backend)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "robotwin_backend.py",
+            "--runtime-root", str(runtime_root),
+            "--artifact-root", str(artifact_root),
+        ],
+    )
+    assert backend_module.main() == 0
+    captured = capsys.readouterr()
+    import json
+
+    assert json.loads(captured.out)["scene_revision"] == "scene-1"
+    assert "third-party runtime warning" in captured.err

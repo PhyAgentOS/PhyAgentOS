@@ -7,6 +7,25 @@ All notable changes to PhyAgentOS are documented here. Categories follow Keep a 
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 
+## [v4.5.0] - 2026-09-05
+
+完成已接入 provider 的真实 RoboTwin no-motion 链路验收，并修复 runtime stdout 可审计性；按架构集成、失败路径、权威边界、配置、可维护性五维复审无 Blocker/Major。当前仍未进入 Action/Gateway、Dora 或机器人运动。
+
+Completed the live RoboTwin no-motion chain review for currently integrated providers and fixed runtime stdout auditability; the five-dimension review found no Blocker/Major. Action/Gateway, Dora, and robot motion remain deferred.
+
+### Detailed changes
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_backend.py:L18,L384-L412`: redirect simulator/runtime stdout noise to stderr and emit one machine-readable JSON document on stdout.
+- `examples/forge-adapters/robotwin20/tests/test_robotwin_backend_contract.py:L79-L118`: add stdout/stderr contract coverage.
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L462-L483`, `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L509-L522`, `examples/forge-adapters/robotwin20/README.md:L227-L236`: record the run, intermediate perception artifacts, unavailable providers, motion flags, and final manifest digest.
+
+### Validation
+
+- Isolated adapter tests with explicit async plugin and dependency paths: `103 passed`; repository: `161 passed`; pick-place with required path and async plugin: `256 passed`.
+- Ruff, compileall, and `git diff --check` passed.
+- Run manifest: `/home/yanxu/robotwin20-runtime/artifacts/paos-real-chain-20260905T0020Z/run_manifest.json`, SHA-256 `da7a81bd2efccbf70312428a3adeef10babe2d465734f63f7c90444297389b46`; all motion flags are `false`.
+- GraspGen (`GRASPGEN_PYTHON`) and readiness (`READINESS_FIXTURE`) are unavailable; no `object.acquire`/`object.place` was attempted.
+
 ## [v4.4.0] - 2026-09-04
 
 固化独立 readiness worker 的 no-motion projection 为 adapter-local、不可变 canonical replay artifact；保持人工审核门禁，不进入真实 Action/Gateway wiring。

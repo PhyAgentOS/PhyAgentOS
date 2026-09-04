@@ -505,3 +505,18 @@ PAOS 最终 projection 与 `motion_authorized=false`；配置通过 `readiness-r
 wiring 或硬件执行。为支撑这一门禁，adapter 现在可将已通过 worker conformance 的 no-motion projection 固化为不可变
 canonical replay artifact，并绑定 fixture/manifest/request/result digest。该 artifact 仅用于 adapter-local 审计与回放，
 不冒充 PAOS EvidenceBundle、Verifier 物理成功判断或 Action admission；fixture replay 仍不等价于真实 IK/碰撞/轨迹证据。
+
+## 19. 已接入 provider 的真实 no-motion 链路验收
+
+按架构集成、失败路径、权威边界、配置、可维护性五个维度自审，无 Blocker/Major；当前门禁仍是“真实/独立 readiness
+evidence → 人工审核 → Action/Gateway wiring”。
+
+真实 run：`/home/yanxu/robotwin20-runtime/artifacts/paos-real-chain-20260905T0020Z/`，绑定 RoboTwin
+`beat_block_hammer/demo_clean`、seed `0`、`aloha-agilex`，RoboTwin commit `3095469`；preflight 全部通过。
+真实 `scene.observe` 产出 RGB/depth/state/calibration；`gpt-5.6-sol` 产出 4 entities/3 ambiguities；LocateAnything、
+SAM2 和 RGB-D localization 产出 12 个派生 artifact。每阶段输入、输出、原始 stdout/stderr、profile digest 和 artifact
+SHA-256 记录在 `run_manifest.json`，manifest digest 为 `da7a81bd2efccbf70312428a3adeef10babe2d465734f63f7c90444297389b46`。
+
+GraspGen 因缺少 `GRASPGEN_PYTHON` 配置、readiness replay 因缺少 `READINESS_FIXTURE` 配置而 unavailable；`object.acquire`/
+`object.place` 未尝试。所有 motion flags 均为 false。结论是 observation→understanding→single-view perception 的真实
+no-motion 链路已验证，但不等于真实抓取位姿、IK/碰撞 readiness、Action executor、Gateway/Dora 或仿真动作成功。

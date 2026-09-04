@@ -224,6 +224,17 @@ JSON, path/symlink or permission violations, request/result drift, and any
 record, not a PAOS `EvidenceBundle`, physical-success verdict, or Action/Gateway
 admission. The manual-review gate remains a prerequisite for real wiring.
 
+The first end-to-end no-motion run across the currently configured providers
+is recorded under
+`/home/yanxu/robotwin20-runtime/artifacts/paos-real-chain-20260905T0020Z/`.
+It binds RoboTwin `beat_block_hammer/demo_clean`, seed `0`, and
+`aloha-agilex`. The run manifest records preflight, scene observation, real
+`gpt-5.6-sol` scene understanding, LocateAnything/SAM2/RGB-D derived
+artifacts, profile digests, source/derived artifact hashes, and raw worker
+stdout/stderr. The first three stages passed; GraspGen and readiness are
+explicitly unavailable because their required profile environment variables are
+not configured. No Action, Dora, or motion stage was attempted.
+
 This initializes one simulation scene and captures RGB, depth, calibration, and
 joint/end-effector state artifacts. It does not call `play_once`,
 `check_success`, segmentation APIs, actor/entity APIs, or any action route.
