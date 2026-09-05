@@ -47,6 +47,7 @@ joint_limit_policy:
   # Runtime drive targets are conservatively scaled to keep measured SAPIEN
   # end-effector speed below the immutable 0.20 m/s route limit.
   execution_velocity_scale: 0.10
+  execution_position_subdivision: 4
   trajectory_retiming:
     enabled: true
     method: uniform_time_dilation

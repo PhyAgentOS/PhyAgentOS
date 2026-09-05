@@ -1109,3 +1109,20 @@ v9 route was materialized under
 source manifest digest
 `14e686c14e09dd7731c7449397883e16d18841f841d267a3d2e6d5bed4f4c2f9`.
 It is `pending_human_review` and has not been executed.
+
+## 32.10 v9 probe diagnosis and position-subdivision direction (2026-09-06)
+
+The reviewer-approved v9 probe ran once under
+`/home/yanxu/robotwin20-sim-probe-20260906T040000Z/` and returned
+`status=unavailable`. Unlike v7/v8, contact completed and the route reached
+`lift`; the failure occurred at simulator step `1038` with observed speed
+`0.2034626107917902 m/s`. The object had already been attached, failure
+recovery detached it successfully, and simulation reset completed. This proves
+that simply lowering the commanded velocity scale is not a monotonic or
+sufficient Cartesian-speed control under SAPIEN drive-target dynamics.
+
+The next implementation direction is profile-owned trajectory position
+subdivision: interpolate joint targets between planner samples and scale the
+per-substep velocity, while retaining the immutable measured `0.20 m/s` gate.
+This changes only adapter-side simulation execution sampling; it does not alter
+URDF, joint limits, workspace, stop policy, or production motion authority.
