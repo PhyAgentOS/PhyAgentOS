@@ -1134,3 +1134,7 @@ A v10 route implementing this policy was materialized under
 source manifest digest
 `b476aeacf282ce3091943f4f8ba365e5b744446fa7e46040505a05a18db3f583`.
 It remains pending human simulation-only approval.
+
+The worker also rejects any segment whose planner sample count multiplied by
+the configured subdivision exceeds `trajectory_retiming.max_samples`, keeping
+the adapter-side execution budget bounded and fail-closed.

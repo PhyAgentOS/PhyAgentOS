@@ -501,6 +501,36 @@ def test_execute_segment_interpolates_position_targets_and_scales_substep_veloci
     assert all(np.allclose(command[1], 0.05) for command in task.robot.commands[1:])
 
 
+def test_execute_segment_rejects_effective_sample_budget_overflow():
+    np = pytest.importorskip("numpy")
+
+    class Robot:
+        def get_left_ee_pose(self):
+            return np.zeros(6)
+
+    class Task:
+        robot = Robot()
+
+    with pytest.raises(SimulationProbeError, match="effective trajectory sample budget"):
+        _execute_segment(
+            Task(),
+            "left",
+            {
+                "position": np.zeros((3, 7)),
+                "velocity": np.zeros((3, 7)),
+            },
+            phase="approach",
+            deadline=time.monotonic() + 1.0,
+            stop_file=None,
+            contacts=[],
+            execution_state={"planner_object_attached": False, "simulator_steps": 0},
+            max_linear_speed_mps=0.2,
+            execution_velocity_scale=0.1,
+            execution_position_subdivision=4,
+            max_effective_samples=8,
+        )
+
+
 def test_execute_segment_records_linear_speed_violation_details():
     np = pytest.importorskip("numpy")
 

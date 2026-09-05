@@ -1132,3 +1132,6 @@ A v10 route implementing this policy was materialized under
 source manifest digest
 `b476aeacf282ce3091943f4f8ba365e5b744446fa7e46040505a05a18db3f583`.
 It remains pending human simulation-only approval.
+
+The worker bounds effective samples as planner sample count multiplied by
+position subdivision and rejects segments exceeding `trajectory_retiming.max_samples`.

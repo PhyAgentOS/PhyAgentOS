@@ -772,6 +772,7 @@ def _execute_segment(
     max_linear_speed_mps: float,
     execution_velocity_scale: float = 1.0,
     execution_position_subdivision: int = 1,
+    max_effective_samples: int = 20000,
 ) -> None:
     import numpy as np
 
@@ -791,6 +792,13 @@ def _execute_segment(
         or not 1 <= execution_position_subdivision <= 16
     ):
         raise SimulationProbeError("execution position subdivision is invalid")
+    if (
+        isinstance(max_effective_samples, bool)
+        or not isinstance(max_effective_samples, int)
+        or max_effective_samples < 2
+        or len(positions) * execution_position_subdivision > max_effective_samples
+    ):
+        raise SimulationProbeError("effective trajectory sample budget is exceeded")
     ee = task.robot.get_left_ee_pose if arm == "left" else task.robot.get_right_ee_pose
     timestep = float(task.scene.get_timestep())
     if not math.isfinite(timestep) or timestep <= 0:
@@ -976,6 +984,7 @@ def _run_candidate(
                 max_linear_speed_mps=float(route_waypoint["max_linear_speed_mps"]),
                 execution_velocity_scale=float(policies["execution_velocity_scale"]),
                 execution_position_subdivision=int(policies["execution_position_subdivision"]),
+                max_effective_samples=int(policies["trajectory_retiming"]["max_samples"]),
             )
         _set_gripper(
             task,
