@@ -1063,3 +1063,29 @@ simulation-only approval for these new digests, followed by one single-use
 probe. A passing probe must still demonstrate attached-object collision, lift,
 complete transport/descent/release/retreat, contact dynamics, and semantic
 before/after evidence before any Action/Gateway/Dora discussion.
+
+## 32.8 v7 probe result and v8 route (2026-09-06)
+
+Reviewer approval for v7 was recorded with route digest
+`a623f0bc08c36b40f3abf44455ddc652a136c6e09bd672d5375b0f8b6034baa9` and source
+manifest digest `375bf7019651b6bb00acd1a694721e6f28fd22e0eeca3e89bcdd0c82a132b4b0`.
+The single-use probe ran under the fresh artifact root
+`/home/yanxu/robotwin20-sim-probe-20260906T005500Z/` and returned
+`status=unavailable`. It failed in `contact` at simulator step `872` with
+observed end-effector speed `0.2025057481391883 m/s` against the immutable
+`0.20 m/s` limit. The response and failure artifact record
+`world_change_started=true`, `world_change_completed=false`,
+`simulation_reset_status=completed`, `reconciliation_required=false`, and
+`linear_speed_violation.execution_velocity_scale=0.25`; no complete lift,
+transport, release, retreat, contact-dynamics, or semantic success is claimed.
+
+The measured overshoot is approximately 1.25%, so the profile-owned execution
+scale was conservatively lowered to `0.20` without changing any physical or
+safety limit. A new v8 route was materialized under
+`/home/yanxu/robotwin20-route-inputs-20260906T013000Z/` with request id
+`franka-blocks-green1-candidate1-20260906-v8-scaled`, route digest
+`6315cb3e4cc83e13738876aa32628d86b420e2aa6f80b785832d01db74b9fed3`, and
+source manifest digest
+`a62f4fbe5849445c821877d000ca8945c80ec94fcdc7ac15724bd43a89427506`.
+It remains `pending_human_review` and `motion_authorized=false`; a fresh
+approval is required before another single-use probe.

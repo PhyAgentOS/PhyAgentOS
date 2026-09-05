@@ -1074,3 +1074,22 @@ manifest digest
 It remains `pending_human_review` with `motion_authorized=false`; the consumed
 v3 approval is not reused. A new approval is required before the next
 single-use simulation probe.
+
+## 32.8 v7 probe result and v8 route (2026-09-06)
+
+The reviewer-approved v7 probe ran once under
+`/home/yanxu/robotwin20-sim-probe-20260906T005500Z/` and returned
+`status=unavailable`. Contact failed at simulator step `872` with observed
+end-effector speed `0.2025057481391883 m/s`, above the immutable `0.20 m/s`
+limit. The failure artifact records `world_change_started=true`,
+`world_change_completed=false`, `simulation_reset_status=completed`, and
+`reconciliation_required=false`; no complete route or semantic success is
+claimed.
+
+Because the overshoot was approximately 1.25%, the adapter profile now uses
+`execution_velocity_scale=0.20` while preserving all physical and safety
+limits. A new v8 route was materialized under
+`/home/yanxu/robotwin20-route-inputs-20260906T013000Z/` with route digest
+`6315cb3e4cc83e13738876aa32628d86b420e2aa6f80b785832d01db74b9fed3` and source
+manifest digest `a62f4fbe5849445c821877d000ca8945c80ec94fcdc7ac15724bd43a89427506`.
+The v8 package is `pending_human_review`; v7 approval cannot authorize it.
