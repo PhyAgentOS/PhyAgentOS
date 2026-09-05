@@ -2,6 +2,17 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.7.10] - 2026-09-06
+
+回写 v5.7.9 simulation probe evidence 修复提交哈希 `f4222d1`；实现与安全边界不变。
+
+Recorded commit hash `f4222d1` for the v5.7.9 simulation-probe evidence fix; implementation and safety boundaries are unchanged.
+
+### Git 提交 / Git Commit
+
+- Commit: `f4222d1`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.7.9] - 2026-09-06
 
 修正 independent simulation probe 的已执行步数 evidence 低报：`scene.step()` 后立即计入 `simulator_steps`，并新增命令级 execution velocity scale、线速度违规和 failure artifact 回归。全量组合回归 `716 passed, 1 skipped`；Ruff、compileall、`git diff --check` 通过。v7 route 仍等待新的 simulation-only approval，未启动 probe、Gateway、Dora、Action 或硬件。
@@ -22,7 +33,7 @@ Architecture integration, failure paths, authority boundaries, configuration, an
 
 ### Git 提交 / Git Commit
 
-- Commit: pending
+- Commit: `f4222d1`
 - Branch: `feature/long-horizon-workflow`
 
 ## [v5.7.7] - 2026-09-05
