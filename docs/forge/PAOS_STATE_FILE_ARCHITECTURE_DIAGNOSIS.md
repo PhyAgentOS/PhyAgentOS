@@ -777,6 +777,10 @@ prepared evidence 不能继续作为坐标正确性的依据。新增 adapter-ow
 修正改善了候选输入，仍只产生三项 preliminary checks，不包含 attached-object collision、真实
 lift、完整 transport/descent/release/retreat 或接触动力学证据；因此不能升级为五项 route readiness。
 
+随后又修正了结果投影边界：preliminary worker 现在始终返回空的 `prepared_candidates`，并将
+每个 IK/workspace 候选放入 `preliminary_candidates`，其 `collision` 明确为 `unavailable`。
+这样旧的三项 `manipulation.prepare` gate 也不会误把 preliminary 结果当成可执行准备证据。
+
 另发现 RoboTwin20 Python 3.10 直接导入 PAOS Core 会触发 Python 3.11-only API。adapter package
 现对 PAOS-coupled `arm_candidates` 使用惰性导出：route worker 可在 Python 3.10 加载纯协议模块，
 PAOS 公共规划导出在 Python 3.12 请求时仍保持兼容。核心包的 Python 3.11+ 声明未被降级。

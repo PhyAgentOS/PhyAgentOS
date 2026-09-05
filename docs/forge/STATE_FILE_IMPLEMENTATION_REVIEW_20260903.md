@@ -896,3 +896,5 @@ Action/Gateway/Dora wiring。
 - 可维护性：通过。转换数学集中在 `grasp_adaptation.py`，worker 复用同一函数；公共 planning 导出使用惰性导入，保持 Python 3.10/3.12 边界清晰。
 
 验证：grasp adaptation + route + probe 专项 `54 passed`；root `tests` `168 passed`；ruff、compileall、git diff --check 通过。功能 readiness 仍未通过：缺少真实 attached-object collision、lift、完整路线、接触动力学和语义 after-verifier evidence，故不得进入 Action/Gateway/Dora。
+
+补充边界审查：preliminary worker 的真实 42/71 结果已被投影为 `preliminary_candidates`，`prepared_candidates` 固定为空，且 evidence 的 `collision` 为 `unavailable`；因此旧三项 gate 不会获得误导性的准备候选。

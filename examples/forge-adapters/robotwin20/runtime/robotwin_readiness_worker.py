@@ -192,7 +192,7 @@ def _handle_factory(
 
     def handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         _validate_request(request, profile)
-        prepared: list[dict[str, Any]] = []
+        preliminary: list[dict[str, Any]] = []
         for candidate in request["candidates"]:
             try:
                 pose = _camera_pose(candidate, calibration)
@@ -225,7 +225,7 @@ def _handle_factory(
                         artifact_root, evidence_ref, ".json", must_exist=False
                     )
                     evidence_path.parent.mkdir(parents=True, exist_ok=True)
-                    checks = {"kinematic": "pass", "collision": "pass", "workspace": "pass"}
+                    checks = {"kinematic": "pass", "collision": "unavailable", "workspace": "pass"}
                     evidence = {
                         "schema_version": "paos-robotwin20-readiness-evidence/v1",
                         "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -248,12 +248,12 @@ def _handle_factory(
                         "planner_attempts": attempts,
                     }
                     evidence_path.write_text(json.dumps(evidence, sort_keys=True) + "\n", encoding="utf-8")
-                    prepared.append({
+                    preliminary.append({
                         "candidate_ref": candidate["candidate_ref"],
                         "entity_ref": candidate["entity_ref"],
                         "checks": checks,
                         "evidence": [evidence_ref],
-                        "qualification": "prepared",
+                        "qualification": "preliminary",
                     })
                     break
                 if not any(item.get("status") == "Success" for item in attempts):
@@ -266,11 +266,12 @@ def _handle_factory(
         return {
             "request_id": request["request_id"],
             "schema_version": SCHEMA_VERSION,
-            "status": "available" if prepared else "empty",
+            "status": "available" if preliminary else "empty",
             "worker_id": profile["worker_id"],
             "embodiment_binding": binding,
             "motion_authorized": False,
-            "prepared_candidates": prepared,
+            "prepared_candidates": [],
+            "preliminary_candidates": preliminary,
             "provider_available": True,
         }
 
