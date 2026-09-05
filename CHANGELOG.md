@@ -2,6 +2,29 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.7.6] - 2026-09-05
+
+针对 reviewer `yanxu` 批准的 v3 route package，完成一次独立 simulation-only probe。审批与 route/source-manifest digest 严格绑定；RoboTwin20 Python 3.10 worker 在 contact 阶段因超过 profile 的 `0.2 m/s` simulator waypoint linear-speed limit 返回 `unavailable`，保存 before/after snapshot、contact trace、failure artifact 和 reset 状态。该负结果未被解释为 readiness 或任务成功，Gateway/Dora/Action/硬件仍未启用。
+
+Ran one independent simulation-only probe for reviewer-approved v3 route package with strict route/source-manifest digest binding. The RoboTwin20 Python 3.10 worker returned `unavailable` in the contact phase because the trajectory exceeded the profile `0.2 m/s` simulator waypoint linear-speed limit, preserving before/after snapshots, contact trace, failure artifact, and reset status. The negative result is not readiness or task success; Gateway, Dora, Action, and hardware remain disabled.
+
+### 文件变更详情 / Detailed changes
+
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L980-L1026`：修正规划模块历史状态并记录 v3 probe 的审批、失败证据和下一门禁。
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L984-L1045`：新增 simulation-only probe 的审批边界、负结果和五维审查。
+- `/home/yanxu/robotwin20-sim-probe-20260905T230500Z/`：保存审批、probe response、before/after snapshot、contact trace 和 failure artifact。
+
+### 五维验收 / Five-Dimension Review
+
+探针边界的架构集成、失败路径、权威边界、配置/provenance 和可维护性均通过；但完整路线、attached-object collision、真实 lift、接触动力学和语义放置仍未证明，必须生成新 route 并重新审批。
+
+Architecture integration, failure paths, authority boundaries, configuration/provenance, and maintainability pass for the probe boundary. Complete route, attached-object collision, physical lift, contact dynamics, and semantic placement remain unproven; a new route and approval are required.
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.7.3] - 2026-09-05
 
 修正规划模块历史验收章节的状态漂移，并新增 no-motion 全链路接入验收：PlanGraph 持久化、AgentLoop dispatch、动态 Tool admission、失败结算、重规划以及 Experience replay/审核/promotion 均得到验证。组合回归 `709 passed, 1 skipped`；未调用 Gateway、Dora 或硬件。

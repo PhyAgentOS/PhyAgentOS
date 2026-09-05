@@ -980,3 +980,66 @@ the later v5.7.0 dispatch/Experience closeout raised the combined regression
 to `708 passed, 1 skipped`, with Ruff, compileall, and `git diff --check`
 passing. No Gateway, Dora, Action, simulation motion, or hardware execution
 was started.
+
+## 32.6 v3 simulation-only probe review (2026-09-05)
+
+### Approval and execution boundary
+
+The v3 route package was explicitly approved for one simulation-only probe by
+reviewer `yanxu`. The approval was bound to route digest
+`b253fdc0f58a683ca6c73b33853a95f5655af3f0d7af78f8416c03096ed8e85e` and source
+manifest digest
+`9d4f599d703170fb2a4b24b0b4b7bbb68588d39b8f24c5e0ba2bc4e640fd9b93`, and was
+materialized at
+`/home/yanxu/robotwin20-sim-probe-20260905T230500Z/probe/approval.json`.
+The original route package was copied without modification to keep the
+reviewed inputs immutable. No Gateway, Dora, Action, or hardware path was
+enabled.
+
+### Probe result
+
+The independent RoboTwin20 Python 3.10 worker started the isolated simulator,
+persisted a before snapshot, and attempted the selected candidate once. The
+left arm planner failed closed; the worker selected the right arm, then stopped
+in the `contact` phase because the simulator trajectory exceeded the profile
+linear-speed limit. It returned `unavailable` with:
+
+- `simulator_steps=834`;
+- `world_change_started=true`, `world_change_completed=false`;
+- `simulation_reset_status=completed`;
+- `reconciliation_required=false`;
+- `error_detail=simulator motion exceeds waypoint linear-speed limit`.
+
+The response is preserved at
+`/home/yanxu/robotwin20-sim-probe-20260905T230500Z/probe_response.json`; the
+failure artifact includes the before/after snapshots, contact trace, arm
+selection attempts, and reset status. The worker is single-use, so this exact
+request and approval must not be retried.
+
+### Five-dimension disposition
+
+- **Architecture integration — pass for the probe boundary.** The run used the
+  adapter-owned independent worker and external artifact root; PAOS planning,
+  Coordinator, Gateway, and Verifier ownership did not change.
+- **Failure paths — pass.** Missing worker configuration, invalid runtime root,
+  left-arm planning failure, linear-speed violation, failure artifact
+  persistence, and simulator reset were fail-closed and observable.
+- **Authority boundaries — pass.** Simulation approval set only the bounded
+  probe authorization. The response is not a readiness verdict or task
+  success, and no production motion authority was granted.
+- **Configuration/provenance — pass.** Route, source manifest, profile,
+  candidate, scene revision, calibration, and policy digests were checked before
+  the world change; the copied artifact root preserved the reviewed bytes.
+- **Maintainability — pass with a follow-up.** Existing worker and client
+  contracts handled the negative result without ad-hoc fallback. A fresh route
+  generation is required to address the measured linear-speed violation; no
+  code relaxation or limit increase is acceptable.
+
+### Gate status
+
+This is a valid negative safety result, not route readiness. Attached-object
+collision success, physical lift, complete transport/descent/release/retreat,
+contact-dynamics success, and semantic placement remain unproven. The next
+implementation step is to diagnose and regenerate a policy-compliant route
+under a new request/digest, obtain a new simulation-only approval, and rerun the
+probe. Action/Gateway/Dora wiring remains blocked.

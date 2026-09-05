@@ -979,8 +979,48 @@ writer. Decision-trace references are redacted when projected into Experience.
 
 Five-dimension review: architecture integration, failure paths, authority
 boundaries, configuration, and maintainability all pass for this scope. Legacy
-tasks without planning metadata remain compatible. Still pending by design are
-live ToolSpec-to-policy projection, AgentLoop production dispatch of
-`agent_composed`, and review-gated Experience policy-candidate aggregation and
-promotion. No Gateway, Dora, Action, simulation motion, or hardware path was
-started.
+tasks without planning metadata remain compatible. The live ToolSpec-to-policy
+projection, AgentLoop production dispatch of `agent_composed`, and review-gated
+Experience policy-candidate aggregation and promotion were completed in
+v5.7.0/v5.7.1; they remain no-motion control-plane features. The active gate is
+independent readiness/simulation evidence and human review. No Gateway, Dora,
+Action, simulation motion, or hardware path was started.
+
+## 32.6 v3 simulation-only probe result (2026-09-05)
+
+The reviewer approved the immutable v3 route package for one simulation-only
+probe using the exact route digest
+`b253fdc0f58a683ca6c73b33853a95f5655af3f0d7af78f8416c03096ed8e85e` and source
+manifest digest
+`9d4f599d703170fb2a4b24b0b4b7bbb68588d39b8f24c5e0ba2bc4e640fd9b93`. The
+approval was materialized at
+`/home/yanxu/robotwin20-sim-probe-20260905T230500Z/probe/approval.json` with
+`reviewer_id=yanxu`; the original route package remains unchanged.
+
+The independent RoboTwin20 worker then ran once from the RoboTwin20 Python
+3.10 environment. It initialized and reset the isolated simulator, selected
+the right arm after the left-arm planner failed, and persisted before/after
+snapshots, contact trace, failure evidence, and completed reset status. The
+response is `unavailable` with:
+
+- `failed_phase=contact`;
+- `error_detail=simulator motion exceeds waypoint linear-speed limit`;
+- `simulator_steps=834`;
+- `world_change_started=true`, `world_change_completed=false`;
+- `simulation_reset_status=completed`;
+- `reconciliation_required=false`.
+
+The probe output is preserved at
+`/home/yanxu/robotwin20-sim-probe-20260905T230500Z/probe_response.json`, with
+failure artifact
+`artifact://simulation-probe/franka-blocks-green1-candidate1-20260905-v6-retimed/block-green-1-1/failure`.
+This is a valid negative safety result: the current route does not satisfy the
+profile-owned `0.2 m/s` simulator waypoint limit during contact. It does not
+prove lift, attached-object transport, release/retreat, contact-dynamics
+success, or semantic placement. The single-use worker must not be retried with
+the same request or approval.
+
+The next gate is to diagnose and regenerate a fresh, policy-compliant route
+artifact (new request and digest), then obtain a new human simulation-only
+approval before another probe. Gateway/Dora/Action wiring and hardware remain
+blocked.
