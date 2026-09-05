@@ -1089,3 +1089,23 @@ source manifest digest
 `a62f4fbe5849445c821877d000ca8945c80ec94fcdc7ac15724bd43a89427506`.
 It remains `pending_human_review` and `motion_authorized=false`; a fresh
 approval is required before another single-use probe.
+
+## 32.9 v8 probe result and v9 route (2026-09-06)
+
+The reviewer-approved v8 probe ran once under
+`/home/yanxu/robotwin20-sim-probe-20260906T020000Z/` and again returned
+`status=unavailable`. The failure remained in `contact`, at simulator step
+`876`, with observed end-effector speed `0.20113678709101113 m/s` against the
+immutable `0.20 m/s` limit. The right-arm planner passed while the left-arm
+planner failed; the object was not attached, reset completed, and no complete
+pick-place or semantic success is claimed.
+
+The measured speed improved relative to v7 but remains above the gate, so the
+profile-owned execution scale was conservatively lowered to `0.10`. A fresh
+v9 route was materialized under
+`/home/yanxu/robotwin20-route-inputs-20260906T030000Z/` with request id
+`franka-blocks-green1-candidate1-20260906-v9-scaled`, route digest
+`438f4ddaba73b32f10586d7a96e9a87b39e5b850de489ced88a854129fbae46f`, and
+source manifest digest
+`14e686c14e09dd7731c7449397883e16d18841f841d267a3d2e6d5bed4f4c2f9`.
+It is `pending_human_review` and has not been executed.

@@ -1093,3 +1093,20 @@ limits. A new v8 route was materialized under
 `6315cb3e4cc83e13738876aa32628d86b420e2aa6f80b785832d01db74b9fed3` and source
 manifest digest `a62f4fbe5849445c821877d000ca8945c80ec94fcdc7ac15724bd43a89427506`.
 The v8 package is `pending_human_review`; v7 approval cannot authorize it.
+
+## 32.9 v8 probe result and v9 route (2026-09-06)
+
+The reviewer-approved v8 probe ran once under
+`/home/yanxu/robotwin20-sim-probe-20260906T020000Z/` and returned
+`status=unavailable`. Contact failed at simulator step `876` with observed
+end-effector speed `0.20113678709101113 m/s`, still above the immutable
+`0.20 m/s` limit. The left-arm planner failed while the right-arm planner
+passed; the object was not attached and simulation reset completed. No complete
+route or semantic success is claimed.
+
+The profile-owned execution scale was therefore lowered to `0.10`, preserving
+all physical and safety limits. A fresh v9 route was materialized under
+`/home/yanxu/robotwin20-route-inputs-20260906T030000Z/` with route digest
+`438f4ddaba73b32f10586d7a96e9a87b39e5b850de489ced88a854129fbae46f` and source
+manifest digest `14e686c14e09dd7731c7449397883e16d18841f841d267a3d2e6d5bed4f4c2f9`.
+It remains `pending_human_review`; v8 approval cannot authorize v9.
