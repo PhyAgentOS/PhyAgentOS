@@ -22,7 +22,7 @@ Architecture integration, failure paths, authority boundaries, configuration/pro
 
 ### Git 提交 / Git Commit
 
-- Commit: pending
+- Commit: `f244751`
 - Branch: `feature/long-horizon-workflow`
 
 ## [v5.7.1] - 2026-09-05
