@@ -10,7 +10,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:  # Python 3.10 compatibility for isolated RoboTwin workers.
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Backport of Python 3.11 enum.StrEnum with identical string values."""
+
+        def __str__(self) -> str:
+            return self.value
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
