@@ -254,6 +254,11 @@ class AgentTaskOutcomeSource:
                 for item in task.execution_records
                 if item.invocation_id is not None
             ],
+            decision_trace_refs=[
+                opaque_ref(item.decision_trace_ref)
+                for item in task.execution_records
+                if item.decision_trace_ref is not None
+            ],
             capability_outcomes=capability_outcomes,
             capability_outcome_errors=capability_outcome_errors,
             capability_outcome_summary=capability_outcome_summary,

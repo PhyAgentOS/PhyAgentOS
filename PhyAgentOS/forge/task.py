@@ -26,6 +26,11 @@ from PhyAgentOS.forge.binding import (
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
+from PhyAgentOS.planning import (
+    PlanGraph,
+    PlanningExecutionBinding,
+    ReplanDelta,
+)
 from PhyAgentOS.verification.contracts import (
     TaskVerificationContract,
     VerificationAttempt,
@@ -128,9 +133,9 @@ class ToolExecutionRecord(BaseModel):
             self.decision_trace_ref,
         )
         if any(value is not None for value in planning_fields):
-            if self.node_id is None or self.node_digest is None or self.obligation_id is None:
+            if any(value is None for value in planning_fields):
                 raise ValueError(
-                    "planning-bound Tool execution records require node_id, node_digest, and obligation_id"
+                    "planning-bound Tool execution records require node_id, node_digest, obligation_id, input_binding_digest, and decision_trace_ref"
                 )
         return self
 
@@ -680,6 +685,8 @@ class AgentTaskCoordinator:
         origin_approval: AgentTaskOriginApproval | None = None,
         parent_task_id: str | None = None,
         retry_limit: int = 0,
+        plan_graph: PlanGraph | None = None,
+        plan_graph_ref: str | None = None,
     ) -> AgentTaskRecord | Any:
         """Create synchronously only for an explicitly unbound coordinator.
 
@@ -697,20 +704,31 @@ class AgentTaskCoordinator:
                 origin_approval=origin_approval,
                 parent_task_id=parent_task_id,
                 retry_limit=retry_limit,
+                plan_graph=plan_graph,
+                plan_graph_ref=plan_graph_ref,
             )
         if verification.mode != "off" and self.verifier is None:
             raise AgentTaskError(
                 "non-off AgentTask verification requires the verification service"
             )
-        task_id = f"task_{uuid4().hex[:16]}"
-        revision_id = f"revision_{uuid4().hex[:16]}"
+        task_id = plan_graph.task_id if plan_graph is not None else f"task_{uuid4().hex[:16]}"
+        revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
         task = AgentTaskRecord(
             task_id=task_id,
             task_description=task_description.strip(),
             verification=verification,
             parent_task_id=parent_task_id,
             retry_limit=retry_limit,
-            revisions=[PlanRevision(revision_id=revision_id, number=1, reason="initial plan")],
+            revisions=[PlanRevision(
+                revision_id=revision_id,
+                number=1,
+                reason="initial plan",
+                plan_graph_ref=plan_graph_ref,
+                plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
+                planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
+                policy_snapshot_digest=plan_graph.policy_snapshot_digest if plan_graph is not None else None,
+            )],
             active_revision_id=revision_id,
             origin_session_key=origin_session_key,
             origin_dedup_key=origin_dedup_key,
@@ -735,13 +753,16 @@ class AgentTaskCoordinator:
         origin_approval: AgentTaskOriginApproval | None = None,
         parent_task_id: str | None = None,
         retry_limit: int = 0,
+        plan_graph: PlanGraph | None = None,
+        plan_graph_ref: str | None = None,
     ) -> AgentTaskRecord:
         if verification.mode != "off" and self.verifier is None:
             raise AgentTaskError(
                 "non-off AgentTask verification requires the verification service"
             )
-        task_id = f"task_{uuid4().hex[:16]}"
-        revision_id = f"revision_{uuid4().hex[:16]}"
+        task_id = plan_graph.task_id if plan_graph is not None else f"task_{uuid4().hex[:16]}"
+        revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
         binding: ForgeSkillBinding | None = None
         if self.binding_resolver is not None:
             if self.activation_manager is None or not origin_session_key or not activation_id:
@@ -776,6 +797,10 @@ class AgentTaskCoordinator:
                     number=1,
                     reason="initial plan",
                     skill_binding_id=binding.binding_id if binding is not None else None,
+                    plan_graph_ref=plan_graph_ref,
+                    plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
+                    planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
+                    policy_snapshot_digest=plan_graph.policy_snapshot_digest if plan_graph is not None else None,
                 )
             ],
             active_revision_id=revision_id,
@@ -806,7 +831,14 @@ class AgentTaskCoordinator:
     def get_task(self, task_id: str) -> AgentTaskRecord:
         return self.store.get(task_id)
 
-    def begin_revision(self, task_id: str, *, reason: str) -> AgentTaskRecord:
+    def begin_revision(
+        self,
+        task_id: str,
+        *,
+        reason: str,
+        plan_graph: PlanGraph | None = None,
+        plan_graph_ref: str | None = None,
+    ) -> AgentTaskRecord:
         task = self.store.get(task_id)
         if task.status != AgentTaskStatus.AWAITING_REPLAN:
             raise AgentTaskError("a new PlanRevision requires awaiting_replan status")
@@ -822,11 +854,13 @@ class AgentTaskCoordinator:
             raise AgentTaskError("AgentTask replan deadline expired")
         if len(task.revisions) - 1 >= self.max_replans:
             raise AgentTaskError(f"replan budget exhausted ({self.max_replans})")
+        revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
 
         def mutate(current: AgentTaskRecord) -> None:
             current.active_revision.closed_at = utc_now()
             revision = PlanRevision(
-                revision_id=f"revision_{uuid4().hex[:16]}",
+                revision_id=revision_id,
                 number=len(current.revisions) + 1,
                 reason=reason.strip(),
                 skill_binding_id=(
@@ -834,6 +868,10 @@ class AgentTaskCoordinator:
                     if current.primary_skill_binding is not None
                     else None
                 ),
+                plan_graph_ref=plan_graph_ref,
+                plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
+                planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
+                policy_snapshot_digest=plan_graph.policy_snapshot_digest if plan_graph is not None else None,
             )
             current.revisions.append(revision)
             current.active_revision_id = revision.revision_id
@@ -843,6 +881,28 @@ class AgentTaskCoordinator:
 
         return self.store.update(task_id, mutate, event_type="plan_revision_started")
 
+    def begin_revision_from_delta(
+        self,
+        task_id: str,
+        delta: ReplanDelta,
+        *,
+        plan_graph: PlanGraph,
+        plan_graph_ref: str,
+        reason: str | None = None,
+    ) -> AgentTaskRecord:
+        """Adapt a pure planning replan delta into the coordinator-owned revision path."""
+        task = self.store.get(task_id)
+        if delta.task_id != task_id or delta.revision_id != task.active_revision_id:
+            raise AgentTaskError("ReplanDelta is not bound to the active AgentTask revision")
+        if plan_graph.task_id != task_id or plan_graph.revision_id == task.active_revision_id:
+            raise AgentTaskError("replacement PlanGraph must target this task and a new revision")
+        return self.begin_revision(
+            task_id,
+            reason=reason or delta.reason,
+            plan_graph=plan_graph,
+            plan_graph_ref=plan_graph_ref,
+        )
+
     async def invoke_query(
         self,
         task_id: str,
@@ -850,10 +910,11 @@ class AgentTaskCoordinator:
         arguments: dict[str, Any],
         *,
         timeout_ms: int | None = None,
+        planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         tool = await self._require_binding_tool(task_id, tool_id, "query")
         record_id, caller = self._append_execution(
-            task_id, tool_id, "query", arguments, tool=tool
+            task_id, tool_id, "query", arguments, tool=tool, planning_binding=planning_binding
         )
         try:
             response = await self.client.invoke_query_tool(
@@ -877,6 +938,7 @@ class AgentTaskCoordinator:
         arguments: dict[str, Any],
         *,
         timeout_ms: int | None = None,
+        planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         task = self._require_executable(task_id)
         if any(
@@ -893,7 +955,7 @@ class AgentTaskCoordinator:
         if task.before_snapshot_ref is None:
             await self._capture_before(task_id)
         record_id, caller = self._append_execution(
-            task_id, tool_id, "action", arguments, tool=tool
+            task_id, tool_id, "action", arguments, tool=tool, planning_binding=planning_binding
         )
         invocation_id: str | None = None
         attempt_id: str | None = None
@@ -1015,6 +1077,7 @@ class AgentTaskCoordinator:
         arguments: dict[str, Any],
         *,
         ownership: Literal["task", "shared"] = "task",
+        planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if ownership not in {"task", "shared"}:
             raise AgentTaskError("runtime-owned Sessions may only be created by RuntimeManager")
@@ -1026,6 +1089,7 @@ class AgentTaskCoordinator:
             arguments,
             tool=tool,
             ownership=ownership,
+            planning_binding=planning_binding,
         )
         invocation_id: str | None = None
         attempt_id: str | None = None
@@ -1451,8 +1515,12 @@ class AgentTaskCoordinator:
         *,
         tool: BoundToolSpec,
         ownership: Literal["task", "runtime", "shared"] = "task",
+        planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> tuple[str, str]:
         task = self._require_executable(task_id)
+        binding = _normalize_planning_binding(planning_binding)
+        if binding is not None and task.active_revision.plan_graph_digest is None:
+            raise AgentTaskError("planning-bound Tool execution requires a PlanGraph-bound revision")
         record_id = f"tool_{uuid4().hex[:16]}"
         caller_id = f"paos:{task_id}:{task.active_revision_id}:{record_id}"
 
@@ -1470,6 +1538,15 @@ class AgentTaskCoordinator:
                     ),
                     tool_spec_sha256=tool.spec_sha256,
                     caller_id=caller_id,
+                    node_id=binding.node_id if binding is not None else None,
+                    node_digest=binding.node_digest if binding is not None else None,
+                    obligation_id=binding.obligation_id if binding is not None else None,
+                    input_binding_digest=(
+                        binding.input_binding_digest if binding is not None else None
+                    ),
+                    decision_trace_ref=(
+                        binding.decision_trace_ref if binding is not None else None
+                    ),
                     ownership=ownership,
                     arguments=dict(arguments),
                     evidence_refs=[f"tool:{record_id}"],
@@ -1669,6 +1746,37 @@ def _task_execution(task: AgentTaskRecord, record_id: str) -> ToolExecutionRecor
         if record.record_id == record_id:
             return record
     raise AgentTaskError(f"Tool execution record not found: {record_id}")
+
+
+def _validate_plan_graph_input(
+    graph: PlanGraph | None,
+    graph_ref: str | None,
+    task_id: str,
+    revision_id: str,
+) -> None:
+    if graph is None:
+        if graph_ref is not None:
+            raise AgentTaskError("plan_graph_ref requires a concrete PlanGraph")
+        return
+    if graph_ref is None or not graph_ref.startswith("artifact://"):
+        raise AgentTaskError("a PlanGraph requires an artifact:// plan_graph_ref")
+    if graph.task_id != task_id or graph.revision_id != revision_id:
+        raise AgentTaskError("PlanGraph task/revision identity does not match the revision")
+
+
+def _normalize_planning_binding(
+    value: PlanningExecutionBinding | dict[str, Any] | None,
+) -> PlanningExecutionBinding | None:
+    if value is None:
+        return None
+    try:
+        return (
+            value
+            if isinstance(value, PlanningExecutionBinding)
+            else PlanningExecutionBinding.model_validate(value)
+        )
+    except Exception as exc:
+        raise AgentTaskError(f"invalid planning execution binding: {exc}") from exc
 
 
 def _owned_execution(

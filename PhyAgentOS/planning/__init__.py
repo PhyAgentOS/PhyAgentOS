@@ -10,6 +10,7 @@ from .contracts import (
     DecisionTrace,
     NodeSettlement,
     PlanGraph,
+    PlanningExecutionBinding,
     PlanNode,
     ReplanDelta,
     ResourceClaim,
@@ -20,6 +21,7 @@ from .contracts import (
     WorkflowPolicyCandidate,
     canonical_sha256,
     plan_graph_digest,
+    plan_node_digest,
 )
 from .dag import derive_ready_nodes, evaluate_conditions, invalidate_stale_nodes, validate_graph
 from .policy import validate_policy_edges, workflow_policy_digest
@@ -34,6 +36,7 @@ __all__ = [
     "NodeSettlement",
     "PlanGraph",
     "PlanNode",
+    "PlanningExecutionBinding",
     "ResourceClaim",
     "ReplanDelta",
     "ToolCallEnvelope",
@@ -45,6 +48,7 @@ __all__ = [
     "build_replan_delta",
     "canonical_sha256",
     "plan_graph_digest",
+    "plan_node_digest",
     "derive_ready_nodes",
     "evaluate_conditions",
     "invalidate_stale_nodes",

@@ -214,3 +214,21 @@ resource failures), unknown/stale/cancelled settlement, transitive replan
 invalidation, decision traces, policy candidates, and the `PlanRevision`/
 `ToolExecutionRecord` binding fields. A passing suite still does not authorize
 Gateway or robot motion.
+
+### Current planner integration status
+
+`AgentTaskCoordinator.create_task()` and `begin_revision()` accept a concrete
+`PlanGraph` only together with an immutable `artifact://` graph reference;
+their revisions persist graph/planner/policy digests. The coordinator also
+provides `begin_revision_from_delta()` as the sole adapter from a pure
+`ReplanDelta` to a new PAOS revision. Query, Action, and Session calls can carry
+the complete `PlanningExecutionBinding`, which is persisted on the execution
+record and projected as a redacted trace reference for Experience. Supplying
+only part of the binding is rejected; legacy calls without planning metadata
+remain supported.
+
+The following are not yet production-wired: conversion of live Gateway
+ToolSpecs into planning projections, AgentLoop dispatch of `agent_composed`,
+and Experience policy-candidate aggregation/replay/promotion. Implement those
+as follow-up integration stages without moving lifecycle or execution ownership
+into `PhyAgentOS.planning`.

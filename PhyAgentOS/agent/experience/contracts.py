@@ -153,6 +153,7 @@ class TaskOutcomeEnvelope(ExperienceModel):
     record_refs: list[str] = Field(default_factory=list)
     agent_task_ref: str | None = None
     tool_invocation_refs: list[str] = Field(default_factory=list)
+    decision_trace_refs: list[str] = Field(default_factory=list)
     capability_outcomes: list[CapabilityOutcomeFact] = Field(default_factory=list)
     capability_outcome_errors: list[CapabilityOutcomeErrorFact] = Field(default_factory=list)
     capability_outcome_summary: CapabilityOutcomeSummary = Field(

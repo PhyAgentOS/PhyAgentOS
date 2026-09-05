@@ -898,3 +898,74 @@ Action/Gateway/Dora wiring。
 验证：grasp adaptation + route + probe 专项 `54 passed`；root `tests` `168 passed`；ruff、compileall、git diff --check 通过。功能 readiness 仍未通过：缺少真实 attached-object collision、lift、完整路线、接触动力学和语义 after-verifier evidence，故不得进入 Action/Gateway/Dora。
 
 补充边界审查：preliminary worker 的真实 42/71 结果已被投影为 `preliminary_candidates`，`prepared_candidates` 固定为空，且 evidence 的 `collision` 为 `unavailable`；因此旧三项 gate 不会获得误导性的准备候选。
+
+## 32.4 Capability Query canonical-DAG 接入复验（2026-09-06）
+
+本轮验收对象是双臂能力快照接入 canonical Skill DAG 的修复，不把 capability fixture、Fake
+Gateway 或 assignment projection 当作真实 readiness/动作证据。实现把
+`manipulation.capabilities` 固定在 `observe` 之后，并要求后续节点复用同一个
+`capability_snapshot_ref`；同时提升 DAG/reducer 与 Skill 包版本，拒绝旧六节点状态和旧 Runtime
+静默接入。
+
+- **架构集成：通过。** `WORKFLOW_DAG` 现在是七节点
+  `observe → capabilities → understand → propose → prepare → acquire → place`；Query 仍位于
+  generic capability runtime，Skill reducer 只消费终态和 opaque refs，不创建 AgentTask、PlanRevision、
+  Gateway invocation、资源锁或动作授权。`AgentTaskCoordinator`/SQLite、Gateway concurrency、Evidence
+  与 Verifier 的权威边界未迁移。
+- **失败路径：通过。** capabilities provider 异常、空快照、invalid snapshot、scene/observation/calibration
+  绑定漂移、缺失或非法 capability ref、跨节点 ref 漂移、旧 terminal response、非 ready 节点和失败后恢复均
+  fail-closed；旧 DAG state/runtime 通过版本与 digest 不匹配被拒绝。
+- **权威边界：通过。** capability snapshot 是 adapter/profile-owned no-motion projection，始终
+  `motion_authorized=false`；它不是资源 lease、readiness verdict、Action admission 或双臂同步执行器。
+  atomic bimanual route、真实 IK/collision/lift、完整 transport/descent/release/retreat、接触动力学和
+  语义 after-snapshot 仍未实现。
+- **配置：通过。** Skill manifest、Tool contract、Skill README/SKILL、开发者指南和包版本同步为七 Tool/
+  `0.10.0`；DAG/reducer 版本为 `pick_and_place_semantic_dag_v2`/
+  `pick_and_place_workflow_v3`。机器人、benchmark、planner、workspace 和 readiness 细节仍留在
+  adapter/profile，未写入 PAOS core 或公共 DAG。
+- **可维护性：通过。** 版本化 digest 防止旧状态误接入；绑定、恢复、terminal response、manifest discovery
+  和 package freeze 都有回归覆盖。审查中发现的文档六节点残留、旧版本 fixture 和 capabilities 测试 Ruff
+  import 顺序已修复；未引入第二套 scheduler 或 fixture-only success path。
+
+验证结果：core/Skill/RoboTwin adapter 组合 `670 passed, 1 skipped`；Ruff、compileall、
+`git diff --check` 全部通过。未启动 Gateway、Dora、Action、simulation motion 或硬件。
+本轮关闭的是“capability Query 未进入 canonical DAG/版本边界”的集成缺口，不等于双臂完整抓取放置闭环，
+也不关闭真实 readiness、人工审批或 atomic bimanual motion gate。
+
+## 32.5 Planning module coordinator integration review (2026-09-05)
+
+### Findings and disposition
+
+- **Architecture integration — pass.** Concrete `PlanGraph` binding is now
+  accepted by task creation and revision creation only through the existing
+  `AgentTaskCoordinator`; graph/planner/policy digests remain in SQLite-backed
+  `PlanRevision`, and `planning` remains a pure library.
+- **Failure paths — pass.** A graph reference without a graph, graph/task or
+  graph/revision identity drift, partial execution attribution, stale
+  `ReplanDelta`, and replacement graphs targeting the active revision are
+  rejected. Legacy unbound task/tool calls remain supported.
+- **Authority boundaries — pass.** `begin_revision_from_delta()` is an adapter,
+  not a planner-side state mutation. Planning bindings and trace references do
+  not grant readiness, resource leases, Gateway admission, or motion authority.
+- **Configuration — pass.** Graph artifacts and trace references are explicit
+  inputs; no Markdown, endpoint, credential, robot profile, or provider payload
+  was added as a second configuration source.
+- **Maintainability — pass.** Shared immutable `PlanningExecutionBinding` and
+  `plan_node_digest()` prevent ad-hoc field combinations; all three Tool
+  semantics share one coordinator path, and redacted trace references enter the
+  existing Experience outcome projection.
+
+### Remaining documented work
+
+Live Gateway ToolSpec-to-`ToolSpecPolicy` projection, AgentLoop production
+dispatch of `agent_composed`, and Experience policy-candidate aggregation,
+independent replay, human review, and promotion remain separate follow-up
+stages. They are not silently marked complete by this integration.
+
+### Validation
+
+The planning and coordinator integration suite passed `15 tests`; the combined
+core plus pick-place Skill regression passed `457 tests`, and the RoboTwin
+adapter suite passed `233 tests` with one skip. Ruff, compileall, and
+`git diff --check` passed. No Gateway, Dora, Action, simulation motion, or
+hardware execution was started.

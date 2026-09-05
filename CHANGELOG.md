@@ -2,6 +2,19 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.6.0] - 2026-09-05
+
+规划模块已接入 PAOS 任务生命周期边界：`AgentTaskCoordinator` 接收并持久化具体 `PlanGraph` 的 artifact/ref 与 digest；Query、Action、Session 可携带完整规划归因；`ReplanDelta` 通过 coordinator 生成新 revision；DecisionTrace 以脱敏引用进入 Experience outcome。planning 专项 15 passed，组合 core/Skill 回归 457 passed，RoboTwin adapter 233 passed, 1 skipped。未启动 Gateway、Dora、Action、仿真动作或硬件。
+
+The planning module is now connected to PAOS lifecycle boundaries: `AgentTaskCoordinator` accepts and persists concrete `PlanGraph` artifact/ref and digests; Query, Action, and Session calls can carry complete planning attribution; `ReplanDelta` is adapted into a new revision through the coordinator; DecisionTrace enters the Experience outcome as a redacted reference. Focused planning suite: 15 passed; combined core/Skill regression: 457 passed; RoboTwin adapter: 233 passed, 1 skipped. No Gateway, Dora, Action, simulation motion, or hardware was started.
+
+Remaining by design: live ToolSpec-to-policy projection, AgentLoop production dispatch of `agent_composed`, and review-gated Experience policy-candidate aggregation/replay/promotion.
+
+### Git 提交 / Git Commit
+
+- Commit: `d40e7dc`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.5.5] - 2026-09-05
 
 抓取放置 Skill 增加 `baseline` / `agent_composed` 双模式。旧 `LongHorizonWorkflow` 保留为确定性 replay projection；新 bridge 接收 Agent 语义子任务，编译为带 `verify` join 的 PAOS PlanGraph，并按 capability 暴露多个 Tool 候选，通过 planning admission 校验证据、scene、资源和 ToolSpec digest。未执行 Tool、未写 SQLite、未创建 revision、未授权动作。Skill 回归 `270 passed`。

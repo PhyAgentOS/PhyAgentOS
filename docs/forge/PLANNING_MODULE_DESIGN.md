@@ -122,3 +122,24 @@ Every change to this module is reviewed across architecture integration,
 failure paths, authority boundaries, configuration/provenance, and
 maintainability. Tests must prove the module is pure: no Gateway calls, no
 SQLite writes, no locks, and no `motion_authorized=True` output.
+
+## Implementation status (2026-09-05)
+
+The coordinator integration now accepts a concrete `PlanGraph` plus an immutable
+`artifact://` reference at task creation and at a new revision. It persists the
+graph, planner-decision, and policy-snapshot digests in the authoritative
+`PlanRevision`. Planning-driven Query/Action/Session calls may provide one
+complete `PlanningExecutionBinding`; the coordinator persists its node,
+obligation, input-binding, and redacted DecisionTrace reference in the
+`ToolExecutionRecord`. A partial binding is rejected, while calls without a
+planning binding remain compatible with legacy tasks. `ReplanDelta` is adapted
+through `begin_revision_from_delta`; the planning module still does not mutate
+the store or create revisions itself. Redacted decision-trace references are
+also carried into the experience outcome projection.
+
+Still intentionally pending are automatic conversion of live Gateway ToolSpecs
+into `ToolSpecPolicy`, AgentLoop production dispatch of the `agent_composed`
+bridge, and policy-candidate aggregation/replay/human promotion in Experience.
+Those are separate integration stages; their absence does not weaken the pure
+planning or lifecycle contracts above. No Action/Gateway/Dora motion wiring is
+introduced by this module.

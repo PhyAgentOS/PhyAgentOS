@@ -98,11 +98,23 @@ class ForgeToolQueryTool(Tool):
         arguments: dict[str, Any],
         task_id: str | None = None,
         timeout_ms: int | None = None,
+        planning_binding: dict[str, Any] | None = None,
     ) -> str:
+        if planning_binding is not None and not task_id:
+            return _json(
+                {
+                    "ok": False,
+                    "error": {
+                        "type": "agent_task",
+                        "message": "planning_binding requires task_id",
+                    },
+                }
+            )
         if task_id:
             return await _call(
                 lambda: self.coordinator.invoke_query(
-                    task_id, tool_id, arguments, timeout_ms=timeout_ms
+                    task_id, tool_id, arguments, timeout_ms=timeout_ms,
+                    planning_binding=planning_binding,
                 )
             )
         return await _call(
@@ -137,10 +149,12 @@ class ForgeToolStartActionTool(Tool):
         tool_id: str,
         arguments: dict[str, Any],
         timeout_ms: int | None = None,
+        planning_binding: dict[str, Any] | None = None,
     ) -> str:
         return await _call(
             lambda: self.coordinator.start_action(
-                task_id, tool_id, arguments, timeout_ms=timeout_ms
+                task_id, tool_id, arguments, timeout_ms=timeout_ms,
+                planning_binding=planning_binding,
             )
         )
 
@@ -247,10 +261,12 @@ class ForgeToolStartSessionTool(Tool):
         tool_id: str,
         arguments: dict[str, Any],
         ownership: str,
+        planning_binding: dict[str, Any] | None = None,
     ) -> str:
         return await _call(
             lambda: self.coordinator.start_session(
-                task_id, tool_id, arguments, ownership=ownership  # type: ignore[arg-type]
+                task_id, tool_id, arguments, ownership=ownership,  # type: ignore[arg-type]
+                planning_binding=planning_binding,
             )
         )
 
@@ -375,6 +391,21 @@ def _invoke_schema(*, task_required: bool, include_timeout: bool) -> dict[str, A
         "task_id": {"type": "string", "minLength": 1},
         "tool_id": {"type": "string", "minLength": 1},
         "arguments": {"type": "object"},
+        "planning_binding": {
+            "type": "object",
+            "properties": {
+                "node_id": {"type": "string", "minLength": 1},
+                "node_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "obligation_id": {"type": "string", "minLength": 1},
+                "input_binding_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "decision_trace_ref": {"type": "string", "pattern": "^artifact://.+"},
+            },
+            "required": [
+                "node_id", "node_digest", "obligation_id",
+                "input_binding_digest", "decision_trace_ref",
+            ],
+            "additionalProperties": False,
+        },
     }
     required = ["tool_id", "arguments"]
     if task_required:

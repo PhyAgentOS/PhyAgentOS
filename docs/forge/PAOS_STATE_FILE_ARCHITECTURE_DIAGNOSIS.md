@@ -946,6 +946,12 @@ stop、readiness 或 motion authority，也不能把 benchmark 坐标规则写�
   缺失、非法 scheme 或漂移引用；
 - `manipulation.capabilities` 已进入 pick-place Skill manifest、Tool contract 与 Fake
   Gateway discovery/query，provider 异常和 snapshot binding drift 均返回 unavailable；
+- canonical Skill DAG 现显式包含 no-motion `capabilities` 节点；`observe` 完成后，
+  `capabilities` 与 `understand` 是两个独立 ready Query，`propose` 对两者做显式 join，
+  不把 Agent 的 Tool 调用顺序写死。所有后续节点必须复用同一个
+  `capability_snapshot_ref`，旧状态通过 DAG digest/version fail-closed；
+- 该协议升级为 `pick_and_place_semantic_dag_v4`、`pick_and_place_workflow_v5`，Skill
+  manifest 与 Python 包同步为 `0.10.1`，旧 Runtime/Bundle 版本不会被新协议静默接纳；
 - Fake Gateway 仅提供确定性的 no-motion replay snapshot，不产生 AgentTask、Gateway
   invocation 或动作授权；RoboTwin 的真实 assignment 仍必须来自 readiness-backed route
   selection；
@@ -956,3 +962,23 @@ stop、readiness 或 motion authority，也不能把 benchmark 坐标规则写�
 专项、Skill 全量和 RoboTwin adapter 全量测试均需在本轮实现后重新运行，再进行架构集成、
 失败路径、权威边界、配置、可维护性五维代码审查；在审查完成前不启动 Gateway、Dora、
 Action、仿真动作或硬件。
+
+## 32.5 Planning module coordinator integration review (2026-09-05)
+
+The planning-module documentation review identified and closed the lifecycle
+integration gap without turning planning into a second runtime. `PlanGraph` is
+now accepted only as a concrete, identity-bound input with an `artifact://`
+reference; its graph/planner/policy digests are persisted by the coordinator in
+`PlanRevision`. A complete `PlanningExecutionBinding` can accompany Query,
+Action, or Session calls and is persisted on `ToolExecutionRecord`; partial
+bindings fail closed. `ReplanDelta` is adapted through
+`begin_revision_from_delta()`, while the coordinator remains the only revision
+writer. Decision-trace references are redacted when projected into Experience.
+
+Five-dimension review: architecture integration, failure paths, authority
+boundaries, configuration, and maintainability all pass for this scope. Legacy
+tasks without planning metadata remain compatible. Still pending by design are
+live ToolSpec-to-policy projection, AgentLoop production dispatch of
+`agent_composed`, and review-gated Experience policy-candidate aggregation and
+promotion. No Gateway, Dora, Action, simulation motion, or hardware path was
+started.

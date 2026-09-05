@@ -8,6 +8,7 @@ from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.planning import PlanGraph
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 
@@ -48,19 +49,35 @@ class ForgeTaskCreateTool(Tool):
                     "description": "Primary activate_skill result from this session turn",
                 },
                 "verification": _verification_schema(),
+                "plan_graph": {
+                    "type": "object",
+                    "description": "Concrete Agent-composed semantic DAG for this revision.",
+                },
+                "plan_graph_ref": {
+                    "type": "string",
+                    "pattern": "^artifact://.+",
+                    "description": "Immutable artifact reference for the concrete PlanGraph.",
+                },
             },
             "required": ["task_description", "activation_id", "verification"],
             "additionalProperties": False,
         }
 
     async def execute(
-        self, task_description: str, activation_id: str, verification: dict[str, Any]
+        self,
+        task_description: str,
+        activation_id: str,
+        verification: dict[str, Any],
+        plan_graph: dict[str, Any] | None = None,
+        plan_graph_ref: str | None = None,
     ) -> str:
         task = self.coordinator.create_task(
             task_description=task_description,
             activation_id=activation_id,
             verification=TaskVerificationContract.model_validate(verification),
             origin_session_key=self.session_key,
+            plan_graph=(PlanGraph.model_validate(plan_graph) if plan_graph is not None else None),
+            plan_graph_ref=plan_graph_ref,
         )
         if inspect.isawaitable(task):
             task = await task
@@ -106,14 +123,33 @@ class ForgeTaskBeginRevisionTool(Tool):
     def parameters(self) -> dict[str, Any]:
         schema = _task_id_schema()
         schema["properties"]["reason"] = {"type": "string", "minLength": 1}
+        schema["properties"]["plan_graph"] = {
+            "type": "object",
+            "description": "Replacement concrete semantic DAG for the new revision.",
+        }
+        schema["properties"]["plan_graph_ref"] = {
+            "type": "string",
+            "pattern": "^artifact://.+",
+        }
         schema["required"].append("reason")
         return schema
 
-    async def execute(self, task_id: str, reason: str) -> str:
+    async def execute(
+        self,
+        task_id: str,
+        reason: str,
+        plan_graph: dict[str, Any] | None = None,
+        plan_graph_ref: str | None = None,
+    ) -> str:
         return _json(
             {
                 "ok": True,
-                "data": self.coordinator.begin_revision(task_id, reason=reason),
+                "data": self.coordinator.begin_revision(
+                    task_id,
+                    reason=reason,
+                    plan_graph=(PlanGraph.model_validate(plan_graph) if plan_graph is not None else None),
+                    plan_graph_ref=plan_graph_ref,
+                ),
             }
         )
 

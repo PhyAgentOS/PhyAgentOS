@@ -74,6 +74,39 @@ class PlanNode(_Frozen):
         return value
 
 
+def plan_node_digest(node: PlanNode | dict[str, Any]) -> str:
+    """Return the immutable identity digest for one semantic node.
+
+    The digest intentionally excludes no fields: changing an obligation,
+    dependency, evidence requirement, resource claim, or retry lineage creates
+    a different node identity for execution attribution.
+    """
+    value = node.model_dump(mode="json") if isinstance(node, BaseModel) else dict(node)
+    return canonical_sha256(value)
+
+
+class PlanningExecutionBinding(_Frozen):
+    """Complete attribution from one Tool execution to a PlanGraph node."""
+
+    node_id: str
+    node_digest: str = Field(pattern=_DIGEST)
+    obligation_id: str
+    input_binding_digest: str = Field(pattern=_DIGEST)
+    decision_trace_ref: str
+
+    @field_validator("node_id", "obligation_id")
+    @classmethod
+    def binding_identity(cls, value: str) -> str:
+        return _identity(value, "planning execution binding identity")
+
+    @field_validator("decision_trace_ref")
+    @classmethod
+    def trace_reference(cls, value: str) -> str:
+        if not value.startswith("artifact://") or len(value) <= len("artifact://"):
+            raise ValueError("decision_trace_ref must be an artifact:// reference")
+        return value
+
+
 class PlanGraph(_Frozen):
     """Concrete task graph bound to one PAOS PlanRevision."""
 
@@ -311,6 +344,7 @@ class WorkflowPolicyCandidate(_Frozen):
 
 __all__ = [
     "DecisionTrace", "NodeSettlement", "PlanGraph", "PlanNode", "ReplanDelta",
-    "ResourceClaim", "ToolCallEnvelope", "ToolResultEnvelope", "ToolSpecPolicy",
-    "WorkflowPolicy", "WorkflowPolicyCandidate", "canonical_sha256", "plan_graph_digest",
+    "PlanningExecutionBinding", "ResourceClaim", "ToolCallEnvelope", "ToolResultEnvelope",
+    "ToolSpecPolicy", "WorkflowPolicy", "WorkflowPolicyCandidate", "canonical_sha256",
+    "plan_graph_digest", "plan_node_digest",
 ]
