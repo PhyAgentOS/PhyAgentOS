@@ -1,5 +1,15 @@
 """Provider-neutral scene observation Forge Skill example."""
 
+from .agent_planning import (
+    AGENT_PLAN_VERSION,
+    AgentComposedPlan,
+    AgentPlanningError,
+    AgentSubtaskSpec,
+    DynamicToolPlanner,
+    ToolSelectionError,
+    compose_agent_plan,
+    select_planning_mode,
+)
 from .fake_gateway import (
     FakeGatewayTransport,
     ObservationProvider,
@@ -90,4 +100,12 @@ __all__ = [
     "WorkflowState",
     "WorkflowStep",
     "WorkflowTransitionError",
+    "AGENT_PLAN_VERSION",
+    "AgentComposedPlan",
+    "AgentPlanningError",
+    "AgentSubtaskSpec",
+    "DynamicToolPlanner",
+    "ToolSelectionError",
+    "compose_agent_plan",
+    "select_planning_mode",
 ]

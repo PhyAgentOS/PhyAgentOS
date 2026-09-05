@@ -23,7 +23,19 @@ calibration reference, freshness measurement, and opaque artifact references. Tr
 `unavailable`, `stale`, and `invalid` as blockers. Do not retry a stale or missing-
 calibration result by weakening `max_age_ms`; obtain a new observation or operator input.
 
-Use `scene.understand` only after a successful `scene.observe` result. Pass the returned
+After a successful `scene.observe` result, the Agent may call
+`manipulation.capabilities` or `scene.understand`; these are independent Query
+nodes and may be called in either order or in parallel. For
+`manipulation.capabilities`, pass the
+observation reference, scene revision, and calibration reference unchanged. This
+read-only Query returns the adapter-owned, scene-bound capability snapshot used to
+reason about available arms and later assignment. It does not lease a resource,
+run readiness, create an invocation, or authorize motion. Treat `unavailable`,
+`stale`, and `invalid` as blockers, and preserve its opaque
+`capability_snapshot_ref` for every downstream step.
+
+Use `scene.understand` after a successful `scene.observe` result. It does not
+depend on the capability Query. Pass the returned
 `observation_ref`, scene revision, frame, calibration reference, freshness, and artifact
 references unchanged. The understanding Query returns entity/relation claims and spatial
 envelopes with confidence and provenance. It may also return opaque derived artifacts for
@@ -32,13 +44,14 @@ entity, frame, calibration, source lineage, and root provenance bindings are com
 artifacts are Query evidence, not grasp candidates or motion authorization. Reject stale,
 unavailable, ambiguous, or invalid results before any future Action.
 
-Use `grasp.propose` only after a successful `scene.understand` result, in the fixed
-workflow order:
+Use `grasp.propose` only after both `scene.understand` and
+`manipulation.capabilities` have returned successful terminal results. The Agent
+may satisfy those two dependencies in either order or in parallel:
 
 ```text
 scene.observe
-  -> scene.understand
-  -> grasp.propose
+  ├─ manipulation.capabilities ─┐
+  └─ scene.understand ───────────┴─ grasp.propose
   -> manipulation.prepare
   -> object.acquire
   -> object.place
@@ -106,7 +119,7 @@ read-only semantic DAG projection (`WORKFLOW_DAG`) for dependencies and ready
 nodes; it does not create revisions, hold resource leases, or execute Tools:
 
 ```text
-observe -> understand -> propose -> prepare -> acquire -> place
+observe -> {capabilities, understand} -> propose -> prepare -> acquire -> place
 ```
 
 The workflow reducer is a replayable projection over existing Tool records. It
@@ -117,3 +130,14 @@ an unknown invocation by its existing ID; for a recoverable failure ask the PAOS
 task coordinator to append a new PlanRevision, then rebind this projection to
 that revision. Never create a second execution protocol or infer task success
 from a single Action summary.
+
+For a task whose objects must be decomposed or assigned dynamically, the Agent
+may select `planning_mode=agent_composed` and submit semantic subtasks to
+`compose_agent_plan`. The resulting PlanGraph describes obligations and
+dependencies, not a hard-coded Tool sequence. For each ready node,
+`DynamicToolPlanner.candidate_tools` returns all frozen Tool candidates matching
+the node capability; the Agent chooses one and `DynamicToolPlanner.admit`
+performs PAOS evidence, scene, capability, resource, and ToolSpec checks before
+the caller invokes the normal AgentTask/ForgeToolClient path. This bridge does
+not execute Tools, create revisions, hold leases, or authorize motion. The
+`baseline` reducer remains available for deterministic replay.

@@ -2,6 +2,29 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.5.5] - 2026-09-05
+
+抓取放置 Skill 增加 `baseline` / `agent_composed` 双模式。旧 `LongHorizonWorkflow` 保留为确定性 replay projection；新 bridge 接收 Agent 语义子任务，编译为带 `verify` join 的 PAOS PlanGraph，并按 capability 暴露多个 Tool 候选，通过 planning admission 校验证据、scene、资源和 ToolSpec digest。未执行 Tool、未写 SQLite、未创建 revision、未授权动作。Skill 回归 `270 passed`。
+
+The pick-place Skill now exposes `baseline` / `agent_composed` modes. The existing `LongHorizonWorkflow` remains the deterministic replay projection; the new bridge accepts Agent semantic subtasks, compiles a PAOS PlanGraph with a `verify` join, exposes multiple Tool candidates by capability, and delegates evidence, scene, resource, and ToolSpec-digest checks to planning admission. It executes no Tool, writes no SQLite, creates no revision, and grants no motion authority. Skill regression: `270 passed`.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L1-L216`：新增语义子任务编译、双模式切换、动态 Tool 候选与 admission bridge。
+- `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py:L1-L126`：覆盖多实体并行 DAG、verify join、失败路径、Tool 替代和 mode switch。
+- `examples/forge-skills/pick-place-workflow/README.md:L43-L89`、`SKILL.md:L128-L143`、`docs/forge/PLANNING_MODULE_DESIGN.md:L104-L124`：同步动态规划和演化边界。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置、可维护性均通过；旧 reducer 仍为 baseline，Gateway/SQLite/adapter/readiness/Verifier 权威未迁移。未启动 Gateway、Dora、Action、仿真动作或硬件。
+
+Architecture integration, failure paths, authority boundaries, configuration, and maintainability all pass; the legacy reducer remains the baseline and Gateway/SQLite/adapter/readiness/Verifier ownership is unchanged. No Gateway, Dora, Action, simulation motion, or hardware was started.
+
+### Git 提交 / Git Commit
+
+- Commit: `f6d1b7d`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.5.4] - 2026-09-05
 
 新增 PAOS 纯规划模块 `PhyAgentOS/planning`，引入任务级语义 PlanGraph、动态 Tool admission、节点结算、传递重规划、DecisionTrace 和 review-gated WorkflowPolicyCandidate；不接管 Gateway、SQLite、动作执行或物理真值。PlanRevision/ToolExecutionRecord 增加可选但全量校验的 DAG/node binding。设计基准见 `docs/forge/PLANNING_MODULE_DESIGN.md`，开发者指南同步说明 Skill WorkflowDag 仅为 baseline projection。

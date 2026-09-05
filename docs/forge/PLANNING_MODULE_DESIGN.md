@@ -110,6 +110,12 @@ identity while the PAOS coordinator owns the new revision and retry budget.
 4. Record DecisionTrace and derive reviewed policy candidates.
 5. Promote only reviewed, independently evaluated Skill policy versions.
 
+The pick-place Skill exposes these modes explicitly: `baseline` uses the legacy
+fixed Tool projection for compatibility/replay; `agent_composed` compiles
+Agent-provided semantic subtasks into `PlanGraph` and uses dynamic Tool
+candidate admission. The Skill bridge is an adapter over the planning library,
+not a second planner runtime.
+
 ## Review gates
 
 Every change to this module is reviewed across architecture integration,
