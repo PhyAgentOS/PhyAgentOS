@@ -543,10 +543,17 @@ def _validate_request_policies(
 ) -> dict[str, Any]:
     joint = _load_json_artifact(root, request["joint_limits_ref"])
     stop = _load_json_artifact(root, request["stop_policy_ref"])
-    if set(joint) != {
+    if set(joint) not in (
+        {
         "schema_version", "planner_profile", "joint_count",
         "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
-    } or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v1":
+        },
+        {
+            "schema_version", "planner_profile", "joint_count",
+            "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
+            "execution_velocity_scale",
+        },
+    ) or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v1":
         raise SimulationProbeError("joint-limit policy fields are invalid")
     max_joint_speed = joint["max_joint_speed_radps"]
     if (
@@ -577,6 +584,14 @@ def _validate_request_policies(
         or retiming["max_samples"] < 2
     ):
         raise SimulationProbeError("trajectory retiming policy values are invalid")
+    execution_velocity_scale = joint.get("execution_velocity_scale", 1.0)
+    if (
+        isinstance(execution_velocity_scale, bool)
+        or not isinstance(execution_velocity_scale, (int, float))
+        or not math.isfinite(float(execution_velocity_scale))
+        or not 0 < float(execution_velocity_scale) <= 1
+    ):
+        raise SimulationProbeError("execution velocity scale is invalid")
     if set(stop) != {
         "schema_version", "max_duration_s", "stop_file_required",
         "poll_each_step", "failure_recovery",
@@ -613,6 +628,7 @@ def _validate_request_policies(
             "sha256": _sha_bytes(_artifact_path(root, request["stop_policy_ref"]).read_bytes()),
         },
         "max_joint_speed_radps": float(max_joint_speed),
+        "execution_velocity_scale": float(execution_velocity_scale),
         "trajectory_retiming": dict(retiming),
     }
 
@@ -741,11 +757,20 @@ def _execute_segment(
     contacts: list[dict[str, Any]],
     execution_state: dict[str, Any],
     max_linear_speed_mps: float,
+    execution_velocity_scale: float = 1.0,
 ) -> None:
     import numpy as np
 
     positions = result["position"]
     velocities = result["velocity"]
+    if (
+        isinstance(execution_velocity_scale, bool)
+        or not isinstance(execution_velocity_scale, (int, float))
+        or not math.isfinite(float(execution_velocity_scale))
+        or not 0 < float(execution_velocity_scale) <= 1
+    ):
+        raise SimulationProbeError("execution velocity scale is invalid")
+    velocities = np.asarray(velocities, dtype=np.float64) * float(execution_velocity_scale)
     ee = task.robot.get_left_ee_pose if arm == "left" else task.robot.get_right_ee_pose
     timestep = float(task.scene.get_timestep())
     if not math.isfinite(timestep) or timestep <= 0:
@@ -760,15 +785,22 @@ def _execute_segment(
         execution_state["world_change_started"] = True
         execution_state["phase"] = phase
         task.scene.step()
+        execution_state["simulator_steps"] += 1
         current_position = np.asarray(ee()[:3], dtype=np.float64)
         linear_speed = float(np.linalg.norm(current_position - previous_position) / timestep)
         if not math.isfinite(linear_speed) or linear_speed > max_linear_speed_mps + 1e-3:
+            execution_state["linear_speed_violation"] = {
+                "phase": phase,
+                "step": execution_state["simulator_steps"],
+                "observed_mps": linear_speed,
+                "limit_mps": float(max_linear_speed_mps),
+                "execution_velocity_scale": float(execution_velocity_scale),
+            }
             raise SimulationProbeError("simulator motion exceeds waypoint linear-speed limit")
         execution_state["max_observed_linear_speed_mps"] = max(
             execution_state.get("max_observed_linear_speed_mps", 0.0), linear_speed
         )
         previous_position = current_position
-        execution_state["simulator_steps"] += 1
         contacts.extend(
             _contact_state(
                 task,
@@ -914,6 +946,7 @@ def _run_candidate(
                 contacts=contact_trace,
                 execution_state=execution_state,
                 max_linear_speed_mps=float(route_waypoint["max_linear_speed_mps"]),
+                execution_velocity_scale=float(policies["execution_velocity_scale"]),
             )
         _set_gripper(
             task,
@@ -1070,6 +1103,7 @@ def _recover_candidate_failure(
             "error_detail": str(error),
             "failed_phase": execution_state["phase"],
             "simulator_steps": execution_state["simulator_steps"],
+            "linear_speed_violation": execution_state.get("linear_speed_violation"),
             "arm_selection_attempts": execution_state.get("arm_selection_attempts", []),
             "contact_trace": execution_state.get("contact_trace", []),
             "planner_detach_status": detach_status,

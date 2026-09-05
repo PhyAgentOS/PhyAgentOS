@@ -1024,3 +1024,42 @@ The next gate is to diagnose and regenerate a fresh, policy-compliant route
 artifact (new request and digest), then obtain a new human simulation-only
 approval before another probe. Gateway/Dora/Action wiring and hardware remain
 blocked.
+
+## 32.7 Contact-phase speed diagnosis and v7 route (2026-09-05)
+
+The v6 negative result is caused by a mismatch between the two velocity gates:
+the existing `uniform_time_dilation` retiming constrains Curobo joint samples,
+but SAPIEN executes those samples through drive targets and the worker measures
+actual end-effector displacement after each `0.004 s` scene step. A route can
+therefore satisfy the `1.0 rad/s` joint policy while its Cartesian end-effector
+motion exceeds the independent `0.20 m/s` route limit. The failure artifact
+records this at `failed_phase=contact` after `834` simulator steps; it is not
+evidence that the linear-speed limit is too strict and must not be bypassed.
+
+The adapter fix is profile-owned execution velocity scaling. The materialized
+joint-limit policy now carries `execution_velocity_scale=0.25`; the worker
+scales only the drive target velocity before stepping, keeps the immutable
+`max_linear_speed_mps=0.20` check, and records any measured violation with phase,
+step, observed speed, limit, and scale. Route materialization validates this
+field as a bounded `(0,1]` value. Joint limits, workspace bounds, simulator
+timestep, and motion authority are unchanged.
+
+The worker increments `simulator_steps` immediately after each `scene.step()`.
+Consequently, a step that triggers a speed violation is included in the
+failure evidence instead of being under-counted; the violation record reports
+the one-based executed-step count. This is evidence bookkeeping only and does
+not weaken the fail-closed gate.
+
+A fresh v7 route was materialized without modifying v6:
+
+- artifact root: `/home/yanxu/robotwin20-route-inputs-20260905T234000Z/`;
+- request id: `franka-blocks-green1-candidate1-20260905-v7-scaled`;
+- route digest: `a623f0bc08c36b40f3abf44455ddc652a136c6e09bd672d5375b0f8b6034baa9`;
+- source manifest digest: `375bf7019651b6bb00acd1a694721e6f28fd22e0eeca3e89bcdd0c82a132b4b0`;
+- status: `pending_human_review`, `motion_authorized=false`.
+
+The v7 package has not been approved or executed. The next gate is a fresh
+simulation-only approval for these new digests, followed by one single-use
+probe. A passing probe must still demonstrate attached-object collision, lift,
+complete transport/descent/release/retreat, contact dynamics, and semantic
+before/after evidence before any Action/Gateway/Dora discussion.

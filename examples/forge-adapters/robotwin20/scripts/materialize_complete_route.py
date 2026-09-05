@@ -101,6 +101,15 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
         "descent_clearance_m", "retreat_distance_m", "retreat_direction",
     }:
         raise MaterializationError("route input route policy fields are invalid")
+    joint_policy = value["joint_limit_policy"]
+    if not isinstance(joint_policy, Mapping) or set(joint_policy) != {
+        "schema_version", "planner_profile", "joint_count", "require_runtime_position_limits",
+        "max_joint_speed_radps", "trajectory_retiming", "execution_velocity_scale",
+    }:
+        raise MaterializationError("route input joint-limit policy fields are invalid")
+    scale = joint_policy["execution_velocity_scale"]
+    if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not 0 < float(scale) <= 1:
+        raise MaterializationError("route input execution velocity scale is invalid")
     tolerance = value["semantic_tolerance"]
     if not isinstance(tolerance, Mapping) or set(tolerance) != {"target_position_m", "target_orientation_rad"}:
         raise MaterializationError("route input semantic tolerance is invalid")

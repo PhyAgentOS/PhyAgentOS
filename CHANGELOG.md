@@ -2,6 +2,29 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.7.9] - 2026-09-06
+
+修正 independent simulation probe 的已执行步数 evidence 低报：`scene.step()` 后立即计入 `simulator_steps`，并新增命令级 execution velocity scale、线速度违规和 failure artifact 回归。全量组合回归 `716 passed, 1 skipped`；Ruff、compileall、`git diff --check` 通过。v7 route 仍等待新的 simulation-only approval，未启动 probe、Gateway、Dora、Action 或硬件。
+
+Corrected under-counted executed-step evidence in the independent simulation probe by incrementing `simulator_steps` immediately after `scene.step()`, and added command-level execution-velocity-scale, linear-speed-violation, and failure-artifact regressions. Full combined regression: `716 passed, 1 skipped`; Ruff, compileall, and `git diff --check` pass. The v7 route still awaits fresh simulation-only approval; no probe, Gateway, Dora, Action, or hardware was started.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py:L779-L799`：修正 failure step 计数，保持 `0.20 m/s` gate 不变。
+- `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py:L263-L297,L357-L468,L470-L535`：覆盖非法 scale、命令缩放、违规字段和 artifact 持久化。
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L1047-L1051`、`docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L1063-L1066`：记录证据计数边界。
+
+### 五维验收 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置和可维护性均通过；该修复仅限 adapter-owned simulation probe evidence，不授予生产动作权威。
+
+Architecture integration, failure paths, authority boundaries, configuration, and maintainability pass; the fix is limited to adapter-owned simulation-probe evidence and grants no production motion authority.
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.7.7] - 2026-09-05
 
 回写 v5.7.6 simulation-only probe 记录的提交哈希 `d5aa0de`；无实现、证据或安全边界变化。

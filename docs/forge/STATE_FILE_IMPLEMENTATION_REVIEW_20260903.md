@@ -1043,3 +1043,34 @@ contact-dynamics success, and semantic placement remain unproven. The next
 implementation step is to diagnose and regenerate a policy-compliant route
 under a new request/digest, obtain a new simulation-only approval, and rerun the
 probe. Action/Gateway/Dora wiring remains blocked.
+
+## 32.7 Contact-phase speed diagnosis and v7 route (2026-09-05)
+
+The v6 failure is a two-layer velocity mismatch. `uniform_time_dilation` checks
+Curobo joint samples, while SAPIEN applies those samples through drive targets;
+the worker then measures actual end-effector displacement at each `0.004 s`
+scene step. Joint speed can therefore pass while Cartesian end-effector speed
+exceeds the immutable `0.20 m/s` route limit. The failure occurred in
+`contact` after `834` simulator steps. This is not a reason to relax the limit.
+
+The adapter now carries a profile-owned `execution_velocity_scale=0.25` in the
+materialized joint-limit policy. The worker scales only the commanded drive
+velocity, keeps the existing measured linear-speed gate, and records phase,
+step, observed speed, limit, and scale in failure evidence. Route materialization
+validates the scale as a finite value in `(0,1]`; joint limits, workspace,
+timestep, and motion authority remain unchanged.
+
+The worker increments `simulator_steps` immediately after each `scene.step()`;
+therefore the step that triggers a speed violation is included in failure
+evidence and is reported with a one-based executed-step count. This corrects
+evidence accounting only and does not relax the linear-speed gate.
+
+A fresh v7 route was materialized under
+`/home/yanxu/robotwin20-route-inputs-20260905T234000Z/` with request id
+`franka-blocks-green1-candidate1-20260905-v7-scaled`, route digest
+`a623f0bc08c36b40f3abf44455ddc652a136c6e09bd672d5375b0f8b6034baa9`, and source
+manifest digest
+`375bf7019651b6bb00acd1a694721e6f28fd22e0eeca3e89bcdd0c82a132b4b0`.
+It remains `pending_human_review` with `motion_authorized=false`; the consumed
+v3 approval is not reused. A new approval is required before the next
+single-use simulation probe.
