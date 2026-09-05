@@ -955,20 +955,28 @@ Gateway 或 assignment projection 当作真实 readiness/动作证据。实现�
   semantics share one coordinator path, and redacted trace references enter the
   existing Experience outcome projection.
 
-### Remaining documented work
+### 状态纠正 / Status correction
 
-Live Gateway ToolSpec-to-`ToolSpecPolicy` projection is complete. AgentLoop
-production dispatch now has a read-only `AgentComposedDispatch` bridge and
-`forge_plan_activate`/`forge_plan_ready` tools; Experience now persists
-planning policy candidates and independent replay receipts with explicit review
-and callback-gated promotion. These additions still do not execute motion or
-mutate the active task. Real Gateway/Dora/Action motion and benchmark evidence
-remain separate gates.
+本节为历史验收记录。以下三项已在后续 v5.7.0/v5.7.1 完成，不再是当前未完成项：
+
+- live Gateway ToolSpec → `ToolSpecPolicy` projection；
+- AgentLoop 只读 `AgentComposedDispatch`、`forge_plan_activate` 和 `forge_plan_ready`；
+- Experience planning policy candidate、独立 replay、人工审核和 callback-gated promotion。
+
+这些功能仍不执行动作、不改变活动任务。当前有效门禁是独立 readiness/simulation evidence、完整路线证据和人工审核；真实 Gateway/Dora/Action motion 与 benchmark evidence 仍是单独后置阶段。
+
+This section is a historical acceptance record. The three items below were completed in subsequent v5.7.0/v5.7.1 and are no longer outstanding:
+
+- live Gateway ToolSpec to `ToolSpecPolicy` projection;
+- the read-only AgentLoop `AgentComposedDispatch`, `forge_plan_activate`, and `forge_plan_ready` bridge;
+- Experience planning policy candidates, independent replay, human review, and callback-gated promotion.
+
+These features still do not execute motion or mutate the active task. The current effective gate is independent readiness/simulation evidence, complete-route evidence, and human review; real Gateway/Dora/Action motion and benchmark evidence remain separately deferred.
 
 ### Validation
 
-The planning and coordinator integration suite passed `15 tests`; the combined
-core plus pick-place Skill regression passed `457 tests`, and the RoboTwin
-adapter suite passed `233 tests` with one skip. Ruff, compileall, and
-`git diff --check` passed. No Gateway, Dora, Action, simulation motion, or
-hardware execution was started.
+The historical planning and coordinator integration suite passed `15 tests`;
+the later v5.7.0 dispatch/Experience closeout raised the combined regression
+to `708 passed, 1 skipped`, with Ruff, compileall, and `git diff --check`
+passing. No Gateway, Dora, Action, simulation motion, or hardware execution
+was started.

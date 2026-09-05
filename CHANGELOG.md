@@ -2,6 +2,29 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.7.3] - 2026-09-05
+
+修正规划模块历史验收章节的状态漂移，并新增 no-motion 全链路接入验收：PlanGraph 持久化、AgentLoop dispatch、动态 Tool admission、失败结算、重规划以及 Experience replay/审核/promotion 均得到验证。组合回归 `709 passed, 1 skipped`；未调用 Gateway、Dora 或硬件。
+
+Corrected stale planning-module historical status and added a no-motion end-to-end integration acceptance covering PlanGraph persistence, AgentLoop dispatch, dynamic Tool admission, failed settlement, replanning, and Experience replay/review/promotion. Combined regression: `709 passed, 1 skipped`; no Gateway, Dora, or hardware was called.
+
+### 文件变更详情 / Detailed changes
+
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L958-L986`：将历史 32.5 节的过时待办改为已完成状态，保留真实 readiness/simulation evidence 为当前门禁。
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L966-L968`：增加历史状态说明和当前下一步边界。
+- `tests/test_planning_end_to_end.py:L1-L246`：新增 no-motion 规划集成验收，覆盖 Coordinator、dispatch、admission、settlement、replan 和 Experience promotion。
+
+### 五维验收 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置 provenance、可维护性均通过；测试使用独立 no-motion 夹具，不构成真实运动或 readiness 证据。
+
+Architecture integration, failure paths, authority boundaries, configuration/provenance, and maintainability all pass; the test uses an isolated no-motion fixture and is not evidence of real motion or readiness.
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.7.1] - 2026-09-05
 
 规划模块最终收口审查通过：未发现 Blocker/Major；全量组合回归 `708 passed, 1 skipped`，核心/Skill/adapter 回归 `205 passed`，Ruff、compileall、`git diff --check` 通过。真实 Gateway/Dora/Action、仿真运动和 benchmark evidence 仍按 PAOS 门禁后置。

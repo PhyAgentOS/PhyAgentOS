@@ -965,6 +965,8 @@ Action、仿真动作或硬件。
 
 ## 32.5 Planning module coordinator integration review (2026-09-05)
 
+> 历史状态说明：本节早期的后续项已由 v5.7.0/v5.7.1 收口；当前有效状态以 `docs/forge/PLANNING_MODULE_DESIGN.md` 的 Implementation status 和最新五维验收为准。下一步是先获取独立 readiness/simulation evidence 并完成人工审核，再讨论受控 simulation motion。 Historical note: the early follow-up items in this section were closed by v5.7.0/v5.7.1; use the current implementation status and latest five-dimension review as authoritative. The next gate is independent readiness/simulation evidence and human review before controlled simulation motion.
+
 The planning-module documentation review identified and closed the lifecycle
 integration gap without turning planning into a second runtime. `PlanGraph` is
 now accepted only as a concrete, identity-bound input with an `artifact://`
