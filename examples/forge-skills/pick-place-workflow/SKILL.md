@@ -141,3 +141,10 @@ performs PAOS evidence, scene, capability, resource, and ToolSpec checks before
 the caller invokes the normal AgentTask/ForgeToolClient path. This bridge does
 not execute Tools, create revisions, hold leases, or authorize motion. The
 `baseline` reducer remains available for deterministic replay.
+
+When running through AgentLoop, activate a persisted agent-composed revision
+with `forge_plan_activate`, then call `forge_plan_ready` before selecting a
+Forge Tool. The AgentLoop registry guard rechecks the selected Tool's planning
+projection and node binding; a missing or stale binding is returned as a
+structured admission error. This bridge is read-only and does not replace the
+Coordinator/Gateway execution or reconciliation path.

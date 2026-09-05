@@ -71,6 +71,11 @@ candidates matching a node capability and delegates admission to
 `agent_composed` mode. The existing `LongHorizonWorkflow` remains the explicit
 `baseline` mode for deterministic replay and backward compatibility.
 
+AgentLoop integration uses `forge_plan_activate` to bind the current persisted
+PlanGraph and `forge_plan_ready` to inspect ready nodes. A registry guard then
+performs pure admission before task-bound Forge Query/Action/Session creation;
+execution and cancellation still go through the existing Coordinator/Gateway.
+
 The Agent may change subtask order, independent-arm assignments, optional
 Queries, and Tool choice through a new plan/revision. It may not change adapter
 workspace/limits/transforms, readiness, collision/stop rules, Gateway authority,

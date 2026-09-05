@@ -25,7 +25,7 @@ Session/Policy routes outside the governed Tool API.
 
 RoboTwin 2.0 is an independent simulation/benchmark runtime at the end of the physical execution
 plane. It is not a PAOS provider and it does not define Skill business semantics. PAOS v1.0 still uses an
-independent generic capability runtime. The single `pick-place-workflow` Skill describes the complete six-Tool
+independent generic capability runtime. The single `pick-place-workflow` Skill describes the complete seven-Tool
 workflow and publishes only provider-neutral ToolSpecs and workflow guidance. The EnvironmentAdapter/profile
 owns RoboTwin tasks, SAPIEN, embodiment, benchmark, and vendor-SDK parameters. Dora profiles and locked Node
 artifacts only wire that runtime into the governed Tool API. Simulation actor/entity truth, segmentation, object

@@ -17,6 +17,7 @@ from PhyAgentOS.agent.experience.contracts import (
     TaskEpisode,
     utc_now,
 )
+from PhyAgentOS.planning import WorkflowPolicyCandidate, WorkflowPolicyReplayReceipt
 
 
 class ExperienceStore:
@@ -121,6 +122,25 @@ class ExperienceStore:
                     record_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS workflow_policy_candidates (
+                    candidate_id TEXT PRIMARY KEY,
+                    base_policy_digest TEXT NOT NULL,
+                    proposed_policy_digest TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    record_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS workflow_candidates_status_idx
+                    ON workflow_policy_candidates(status, updated_at);
+                CREATE TABLE IF NOT EXISTS policy_replay_receipts (
+                    replay_id TEXT PRIMARY KEY,
+                    candidate_id TEXT NOT NULL,
+                    source_episode_id TEXT NOT NULL,
+                    record_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS policy_replays_candidate_idx
+                    ON policy_replay_receipts(candidate_id, created_at);
                 CREATE INDEX IF NOT EXISTS candidates_status_idx
                     ON skill_candidates(status, updated_at);
                 CREATE TABLE IF NOT EXISTS evolution_events (
@@ -743,6 +763,144 @@ class ExperienceStore:
                 "SELECT record_json FROM skill_candidates" + where + " ORDER BY updated_at DESC"
             ).fetchall()
         return [SkillCandidate.model_validate_json(row["record_json"]) for row in rows]
+
+    def upsert_workflow_policy_candidate(
+        self, candidate: WorkflowPolicyCandidate
+    ) -> WorkflowPolicyCandidate:
+        """Persist a planning candidate while preserving immutable identity fields."""
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT record_json FROM workflow_policy_candidates WHERE candidate_id = ?",
+                (candidate.candidate_id,),
+            ).fetchone()
+            event = "workflow_policy_candidate_created"
+            if row:
+                current = WorkflowPolicyCandidate.model_validate_json(row["record_json"])
+                for field in ("base_policy_digest", "proposed_policy_digest"):
+                    if getattr(current, field) != getattr(candidate, field):
+                        raise ValueError("workflow policy candidate identity is immutable")
+                if current.status in {"approved", "promoted", "rejected"}:
+                    connection.rollback()
+                    return current
+                candidate = current.model_copy(
+                    update={
+                        "source_episode_ids": tuple(
+                            dict.fromkeys(current.source_episode_ids + candidate.source_episode_ids)
+                        ),
+                        "verification_receipts": tuple(
+                            dict.fromkeys(current.verification_receipts + candidate.verification_receipts)
+                        ),
+                        "change_summary": candidate.change_summary,
+                    }
+                )
+                event = "workflow_policy_candidate_supported"
+            connection.execute(
+                "INSERT INTO workflow_policy_candidates "
+                "(candidate_id, base_policy_digest, proposed_policy_digest, status, record_json, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(candidate_id) DO UPDATE SET "
+                "status=excluded.status, record_json=excluded.record_json, updated_at=excluded.updated_at",
+                (
+                    candidate.candidate_id,
+                    candidate.base_policy_digest,
+                    candidate.proposed_policy_digest,
+                    candidate.status,
+                    candidate.model_dump_json(),
+                    (candidate.reviewed_at or candidate.created_at).isoformat(),
+                ),
+            )
+            self._event(
+                connection,
+                event,
+                candidate.candidate_id,
+                {"support_count": len(candidate.source_episode_ids)},
+            )
+            connection.commit()
+        return candidate
+
+    def get_workflow_policy_candidate(self, candidate_id: str) -> WorkflowPolicyCandidate | None:
+        with self._lock, self._connection() as connection:
+            row = connection.execute(
+                "SELECT record_json FROM workflow_policy_candidates WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+        return WorkflowPolicyCandidate.model_validate_json(row["record_json"]) if row else None
+
+    def list_workflow_policy_candidates(
+        self, *, status: str | None = None
+    ) -> list[WorkflowPolicyCandidate]:
+        where = " WHERE status = ?" if status is not None else ""
+        args = (status,) if status is not None else ()
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT record_json FROM workflow_policy_candidates" + where + " ORDER BY updated_at DESC",
+                args,
+            ).fetchall()
+        return [WorkflowPolicyCandidate.model_validate_json(row["record_json"]) for row in rows]
+
+    def update_workflow_policy_candidate(
+        self, candidate: WorkflowPolicyCandidate, *, event_type: str
+    ) -> None:
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            changed = connection.execute(
+                "UPDATE workflow_policy_candidates SET status = ?, record_json = ?, updated_at = ? "
+                "WHERE candidate_id = ?",
+                (
+                    candidate.status,
+                    candidate.model_dump_json(),
+                    (candidate.reviewed_at or candidate.created_at).isoformat(),
+                    candidate.candidate_id,
+                ),
+            ).rowcount
+            if not changed:
+                raise ValueError("workflow policy candidate does not exist")
+            self._event(connection, event_type, candidate.candidate_id, {})
+            connection.commit()
+
+    def add_policy_replay_receipt(self, receipt: WorkflowPolicyReplayReceipt) -> None:
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            candidate = connection.execute(
+                "SELECT 1 FROM workflow_policy_candidates WHERE candidate_id = ?",
+                (receipt.candidate_id,),
+            ).fetchone()
+            if candidate is None:
+                raise ValueError("policy replay references an unknown candidate")
+            existing = connection.execute(
+                "SELECT record_json FROM policy_replay_receipts WHERE replay_id = ?",
+                (receipt.replay_id,),
+            ).fetchone()
+            if existing is not None:
+                current = WorkflowPolicyReplayReceipt.model_validate_json(existing["record_json"])
+                if current != receipt:
+                    raise ValueError("policy replay identity is immutable")
+                connection.rollback()
+                return
+            connection.execute(
+                "INSERT INTO policy_replay_receipts "
+                "(replay_id, candidate_id, source_episode_id, record_json, created_at) VALUES (?, ?, ?, ?, ?)",
+                (
+                    receipt.replay_id,
+                    receipt.candidate_id,
+                    receipt.source_episode_id,
+                    receipt.model_dump_json(),
+                    receipt.created_at.isoformat(),
+                ),
+            )
+            self._event(connection, "workflow_policy_replay_recorded", receipt.candidate_id, {
+                "replay_id": receipt.replay_id,
+                "verdict": receipt.verdict,
+            })
+            connection.commit()
+
+    def list_policy_replay_receipts(self, candidate_id: str) -> list[WorkflowPolicyReplayReceipt]:
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT record_json FROM policy_replay_receipts WHERE candidate_id = ? ORDER BY created_at",
+                (candidate_id,),
+            ).fetchall()
+        return [WorkflowPolicyReplayReceipt.model_validate_json(row["record_json"]) for row in rows]
 
     def record_event(
         self, event_type: str, subject_id: str, payload: dict[str, Any] | None = None

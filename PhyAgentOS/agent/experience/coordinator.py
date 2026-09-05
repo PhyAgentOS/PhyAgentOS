@@ -22,12 +22,14 @@ from PhyAgentOS.agent.experience.contracts import (
     utc_now,
 )
 from PhyAgentOS.agent.experience.evolution import SkillEvolutionError, SkillEvolutionManager
+from PhyAgentOS.agent.experience.policy_candidates import WorkflowPolicyCandidateManager
 from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.experience.source import (
     AgentTaskOutcomeSource,
     ForgeTaskOutcomeSource,
 )
 from PhyAgentOS.agent.experience.store import ExperienceStore
+from PhyAgentOS.planning import WorkflowPolicyCandidate, WorkflowPolicyReplayReceipt
 
 
 class ExperienceCoordinator:
@@ -44,6 +46,8 @@ class ExperienceCoordinator:
         min_lesson_episodes: int = 3,
         max_lessons_per_skill: int = 8,
         max_calls: int = 20,
+        min_policy_candidate_episodes: int = 3,
+        policy_promotion_callback=None,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.store = ExperienceStore(self.workspace)
@@ -60,6 +64,11 @@ class ExperienceCoordinator:
             store=self.store,
             min_successful_episodes=min_successful_episodes,
             min_lesson_episodes=min_lesson_episodes,
+        )
+        self.policy_candidates = WorkflowPolicyCandidateManager(
+            self.store,
+            min_support_episodes=min_policy_candidate_episodes,
+            promotion_callback=policy_promotion_callback,
         )
         if task_coordinator is not None:
             self.outcome_source = AgentTaskOutcomeSource(task_coordinator)
@@ -138,6 +147,29 @@ class ExperienceCoordinator:
                 type(exc).__name__,
             )
             return "[]"
+
+    def submit_workflow_policy_candidate(
+        self, candidate: WorkflowPolicyCandidate
+    ) -> WorkflowPolicyCandidate:
+        """Persist an explicitly constructed planning-policy candidate."""
+        return self.policy_candidates.submit(candidate)
+
+    def record_workflow_policy_replay(
+        self, receipt: WorkflowPolicyReplayReceipt
+    ) -> WorkflowPolicyCandidate:
+        return self.policy_candidates.record_replay(receipt)
+
+    def review_workflow_policy_candidate(
+        self, candidate_id: str, *, approved: bool, reviewer_id: str
+    ) -> WorkflowPolicyCandidate:
+        return self.policy_candidates.review(
+            candidate_id, approved=approved, reviewer_id=reviewer_id
+        )
+
+    def promote_workflow_policy_candidate(
+        self, candidate_id: str
+    ) -> WorkflowPolicyCandidate:
+        return self.policy_candidates.promote(candidate_id)
 
     def schedule_forge_completion(self, task_ref: str) -> None:
         """Persist an episode synchronously, then schedule reflection without awaiting it."""

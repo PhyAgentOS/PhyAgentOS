@@ -1,5 +1,42 @@
 # Change Log
 
+## v0.10.1 (2026-09-05) - codex
+
+- [policy] [refactor] [completed] Changed the canonical workflow from a linear
+  capability order to a dependency DAG: `scene.observe` enables independent
+  `manipulation.capabilities` and `scene.understand` Queries, and `grasp.propose`
+  joins both results. The reducer exposes all ready Tools and never chooses the
+  Agent's call order.
+- [policy] [refactor] [完成] 将 canonical workflow 从线性能力顺序重构为依赖 DAG：
+  `scene.observe` 后 `manipulation.capabilities` 与 `scene.understand` 独立 ready，
+  `grasp.propose` 汇合两者结果。Reducer 暴露全部 ready Tool，不替 Agent 决定调用顺序。
+
+### Verification
+
+- The DAG/reducer versions are `pick_and_place_semantic_dag_v4` and
+  `pick_and_place_workflow_v5`; the Skill manifest and package are `0.10.1`.
+- The combined core/Skill/adapter regression, static checks, and no-motion boundary
+  review are recorded in the repository changelog; no Gateway, Dora, Action, simulator
+  motion, or hardware was started.
+
+## v0.10.0 (2026-09-06) - codex
+
+- [policy] [feat] [completed] Promoted `manipulation.capabilities` to an explicit
+  no-motion node in the canonical seven-node DAG (`observe -> capabilities ->
+  understand -> propose -> prepare -> acquire -> place`) and required its immutable
+  capability snapshot reference in every downstream step.
+- [policy] [feat] [完成] 将 `manipulation.capabilities` 提升为 canonical 七节点 DAG 中的
+  显式 no-motion 节点（`observe -> capabilities -> understand -> propose -> prepare ->
+  acquire -> place`），并要求所有后续节点保持不可变 capability snapshot 引用。
+
+### Verification
+
+- Combined core/Skill/adapter regression: `670 passed, 1 skipped`.
+- Ruff, compileall, and `git diff --check` pass; no Gateway, Dora, Action, simulator motion,
+  or hardware was started.
+- The DAG and reducer versions are bumped to `pick_and_place_semantic_dag_v2` and
+  `pick_and_place_workflow_v3`; the Skill manifest and package are `0.10.0`.
+
 ## v0.9.0 (2026-09-05) - codex
 
 - [policy] [refactor] [completed] Added an immutable Skill-scoped semantic DAG

@@ -19,12 +19,14 @@ from .contracts import (
     ToolSpecPolicy,
     WorkflowPolicy,
     WorkflowPolicyCandidate,
+    WorkflowPolicyReplayReceipt,
     canonical_sha256,
     plan_graph_digest,
     plan_node_digest,
 )
 from .dag import derive_ready_nodes, evaluate_conditions, invalidate_stale_nodes, validate_graph
 from .policy import validate_policy_edges, workflow_policy_digest
+from .projection import ToolSpecProjectionError, project_tool_spec
 from .replan import build_replan_delta
 from .settlement import settle_node
 from .trace import make_decision_trace
@@ -44,6 +46,7 @@ __all__ = [
     "ToolSpecPolicy",
     "WorkflowPolicy",
     "WorkflowPolicyCandidate",
+    "WorkflowPolicyReplayReceipt",
     "admit_tool_call",
     "build_replan_delta",
     "canonical_sha256",
@@ -56,5 +59,7 @@ __all__ = [
     "validate_graph",
     "validate_policy_edges",
     "workflow_policy_digest",
+    "ToolSpecProjectionError",
+    "project_tool_spec",
     "make_decision_trace",
 ]

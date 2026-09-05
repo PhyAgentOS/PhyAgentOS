@@ -73,7 +73,7 @@ class ActiveTaskStore:
 def _setup(tmp_path, *, failing=()):
     shared_url = "http://127.0.0.1:19020"
     manifests = {
-        "pick-place-workflow": Manifest("pick-place-workflow", "0.9.0", shared_url),
+        "pick-place-workflow": Manifest("pick-place-workflow", "0.10.1", shared_url),
         "scene-alternate": Manifest("scene-alternate", "0.1.0", shared_url),
     }
     catalog = Catalog(*manifests.values())

@@ -137,9 +137,46 @@ through `begin_revision_from_delta`; the planning module still does not mutate
 the store or create revisions itself. Redacted decision-trace references are
 also carried into the experience outcome projection.
 
-Still intentionally pending are automatic conversion of live Gateway ToolSpecs
-into `ToolSpecPolicy`, AgentLoop production dispatch of the `agent_composed`
-bridge, and policy-candidate aggregation/replay/human promotion in Experience.
-Those are separate integration stages; their absence does not weaken the pure
-planning or lifecycle contracts above. No Action/Gateway/Dora motion wiring is
-introduced by this module.
+Live ToolSpecs now have an explicit `planning` extension projection through
+`project_tool_spec()`. The extension is versioned and strict; missing metadata
+does not get guessed from a tool name, endpoint, or implementation, so legacy
+ToolSpecs remain executable but unavailable to `agent_composed` admission.
+Bound Skill metadata carries the immutable projection when present and
+revalidates it on the next binding check. AgentLoop production dispatch is
+provided by a read-only `AgentComposedDispatch` bridge, and Experience stores
+planning policy candidates plus independent replay receipts with explicit
+human-review and callback-gated promotion. No Action/Gateway/Dora motion wiring
+is introduced here.
+
+## ToolSpec projection review (2026-09-05)
+
+The live binding path now projects only an explicit versioned `planning`
+extension through `project_tool_spec()`. The projection preserves the live
+ToolSpec digest and strict planning fields; it never infers a capability from a
+provider endpoint or implementation name. Legacy ToolSpecs without the
+extension remain valid for ordinary execution but are unavailable to
+`agent_composed` admission. If an extension is present but malformed, binding
+fails closed, and a previously bound projection is revalidated on the next
+ToolSpec check. This closes the configuration/provenance gap without creating a
+second Tool registry or execution path.
+
+## AgentLoop dispatch and policy-candidate status (2026-09-05)
+
+`PhyAgentOS.agent.planning_dispatch.AgentComposedDispatch` is the AgentLoop
+bridge for an active task. `forge_plan_activate` builds it from the persisted
+`PlanRevision.plan_graph`, frozen Skill binding, and an injected trusted
+`AdmissionContext` provider. Agent-supplied evidence, settlements, scene
+revisions, and condition facts are not accepted. `forge_plan_ready` exposes only
+the current ready semantic nodes and their explicit ToolSpec projections. A
+registry execution guard checks task-bound Query/Action/Session creation calls
+before the existing Forge wrappers run. Missing providers/projections, stale
+identities, incomplete planning bindings, and unready nodes return a
+structured fail-closed error; status/result/cancel reconciliation remains under
+Coordinator ownership.
+
+Experience now stores `WorkflowPolicyCandidate` and immutable independent
+`WorkflowPolicyReplayReceipt` records in `experience.sqlite3`. Candidates are
+deduplicated by base/proposed policy digests, require support from distinct
+episodes and passing independent replay receipts before human approval, and
+cannot be promoted without an explicit Skill Runtime callback returning an
+`artifact://` receipt. No candidate transition mutates an active AgentTask.

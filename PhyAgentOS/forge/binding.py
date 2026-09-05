@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from PhyAgentOS.planning import ToolSpecPolicy, ToolSpecProjectionError, project_tool_spec
 from PhyAgentOS.skill_runtime.catalog import SkillCatalog
 from PhyAgentOS.verification.contracts import utc_now
 
@@ -27,6 +28,7 @@ class BoundToolSpec(BindingModel):
     semantics: Literal["query", "action", "session"]
     spec_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     ready_at_binding: bool
+    planning_policy: ToolSpecPolicy | None = None
 
 
 class ForgeSkillBindingCandidate(BindingModel):
@@ -126,12 +128,21 @@ class ForgeSkillBindingResolver:
             ready = context.get("ready") is True and context.get("binding_error") is None
             if not ready:
                 raise ForgeSkillBindingError(f"Forge Tool {tool_id!r} is not ready")
+            planning_policy = None
+            if "planning" in spec:
+                try:
+                    planning_policy = project_tool_spec(spec)
+                except ToolSpecProjectionError as exc:
+                    raise ForgeSkillBindingError(
+                        f"Forge ToolSpec {tool_id!r} has invalid planning projection"
+                    ) from exc
             tools.append(
                 BoundToolSpec(
                     tool_id=tool_id,
                     semantics=semantics,
                     spec_sha256=canonical_sha256(spec),
                     ready_at_binding=True,
+                    planning_policy=planning_policy,
                 )
             )
         manifest_path = manifest.bundle_root / "skill.yaml"
@@ -205,6 +216,17 @@ class ForgeSkillBindingResolver:
             raise ForgeSkillBindingError(
                 f"Forge ToolSpec {tool_id!r} changed after AgentTask binding"
             )
+        if bound.planning_policy is not None:
+            try:
+                current_policy = project_tool_spec(spec)
+            except ToolSpecProjectionError as exc:
+                raise ForgeSkillBindingError(
+                    f"Forge ToolSpec {tool_id!r} planning projection is no longer valid"
+                ) from exc
+            if current_policy != bound.planning_policy:
+                raise ForgeSkillBindingError(
+                    f"Forge ToolSpec {tool_id!r} planning projection changed after binding"
+                )
         context = _response_data(
             await runtime.client.get_tool_context(tool_id), f"Tool context {tool_id!r}"
         )

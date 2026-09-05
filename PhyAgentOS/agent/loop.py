@@ -35,10 +35,12 @@ from PhyAgentOS.providers.providers_manager import ProvidersManager
 from PhyAgentOS.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
+    from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
     from PhyAgentOS.config.schema import AgentEvolutionConfig, ChannelsConfig, ExecToolConfig
     from PhyAgentOS.cron.service import CronService
     from PhyAgentOS.forge.task import AgentTaskCoordinator
     from PhyAgentOS.forge.tool_client import ForgeToolClient
+    from PhyAgentOS.planning import AdmissionContext
 
 
 class AgentLoop:
@@ -79,6 +81,8 @@ class AgentLoop:
         evolution_config: AgentEvolutionConfig | None = None,
         evolution_provider: LLMProvider | None = None,
         evolution_model: str | None = None,
+        planning_dispatch: AgentComposedDispatch | None = None,
+        planning_context_provider: Callable[[str], AdmissionContext] | None = None,
     ):
         from PhyAgentOS.config.schema import ExecToolConfig
         self.bus = bus
@@ -96,6 +100,8 @@ class AgentLoop:
         self.forge_tool_client = forge_tool_client
         self.forge_tool_invocation_ids = forge_tool_invocation_ids
         self.forge_task_coordinator = forge_task_coordinator
+        self._planning_dispatch = planning_dispatch
+        self._planning_context_provider = planning_context_provider
         binding_resolver = (
             forge_task_coordinator.binding_resolver
             if forge_task_coordinator is not None
@@ -223,9 +229,17 @@ class AgentLoop:
         self.tools.register(ActivateSkillTool(self.skill_activation))
         if self.forge_task_coordinator is not None:
             from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
+            from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool
 
             for tool in build_forge_task_tools(self.forge_task_coordinator):
                 self.tools.register(tool)
+            self.tools.register(
+                ForgePlanActivateTool(
+                    self.forge_task_coordinator,
+                    self.set_planning_dispatch,
+                    self._planning_context_provider,
+                )
+            )
         if self.forge_tool_client is not None:
             from PhyAgentOS.agent.tools.forge_tool_api import build_forge_tool_api_tools
 
@@ -235,6 +249,62 @@ class AgentLoop:
                 coordinator=self.forge_task_coordinator,
             ):
                 self.tools.register(tool)
+        if self._planning_dispatch is not None:
+            from PhyAgentOS.agent.tools.planning import ForgePlanReadyTool
+
+            self.tools.register(ForgePlanReadyTool(self._planning_dispatch))
+            self.tools.set_execution_guard(self._planning_guard)
+
+    def set_planning_dispatch(self, dispatch: AgentComposedDispatch | None) -> None:
+        """Attach or detach an agent-composed planning bridge at runtime.
+
+        This changes only the AgentLoop adapter surface.  It does not create a
+        task, mutate a PlanRevision, or execute a Gateway call.
+        """
+        self._planning_dispatch = dispatch
+        self.tools.unregister("forge_plan_ready")
+        self.tools.set_execution_guard(self._planning_guard if dispatch is not None else None)
+        if dispatch is not None:
+            from PhyAgentOS.agent.tools.planning import ForgePlanReadyTool
+
+            self.tools.register(ForgePlanReadyTool(dispatch))
+
+    def _planning_guard(self, name: str, arguments: dict) -> str | None:
+        if self._planning_dispatch is None:
+            return None
+        try:
+            decision = self._planning_dispatch.admit_forge_tool(name, arguments)
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": {
+                        "type": "planning_admission",
+                        "code": "context_unavailable",
+                        "detail": str(exc),
+                        "motion_authorized": False,
+                    },
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        if decision is None or decision.allowed:
+            return None
+        return json.dumps(
+            {
+                "ok": False,
+                "error": {
+                    "type": "planning_admission",
+                    "code": decision.code,
+                    "detail": decision.detail,
+                    "node_id": decision.node_id,
+                    "tool_id": decision.tool_id,
+                    "motion_authorized": False,
+                },
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""

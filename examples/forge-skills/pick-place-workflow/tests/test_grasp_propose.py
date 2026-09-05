@@ -261,8 +261,8 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     package_text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
         encoding="utf-8"
     )
-    assert bundle_manifest["version"] == "0.9.0"
-    assert 'version = "0.9.0"' in package_text
+    assert bundle_manifest["version"] == "0.10.1"
+    assert 'version = "0.10.1"' in package_text
 
 
 @pytest.mark.asyncio

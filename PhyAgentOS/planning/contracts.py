@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -332,19 +332,76 @@ class WorkflowPolicyCandidate(_Frozen):
     base_policy_digest: str = Field(pattern=_DIGEST)
     proposed_policy_digest: str = Field(pattern=_DIGEST)
     source_episode_ids: tuple[str, ...] = Field(min_length=1)
-    verification_receipts: tuple[str, ...] = Field(min_length=1)
+    verification_receipts: tuple[str, ...] = ()
     status: Literal["pending_review", "rejected", "approved", "promoted"] = "pending_review"
     change_summary: str = Field(min_length=1)
+    reviewer_id: str | None = None
+    reviewed_at: datetime | None = None
+    promotion_ref: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("candidate_id")
     @classmethod
     def candidate_identity(cls, value: str) -> str:
         return _identity(value, "policy candidate identity")
 
+    @field_validator("source_episode_ids", "verification_receipts")
+    @classmethod
+    def unique_candidate_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if len(values) != len(set(values)):
+            raise ValueError("policy candidate references must be unique")
+        return values
+
+    @field_validator("verification_receipts")
+    @classmethod
+    def candidate_receipt_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not value.startswith("artifact://") for value in values):
+            raise ValueError("policy candidate verification references must be artifact:// references")
+        return values
+
+    @model_validator(mode="after")
+    def review_consistency(self) -> "WorkflowPolicyCandidate":
+        if self.status in {"approved", "promoted"}:
+            if not self.reviewer_id or self.reviewed_at is None:
+                raise ValueError("approved policy candidate requires reviewer identity and timestamp")
+        if self.status == "promoted" and not self.promotion_ref:
+            raise ValueError("promoted policy candidate requires a promotion reference")
+        if self.promotion_ref is not None and not self.promotion_ref.startswith("artifact://"):
+            raise ValueError("promotion_ref must be an artifact:// reference")
+        return self
+
+
+class WorkflowPolicyReplayReceipt(_Frozen):
+    """Independent, immutable evaluation receipt for one policy candidate."""
+
+    schema_version: Literal["paos-workflow-policy-replay/v1"] = "paos-workflow-policy-replay/v1"
+    replay_id: str
+    candidate_id: str
+    base_policy_digest: str = Field(pattern=_DIGEST)
+    proposed_policy_digest: str = Field(pattern=_DIGEST)
+    source_episode_id: str
+    receipt_ref: str
+    verdict: Literal["pass", "fail", "unknown"]
+    independent: bool
+    runner_id: str
+    created_at: datetime
+
+    @field_validator("replay_id", "candidate_id", "source_episode_id", "runner_id")
+    @classmethod
+    def replay_identity(cls, value: str) -> str:
+        return _identity(value, "policy replay identity")
+
+    @field_validator("receipt_ref")
+    @classmethod
+    def replay_reference(cls, value: str) -> str:
+        if not value.startswith("artifact://") or len(value) <= len("artifact://"):
+            raise ValueError("receipt_ref must be an artifact:// reference")
+        return value
+
 
 __all__ = [
     "DecisionTrace", "NodeSettlement", "PlanGraph", "PlanNode", "ReplanDelta",
     "PlanningExecutionBinding", "ResourceClaim", "ToolCallEnvelope", "ToolResultEnvelope",
-    "ToolSpecPolicy", "WorkflowPolicy", "WorkflowPolicyCandidate", "canonical_sha256",
+    "ToolSpecPolicy", "WorkflowPolicy", "WorkflowPolicyCandidate", "WorkflowPolicyReplayReceipt", "canonical_sha256",
     "plan_graph_digest", "plan_node_digest",
 ]

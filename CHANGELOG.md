@@ -2,17 +2,35 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.7.0] - 2026-09-05
+
+规划模块已完成 AgentLoop 的只读 `agent_composed` dispatch bridge 与 Experience 的 review-gated workflow-policy candidate ledger。`forge_plan_activate` 只接受可信 `AdmissionContext` provider，`forge_plan_ready` 暴露 ready semantic nodes；Registry guard 在现有 Forge Query/Action/Session wrapper 前执行 fail-closed admission。候选按 base/proposed policy digest 聚合，必须有独立 replay receipt、不同 episode 支持和人工审核，promotion 还必须由 Skill Runtime callback 返回 `artifact://` receipt。组合回归 `707 passed, 1 skipped`，未启动 Gateway、Dora、Action、仿真动作或硬件。
+
+The planning module now has a read-only `agent_composed` dispatch bridge in AgentLoop and a review-gated workflow-policy candidate ledger in Experience. `forge_plan_activate` accepts only a trusted `AdmissionContext` provider and `forge_plan_ready` exposes ready semantic nodes; the registry guard performs fail-closed admission before existing Forge Query/Action/Session wrappers. Candidates aggregate by base/proposed policy digests and require independent replay receipts, distinct episode support, and human review; promotion additionally requires a Skill Runtime callback returning an `artifact://` receipt. Combined regression: `707 passed, 1 skipped`; no Gateway, Dora, Action, simulation motion, or hardware was started.
+
+### 文件变更详情 / Detailed changes
+
+- `PhyAgentOS/agent/planning_dispatch.py:L1-L244`、`PhyAgentOS/agent/tools/planning.py:L1-L112`：新增只读 AgentLoop dispatch 与可信上下文激活工具。
+- `PhyAgentOS/agent/loop.py:L145-L208,L260-L314`、`PhyAgentOS/agent/tools/registry.py:L17-L79`：接入可选 admission guard，不接管 Tool 执行。
+- `PhyAgentOS/planning/contracts.py:L327-L383`、`PhyAgentOS/agent/experience/{policy_candidates.py,store.py,coordinator.py}`：新增候选/replay 协议、SQLite ledger、审核与 callback-gated promotion。
+- `tests/test_planning_dispatch.py:L1-L170`、`tests/test_workflow_policy_candidates.py:L1-L75`：覆盖 dispatch 和演化门禁。
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.6.0] - 2026-09-05
 
 规划模块已接入 PAOS 任务生命周期边界：`AgentTaskCoordinator` 接收并持久化具体 `PlanGraph` 的 artifact/ref 与 digest；Query、Action、Session 可携带完整规划归因；`ReplanDelta` 通过 coordinator 生成新 revision；DecisionTrace 以脱敏引用进入 Experience outcome。planning 专项 15 passed，组合 core/Skill 回归 457 passed，RoboTwin adapter 233 passed, 1 skipped。未启动 Gateway、Dora、Action、仿真动作或硬件。
 
 The planning module is now connected to PAOS lifecycle boundaries: `AgentTaskCoordinator` accepts and persists concrete `PlanGraph` artifact/ref and digests; Query, Action, and Session calls can carry complete planning attribution; `ReplanDelta` is adapted into a new revision through the coordinator; DecisionTrace enters the Experience outcome as a redacted reference. Focused planning suite: 15 passed; combined core/Skill regression: 457 passed; RoboTwin adapter: 233 passed, 1 skipped. No Gateway, Dora, Action, simulation motion, or hardware was started.
 
-Remaining by design: live ToolSpec-to-policy projection, AgentLoop production dispatch of `agent_composed`, and review-gated Experience policy-candidate aggregation/replay/promotion.
+Remaining by design: real Gateway/Dora/Action motion and benchmark evidence; these are outside the pure planning/Experience integration and remain separately gated.
 
 ### Git 提交 / Git Commit
 
-- Commit: `d40e7dc`
+- Commit: `619c1b2`
 - Branch: `feature/long-horizon-workflow`
 
 ## [v5.5.5] - 2026-09-05

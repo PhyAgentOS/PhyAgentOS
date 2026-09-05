@@ -957,10 +957,13 @@ Gateway 或 assignment projection 当作真实 readiness/动作证据。实现�
 
 ### Remaining documented work
 
-Live Gateway ToolSpec-to-`ToolSpecPolicy` projection, AgentLoop production
-dispatch of `agent_composed`, and Experience policy-candidate aggregation,
-independent replay, human review, and promotion remain separate follow-up
-stages. They are not silently marked complete by this integration.
+Live Gateway ToolSpec-to-`ToolSpecPolicy` projection is complete. AgentLoop
+production dispatch now has a read-only `AgentComposedDispatch` bridge and
+`forge_plan_activate`/`forge_plan_ready` tools; Experience now persists
+planning policy candidates and independent replay receipts with explicit review
+and callback-gated promotion. These additions still do not execute motion or
+mutate the active task. Real Gateway/Dora/Action motion and benchmark evidence
+remain separate gates.
 
 ### Validation
 

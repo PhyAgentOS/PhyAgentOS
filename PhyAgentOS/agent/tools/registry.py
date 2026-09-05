@@ -1,5 +1,7 @@
 """Tool registry for dynamic tool management."""
 
+import inspect
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
@@ -14,6 +16,18 @@ class ToolRegistry:
 
     def __init__(self):
         self._tools: dict[str, Tool] = {}
+        self._execution_guard: Callable[[str, dict[str, Any]], str | None | Awaitable[str | None]] | None = None
+
+    def set_execution_guard(
+        self,
+        guard: Callable[[str, dict[str, Any]], str | None | Awaitable[str | None]] | None,
+    ) -> None:
+        """Install an optional pre-execution guard owned by the caller.
+
+        The registry does not interpret the guard result or persist anything;
+        this keeps planning/admission orthogonal to Tool transport.
+        """
+        self._execution_guard = guard
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
@@ -44,6 +58,12 @@ class ToolRegistry:
             return f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
 
         try:
+            if self._execution_guard is not None:
+                guard_result = self._execution_guard(name, params)
+                if inspect.isawaitable(guard_result):
+                    guard_result = await guard_result
+                if guard_result is not None:
+                    return guard_result
             # Attempt to cast parameters to match schema types
             params = tool.cast_params(params)
 

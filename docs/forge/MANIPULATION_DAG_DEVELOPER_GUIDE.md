@@ -227,8 +227,15 @@ record and projected as a redacted trace reference for Experience. Supplying
 only part of the binding is rejected; legacy calls without planning metadata
 remain supported.
 
-The following are not yet production-wired: conversion of live Gateway
-ToolSpecs into planning projections, AgentLoop dispatch of `agent_composed`,
-and Experience policy-candidate aggregation/replay/promotion. Implement those
-as follow-up integration stages without moving lifecycle or execution ownership
-into `PhyAgentOS.planning`.
+Live Gateway ToolSpecs now expose an explicit, versioned `planning` extension
+that is projected into the immutable `ToolSpecPolicy` carried by a Skill
+binding. Missing planning metadata is not inferred, so legacy ToolSpecs remain
+executable but cannot be selected by `agent_composed` admission. AgentLoop
+dispatch is provided by `AgentComposedDispatch` plus the
+`forge_plan_activate`/`forge_plan_ready` read-only tools. Activation requires
+an injected trusted `AdmissionContext` provider; the Agent cannot submit
+evidence, settlements, scene revisions, or conditions. The registry guard
+checks task-bound Query/Action/Session creation calls before existing Forge
+wrappers execute. Experience policy candidates are persisted with independent
+replay receipts and explicit human-review/promotion transitions. These bridges
+do not move lifecycle or execution ownership into `PhyAgentOS.planning`.

@@ -168,11 +168,12 @@ class PlanRevision(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal["plan_revision_v2"] = "plan_revision_v2"
+    version: Literal["plan_revision_v2", "plan_revision_v3"] = "plan_revision_v3"
     revision_id: str
     number: int = Field(ge=1)
     reason: str = Field(min_length=1)
     skill_binding_id: str | None = None
+    plan_graph: PlanGraph | None = None
     plan_graph_ref: str | None = None
     plan_graph_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     planner_decision_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -199,6 +200,17 @@ class PlanRevision(BaseModel):
             )
         if self.plan_graph_ref is not None and not self.plan_graph_ref.startswith("artifact://"):
             raise ValueError("PlanRevision plan_graph_ref must be an artifact:// reference")
+        if self.plan_graph is not None:
+            if self.plan_graph_ref is None:
+                raise ValueError("PlanRevision plan_graph requires plan_graph_ref")
+            if self.plan_graph.graph_digest != self.plan_graph_digest:
+                raise ValueError("PlanRevision graph digest does not match PlanGraph")
+            if self.plan_graph.revision_id != self.revision_id:
+                raise ValueError("PlanRevision PlanGraph revision identity does not match")
+            if self.plan_graph.planner_decision_digest != self.planner_decision_digest:
+                raise ValueError("PlanRevision planner digest does not match PlanGraph")
+            if self.plan_graph.policy_snapshot_digest != self.policy_snapshot_digest:
+                raise ValueError("PlanRevision policy digest does not match PlanGraph")
         return self
 
 
@@ -724,6 +736,7 @@ class AgentTaskCoordinator:
                 revision_id=revision_id,
                 number=1,
                 reason="initial plan",
+                plan_graph=plan_graph,
                 plan_graph_ref=plan_graph_ref,
                 plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
                 planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
@@ -796,6 +809,7 @@ class AgentTaskCoordinator:
                     revision_id=revision_id,
                     number=1,
                     reason="initial plan",
+                    plan_graph=plan_graph,
                     skill_binding_id=binding.binding_id if binding is not None else None,
                     plan_graph_ref=plan_graph_ref,
                     plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
@@ -863,6 +877,7 @@ class AgentTaskCoordinator:
                 revision_id=revision_id,
                 number=len(current.revisions) + 1,
                 reason=reason.strip(),
+                plan_graph=plan_graph,
                 skill_binding_id=(
                     current.primary_skill_binding.binding_id
                     if current.primary_skill_binding is not None

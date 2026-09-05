@@ -25,7 +25,7 @@ Gateway Session/Policy route。
 
 RoboTwin 2.0 是独立的仿真/benchmark runtime，位于物理执行链末端，不是 PAOS provider，也不定义
 Skill 的业务语义。PAOS v1.0 仍采用独立 generic capability runtime；`pick-place-workflow` 是一个
-完整的六 Tool workflow Skill，只发布 provider-neutral ToolSpec 与工作流。RoboTwin task、SAPIEN、
+完整的七 Tool workflow Skill，只发布 provider-neutral ToolSpec 与工作流。RoboTwin task、SAPIEN、
 embodiment、benchmark 以及厂商 SDK 参数由 EnvironmentAdapter/profile 持有。Dora profile 和
 锁定 Node artifact 只负责把该 runtime 接入已治理的 Tool API。仿真 actor/entity、segmentation、
 object metadata 和内部 pose 只能作为仿真对照事实，不能冒充真实物理世界的感知；真实部署必须接入

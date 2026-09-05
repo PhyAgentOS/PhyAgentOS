@@ -13,8 +13,8 @@ from typing import Any, Literal
 from PhyAgentOS.forge.manipulation import ResourceMode, ResourceRequirement
 
 WORKFLOW_ID = "pick-and-place"
-WORKFLOW_VERSION = "pick_and_place_workflow_v2"
-WORKFLOW_DAG_VERSION = "pick_and_place_semantic_dag_v1"
+WORKFLOW_VERSION = "pick_and_place_workflow_v5"
+WORKFLOW_DAG_VERSION = "pick_and_place_semantic_dag_v4"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_.:-]+$")
 _OBSERVATION_REF = re.compile(r"^observation://([^/]+)/([^/]+)$")
@@ -176,17 +176,26 @@ WORKFLOW_DAG = WorkflowDag(
     nodes=(
         WorkflowNodeSpec("observe", "scene.observe", "query"),
         WorkflowNodeSpec(
-            "understand", "scene.understand", "query", ("observe",), ("observation_ref",)
+            "capabilities",
+            "manipulation.capabilities",
+            "query",
+            ("observe",),
+            ("observation_ref", "capability_snapshot_ref"),
         ),
         WorkflowNodeSpec(
-            "propose", "grasp.propose", "query", ("understand",), ("observation_ref",)
+            "understand", "scene.understand", "query", ("observe",),
+            ("observation_ref",),
+        ),
+        WorkflowNodeSpec(
+            "propose", "grasp.propose", "query", ("understand", "capabilities"),
+            ("observation_ref", "capability_snapshot_ref"),
         ),
         WorkflowNodeSpec(
             "prepare",
             "manipulation.prepare",
             "query",
             ("propose",),
-            ("observation_ref", "candidate_set_ref"),
+            ("observation_ref", "candidate_set_ref", "capability_snapshot_ref"),
         ),
         WorkflowNodeSpec(
             "acquire",
@@ -563,6 +572,17 @@ class LongHorizonWorkflow:
         observation_ref = refs.get("observation_ref")
         if observation_ref != prior.get("observation_ref"):
             raise WorkflowBindingError("step observation_ref differs from scene.observe")
+        if step_id == "capabilities":
+            capability_ref = refs.get("capability_snapshot_ref")
+            if capability_ref is None or _ARTIFACT_REF.fullmatch(capability_ref) is None:
+                raise WorkflowBindingError("capabilities requires a valid capability_snapshot_ref")
+            return
+        if step_id not in {"capabilities", "understand"}:
+            capability_ref = refs.get("capability_snapshot_ref")
+            if capability_ref is None or _ARTIFACT_REF.fullmatch(capability_ref) is None:
+                raise WorkflowBindingError("step requires a valid capability_snapshot_ref")
+            if capability_ref != self._step("capabilities").references.get("capability_snapshot_ref"):
+                raise WorkflowBindingError("capability_snapshot_ref differs from manipulation.capabilities")
         if step_id in {"propose", "prepare", "acquire", "place"}:
             candidate_set_ref = refs.get("candidate_set_ref")
             if candidate_set_ref is None:
@@ -573,10 +593,6 @@ class LongHorizonWorkflow:
                 raise WorkflowBindingError("candidate_set_ref is not bound to the observation")
             if step_id != "propose" and candidate_set_ref != self._step("propose").references.get("candidate_set_ref"):
                 raise WorkflowBindingError("candidate_set_ref differs from grasp.propose")
-        if step_id in {"acquire", "place"}:
-            capability_ref = refs.get("capability_snapshot_ref")
-            if capability_ref is None or _ARTIFACT_REF.fullmatch(capability_ref) is None:
-                raise WorkflowBindingError("step requires a valid capability_snapshot_ref")
         if step_id in {"prepare", "acquire", "place"}:
             if refs.get("preparation_ref") is None:
                 raise WorkflowBindingError("this step requires a preparation_ref")

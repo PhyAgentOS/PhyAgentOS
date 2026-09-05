@@ -28,6 +28,10 @@ from PhyAgentOS.agent.experience.contracts import (
     TaskOutcomeEnvelope,
     WorkflowTraceItem,
 )
+from PhyAgentOS.agent.experience.policy_candidates import (
+    PolicyCandidateError,
+    WorkflowPolicyCandidateManager,
+)
 from PhyAgentOS.agent.experience.source import ForgeTaskOutcomeSource, TaskOutcomeSource
 
 __all__ = [
@@ -57,4 +61,6 @@ __all__ = [
     "validate_assessment_attribution",
     "validate_cluster_owner_scope",
     "validate_counterexample_scope",
+    "PolicyCandidateError",
+    "WorkflowPolicyCandidateManager",
 ]
