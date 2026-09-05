@@ -64,3 +64,11 @@ def test_yaml_profile_loader_is_explicit_and_bounded(tmp_path):
     assert load_perception_profile(path.resolve()) == profile
     with pytest.raises(PerceptionProfileError, match="absolute"):
         load_perception_profile("profile.yaml")
+
+
+def test_yaml_profile_loader_rejects_duplicate_keys(tmp_path):
+    path = tmp_path / "duplicate.yaml"
+    path.write_text("schema_version: first\nschema_version: second\n", encoding="utf-8")
+
+    with pytest.raises(PerceptionProfileError, match="duplicate YAML keys"):
+        load_perception_profile(path.resolve())

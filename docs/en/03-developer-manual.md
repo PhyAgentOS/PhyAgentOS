@@ -230,6 +230,20 @@ capability.
 
 ## 13. Test gates
 
+### Manipulation and benchmark extension boundary
+
+Long-horizon pick-and-place dependencies are expressed by the Skill-scoped,
+read-only `WORKFLOW_DAG` projection. It does not create PlanRevisions, execute
+Tools, or hold cross-Tool leases. `AgentTaskRecord`, `PlanRevision`, SQLite, and
+`AgentTaskCoordinator` remain the sole lifecycle authority.
+
+RoboTwin/Franka embodiment, benchmark, route frame, proposal-to-execution-grasp
+adaptation, `object_T_tcp`, workspace, joint/stop policies, and route geometry
+belong in adapter profiles. Readiness workers produce only IK/collision/route/
+limit/stop evidence; probes record before/after and bounded observed outcomes;
+`ForgeTaskVerifier` owns user-level success. Replacing a robot changes the
+profile/adapter and evidence, not the Skill or PAOS core.
+
 ```bash
 ruff check PhyAgentOS tests
 python -m compileall -q PhyAgentOS tests

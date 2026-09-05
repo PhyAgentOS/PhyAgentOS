@@ -16,7 +16,13 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from .perception_profile import PerceptionProfileError, _absolute_path, _expand, _worker_config
+from .perception_profile import (
+    PerceptionProfileError,
+    _absolute_path,
+    _expand,
+    _read_unique_yaml,
+    _worker_config,
+)
 from .process_worker import JsonlProcessWorkerClient
 from .route_readiness import (
     ROUTE_CHECKS,
@@ -25,12 +31,25 @@ from .route_readiness import (
     validate_route_request,
 )
 
-ROUTE_EVIDENCE_SCHEMA_VERSION = "paos-robotwin20-simulation-route-evidence/v1"
+ROUTE_EVIDENCE_SCHEMA_VERSION = "paos-robotwin20-simulation-route-evidence/v2"
 ROUTE_EVIDENCE_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-evidence/v1"
 
 
 class RouteEvidenceError(ValueError):
     """External route evidence is malformed, unavailable, or unbound."""
+
+
+def load_route_evidence_profile(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Load the profile with duplicate-key rejection before client construction."""
+
+    profile_path = Path(path).expanduser()
+    if not profile_path.is_absolute() or not profile_path.is_file() or profile_path.is_symlink():
+        raise RouteEvidenceError("route evidence profile must be an absolute regular file")
+    return _read_unique_yaml(
+        profile_path,
+        error_type=RouteEvidenceError,
+        label="route evidence profile",
+    )
 
 
 def _artifact_path(root: Path, ref: Any) -> Path:
@@ -176,7 +195,8 @@ def _verify_external_evidence(
         "scopes",
         "before_snapshot",
         "after_snapshot",
-        "semantic_verdict",
+        "observed_outcome",
+        "observed_outcome_artifact",
         "producer_binding",
         "probe_execution",
     }:
@@ -242,29 +262,35 @@ def _verify_external_evidence(
     )
     if before_ref == after_ref or before_state_digest == after_state_digest:
         raise RouteEvidenceError("before/after snapshots do not show a state transition")
-    semantic = external["semantic_verdict"]
-    if not isinstance(semantic, Mapping) or set(semantic) != {
-        "status", "verifier_id", "criteria_scope", "criteria", "after_snapshot_ref",
-        "target_displacement_m", "selected_arm", "selected_gripper_value",
+    observed = external["observed_outcome"]
+    observed_ref = _require_artifact_record(
+        artifact_root,
+        external["observed_outcome_artifact"],
+        "observed_outcome",
+    )
+    if not isinstance(observed, Mapping) or set(observed) != {
+        "schema_version",
+        "after_snapshot_ref",
+        "target_displacement_m",
+        "target_pose_changed",
+        "selected_arm",
+        "selected_gripper_value",
+        "selected_gripper_open",
     }:
-        raise RouteEvidenceError("route evidence semantic verdict is invalid")
-    if semantic["status"] != "pass" or not isinstance(semantic["verifier_id"], str) or not semantic["verifier_id"].strip():
-        raise RouteEvidenceError("route evidence semantic verdict is not pass")
-    if not isinstance(semantic["criteria"], list) or not semantic["criteria"] or any(
-        not isinstance(item, str) or not item.strip() for item in semantic["criteria"]
-    ):
-        raise RouteEvidenceError("route evidence semantic criteria are invalid")
-    if semantic["after_snapshot_ref"] != after_ref:
-        raise RouteEvidenceError("route evidence semantic snapshot binding is invalid")
-    if semantic["criteria_scope"] != "single_object_route_only":
-        raise RouteEvidenceError("route evidence semantic criteria scope is invalid")
-    expected_criteria = {
-        "single_object_target_actor_state_changed",
-        "selected_gripper_released",
-    }
-    if set(semantic["criteria"]) != expected_criteria:
-        raise RouteEvidenceError("route evidence semantic criteria are invalid")
-    selected_arm = semantic["selected_arm"]
+        raise RouteEvidenceError("route observed outcome is invalid")
+    if observed["schema_version"] != "paos-robotwin20-observed-route-outcome/v1":
+        raise RouteEvidenceError("route observed outcome schema is unsupported")
+    if observed["after_snapshot_ref"] != after_ref:
+        raise RouteEvidenceError("route observed outcome snapshot binding is invalid")
+    try:
+        observed_artifact = json.loads(
+            _artifact_path(artifact_root, observed_ref).read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RouteEvidenceError("observed outcome artifact is invalid JSON") from exc
+    if observed_artifact != observed:
+        raise RouteEvidenceError("observed outcome artifact content mismatch")
+    selected_arm = observed["selected_arm"]
     if selected_arm not in {"left", "right"}:
         raise RouteEvidenceError("route evidence semantic selected arm is invalid")
     before_position = before_payload["target_pose"]["position_m"]
@@ -273,20 +299,20 @@ def _verify_external_evidence(
         sum((float(after_value) - float(before_value)) ** 2 for before_value, after_value in zip(before_position, after_position))
     )
     if (
-        isinstance(semantic["target_displacement_m"], bool)
-        or not isinstance(semantic["target_displacement_m"], (int, float))
-        or not math.isclose(float(semantic["target_displacement_m"]), displacement, rel_tol=1e-6, abs_tol=1e-8)
-        or displacement < 1e-4
+        isinstance(observed["target_displacement_m"], bool)
+        or not isinstance(observed["target_displacement_m"], (int, float))
+        or not math.isclose(float(observed["target_displacement_m"]), displacement, rel_tol=1e-6, abs_tol=1e-8)
+        or observed["target_pose_changed"] is not (displacement >= 1e-4)
     ):
-        raise RouteEvidenceError("route evidence semantic target displacement is invalid")
+        raise RouteEvidenceError("route observed target displacement is invalid")
     selected_gripper = float(after_payload["robot_grippers"][selected_arm])
     if (
-        isinstance(semantic["selected_gripper_value"], bool)
-        or not isinstance(semantic["selected_gripper_value"], (int, float))
-        or not math.isclose(float(semantic["selected_gripper_value"]), selected_gripper, abs_tol=1e-6)
-        or selected_gripper < 0.8
+        isinstance(observed["selected_gripper_value"], bool)
+        or not isinstance(observed["selected_gripper_value"], (int, float))
+        or not math.isclose(float(observed["selected_gripper_value"]), selected_gripper, abs_tol=1e-6)
+        or observed["selected_gripper_open"] is not (selected_gripper >= 0.8)
     ):
-        raise RouteEvidenceError("route evidence semantic gripper release is invalid")
+        raise RouteEvidenceError("route observed gripper state is invalid")
 
     evidence_ref = f"artifact://route-evidence/{candidate_ref.removeprefix('candidate://').replace('/', '-')}.json"
     # The caller writes the canonical projection; return only the verified refs.
@@ -304,9 +330,10 @@ def _verify_external_evidence(
             *(scopes[scope]["evidence"]["artifact_ref"] for scope in ROUTE_CHECKS),
             before_ref,
             after_ref,
+            observed_ref,
         ],
-        "semantic_verifier_id": semantic["verifier_id"],
-        "semantic_criteria": list(semantic["criteria"]),
+        "observed_outcome": dict(observed),
+        "task_success_authorized": False,
         "source_probe_world_changed": True,
         "source_probe_authorization_ref": authorization_ref,
         "source_producer_binding": dict(trusted_producer),
@@ -441,5 +468,6 @@ __all__ = [
     "RouteEvidenceClient",
     "RouteEvidenceError",
     "build_route_evidence_client",
+    "load_route_evidence_profile",
     "verify_route_evidence",
 ]

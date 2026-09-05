@@ -25,10 +25,11 @@ BINDING = {
     "profile_digest": "a" * 64,
 }
 SCOPES = [
-    "after_snapshot_semantic_verification",
     "attached_object_collision",
     "complete_transport_descent_retreat",
     "contact_dynamics",
+    "stop_control",
+    "workspace_and_joint_limits",
 ]
 
 
@@ -72,7 +73,7 @@ def _base(tmp_path: Path, *, state: str = "disabled") -> dict:
             "artifact_root": str(artifact_root),
             "before_required": True,
             "after_required": True,
-            "semantic_verifier_required": True,
+            "task_verifier_handoff_required": True,
         },
     }
 
@@ -93,7 +94,7 @@ def test_disabled_profile_loads_without_worker_or_motion(tmp_path: Path):
 
 def test_profile_rejects_duplicate_yaml_keys(tmp_path: Path):
     path = tmp_path / "profile.yaml"
-    path.write_text("schema_version: paos-robotwin20-simulation-motion/v1\nschema_version: duplicate\n", encoding="utf-8")
+    path.write_text("schema_version: paos-robotwin20-simulation-motion/v2\nschema_version: duplicate\n", encoding="utf-8")
     with pytest.raises(SimulationAuthorizationError, match="duplicate"):
         load_simulation_motion_profile(path)
 
@@ -169,7 +170,7 @@ def test_approved_profile_requires_bound_approval_and_worker(tmp_path: Path):
     _write(profile_path, value)
     profile_digest = _profile_identity_digest(value)
     approval_value = {
-        "schema_version": "paos-robotwin20-simulation-motion-approval/v1",
+        "schema_version": "paos-robotwin20-simulation-motion-approval/v2",
         "decision": "approved_simulation_motion",
         "motion_authorized": True,
         "profile_id": value["profile_id"],

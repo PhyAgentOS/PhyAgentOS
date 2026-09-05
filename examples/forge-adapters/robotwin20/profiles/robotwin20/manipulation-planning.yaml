@@ -1,6 +1,7 @@
 schema_version: paos-robotwin20-arm-planning/v1
 embodiment_id: franka-panda
 topology: dual_independent
+route_frame_id: world
 arms:
   - arm_id: left
     planner_profile_ref: artifact://robotwin/franka/left-planner
@@ -10,6 +11,16 @@ arms:
     planner_profile_ref: artifact://robotwin/franka/right-planner
     workspace_ref: artifact://robotwin/franka/right-workspace
     joint_limits_ref: artifact://robotwin/franka/right-joint-limits
+route_policy:
+  approach_clearance_m: 0.08
+  lift_clearance_m: 0.10
+  transport_clearance_m: 0.12
+  descent_clearance_m: 0.04
+  retreat_distance_m: 0.10
+  retreat_direction:
+    frame_id: world
+    vector: [0.0, 0.0, 1.0]
+    provenance_ref: artifact://robotwin/franka/route-policy
 selection_policy:
   max_options: 256
   weights:

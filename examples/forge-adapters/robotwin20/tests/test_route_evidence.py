@@ -14,6 +14,7 @@ from robotwin20_adapter import (
     ROUTE_EVIDENCE_SCHEMA_VERSION,
     RouteEvidenceError,
     build_route_evidence_client,
+    load_route_evidence_profile,
     verify_route_evidence,
 )
 from robotwin20_adapter.process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig
@@ -45,7 +46,10 @@ def _external(request: dict, root: Path) -> dict:
     request["candidates"][0]["attached_object"]["geometry_sha256"] = hashlib.sha256(
         geometry.read_bytes()
     ).hexdigest()
-    records = [_write_artifact(root, f"scope-{index}.json", f"scope-{index}".encode()) for index in range(6)]
+    records = [
+        _write_artifact(root, f"scope-{index}.json", f"scope-{index}".encode())
+        for index in range(len(ROUTE_CHECKS))
+    ]
     snapshots = []
     for index in range(2):
         position = [0.1 + (0.2 * index), 0.2, 0.8]
@@ -65,6 +69,20 @@ def _external(request: dict, root: Path) -> dict:
             "robot_grippers": {"left": 1.0, "right": 1.0},
         }
         snapshots.append(_write_artifact(root, f"snapshot-{index}.json", json.dumps(payload).encode()))
+    observed_outcome = {
+        "schema_version": "paos-robotwin20-observed-route-outcome/v1",
+        "after_snapshot_ref": snapshots[1]["artifact_ref"],
+        "target_displacement_m": 0.2,
+        "target_pose_changed": True,
+        "selected_arm": "right",
+        "selected_gripper_value": 1.0,
+        "selected_gripper_open": True,
+    }
+    outcome_record = _write_artifact(
+        root,
+        "observed-outcome.json",
+        json.dumps(observed_outcome, sort_keys=True).encode(),
+    )
     return {
         "schema_version": ROUTE_EVIDENCE_SCHEMA_VERSION,
         "request_id": request["request_id"],
@@ -93,19 +111,8 @@ def _external(request: dict, root: Path) -> dict:
         },
         "before_snapshot": snapshots[0],
         "after_snapshot": snapshots[1],
-        "semantic_verdict": {
-            "status": "pass",
-            "verifier_id": "independent-single-object-semantic-verifier/v1",
-            "criteria_scope": "single_object_route_only",
-            "criteria": [
-                "single_object_target_actor_state_changed",
-                "selected_gripper_released",
-            ],
-            "after_snapshot_ref": snapshots[1]["artifact_ref"],
-            "target_displacement_m": 0.2,
-            "selected_arm": "right",
-            "selected_gripper_value": 1.0,
-        },
+        "observed_outcome": observed_outcome,
+        "observed_outcome_artifact": outcome_record,
         "producer_binding": TRUSTED.copy(),
         "probe_execution": {
             "simulation_only": True,
@@ -120,11 +127,12 @@ def _external(request: dict, root: Path) -> dict:
 def test_independent_evidence_verifier_requires_all_bound_artifacts(tmp_path: Path):
     request = _request(tmp_path)
     result = verify_route_evidence(request, _external(request, tmp_path), tmp_path, trusted_producer=TRUSTED)
-    assert result["schema_version"] == "paos-robotwin20-simulation-route-readiness/v1"
+    assert result["schema_version"] == "paos-robotwin20-simulation-route-readiness/v2"
     assert result["checks"] == {scope: "pass" for scope in ROUTE_CHECKS}
     assert result["motion_authorized"] is False
     assert result["world_change_started"] is False
-    assert len(result["evidence"]) == 4 + len(ROUTE_CHECKS) + 2
+    assert len(result["evidence"]) == 5 + len(ROUTE_CHECKS) + 2
+    assert result["task_success_authorized"] is False
 
 
 @pytest.mark.parametrize(
@@ -133,7 +141,7 @@ def test_independent_evidence_verifier_requires_all_bound_artifacts(tmp_path: Pa
         (lambda value: value["scopes"].pop("contact_dynamics"), "scopes are incomplete"),
         (lambda value: value.update(route_geometry_digest="0" * 64), "geometry digest"),
         (lambda value: value["planner"].update(status="unavailable"), "planner status"),
-        (lambda value: value["semantic_verdict"].update(after_snapshot_ref="artifact://inputs/other.json"), "snapshot binding"),
+        (lambda value: value["observed_outcome"].update(after_snapshot_ref="artifact://inputs/other.json"), "snapshot binding"),
         (lambda value: value["probe_execution"].update(world_change_completed=False), "incomplete"),
         (lambda value: value.update(producer_binding={**TRUSTED, "producer_id": "untrusted"}), "untrusted"),
     ],
@@ -212,6 +220,7 @@ def test_profile_owned_route_evidence_client(tmp_path: Path):
         },
     }
     profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+    assert load_route_evidence_profile(profile_path.resolve()) == profile
     client = build_route_evidence_client(profile)
     try:
         request = _request(tmp_path)
@@ -220,3 +229,15 @@ def test_profile_owned_route_evidence_client(tmp_path: Path):
         assert response["route_evidence"]["motion_authorized"] is False
     finally:
         client.release()
+
+
+def test_route_evidence_profile_loader_rejects_duplicate_keys(tmp_path: Path):
+    profile_path = tmp_path / "duplicate.yaml"
+    profile_path.write_text(
+        "schema_version: paos-robotwin20-route-evidence/v1\n"
+        "schema_version: overwritten\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RouteEvidenceError, match="duplicate YAML keys"):
+        load_route_evidence_profile(profile_path.resolve())

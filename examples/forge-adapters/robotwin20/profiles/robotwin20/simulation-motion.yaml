@@ -1,4 +1,4 @@
-schema_version: paos-robotwin20-simulation-motion/v1
+schema_version: paos-robotwin20-simulation-motion/v2
 profile_id: robotwin20-franka-blocks-ranking-simulation-v1
 
 # This profile is intentionally disabled.  It records the contract required by
@@ -26,10 +26,11 @@ authorization:
   evidence_manifest: null
   evidence_manifest_sha256: null
   required_evidence_scopes:
-    - after_snapshot_semantic_verification
     - attached_object_collision
     - complete_transport_descent_retreat
     - contact_dynamics
+    - stop_control
+    - workspace_and_joint_limits
 
 execution:
   # A worker is only allowed once state=approved and a separate executor
@@ -46,4 +47,4 @@ snapshot:
   artifact_root: ${ROBOTWIN20_SIMULATION_ARTIFACT_ROOT}
   before_required: true
   after_required: true
-  semantic_verifier_required: true
+  task_verifier_handoff_required: true

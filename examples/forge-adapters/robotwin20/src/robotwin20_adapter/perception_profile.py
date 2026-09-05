@@ -24,21 +24,52 @@ class PerceptionProfileError(ValueError):
     """A deployment profile cannot construct the isolated perception route."""
 
 
+def _read_unique_yaml(
+    path: Path,
+    *,
+    error_type: type[ValueError],
+    label: str,
+) -> dict[str, Any]:
+    """Read a strict YAML mapping and reject duplicate keys at every depth."""
+
+    try:
+        import yaml
+    except ImportError as exc:
+        raise error_type("PyYAML is required to load adapter profiles") from exc
+
+    class _UniqueKeyLoader(yaml.SafeLoader):
+        pass
+
+    def mapping(loader: yaml.SafeLoader, node: yaml.MappingNode, deep: bool = False):
+        result: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node, deep=deep)
+            if key in result:
+                raise error_type(f"{label} contains duplicate YAML keys")
+            result[key] = loader.construct_object(value_node, deep=deep)
+        return result
+
+    _UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+    try:
+        value = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
+    except error_type:
+        raise
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise error_type(f"{label} could not be loaded") from exc
+    if not isinstance(value, dict):
+        raise error_type(f"{label} must contain an object")
+    return value
+
+
 def load_perception_profile(path: str | os.PathLike[str]) -> dict[str, Any]:
     profile_path = Path(path)
     if not profile_path.is_absolute() or not profile_path.is_file():
         raise PerceptionProfileError("perception profile must be an existing absolute file")
-    try:
-        import yaml
-    except ImportError as exc:
-        raise PerceptionProfileError("PyYAML is required only to load adapter profiles") from exc
-    try:
-        value = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise PerceptionProfileError("perception profile could not be loaded") from exc
-    if not isinstance(value, dict):
-        raise PerceptionProfileError("perception profile must contain an object")
-    return value
+    return _read_unique_yaml(
+        profile_path,
+        error_type=PerceptionProfileError,
+        label="perception profile",
+    )
 
 
 def build_single_view_perception(

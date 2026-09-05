@@ -1,5 +1,25 @@
 # Change Log
 
+## v0.9.0 (2026-09-05) - codex
+
+- [policy] [refactor] [completed] Added an immutable Skill-scoped semantic DAG
+  projection and made the replay reducer derive admissible nodes from declared
+  dependencies rather than tuple position. The state freezes DAG version/digest,
+  exposes all ready nodes, validates branch joins and restored-state bindings, and
+  remains separate from PAOS task persistence, Tool execution, and motion authority.
+- [policy] [refactor] [完成] 新增不可变的 Skill-scoped 语义 DAG projection，并让
+  replay reducer 根据声明式依赖而非 tuple 下标判断可执行节点。状态冻结 DAG
+  version/digest、公开全部 ready nodes、校验分支汇合与恢复状态绑定，同时继续与
+  PAOS 任务持久化、Tool 执行和运动授权分离。
+
+### Verification
+
+- Tests cover dependency and cycle rejection, immutable node/DAG digests, parallel
+  ready-node projection, join blocking, restored-state tampering, required bindings,
+  terminal failures, and revision rebinding.
+- The DAG does not create `PlanRevision`, invoke Gateway/Action/Dora, acquire a robot
+  lease, or grant readiness/task/motion verdicts.
+
 ## v0.8.0 (2026-09-03) - codex
 
 - [sense] [feat] [completed] Extended the provider-neutral `scene.understand` result with

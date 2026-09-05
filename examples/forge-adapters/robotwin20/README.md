@@ -343,11 +343,12 @@ allocation. This path is still no-motion: providers must not call
 The next-stage contract is declared separately in
 `profiles/robotwin20/simulation-motion.yaml` and loaded with
 `load_simulation_motion_profile(...)`. It binds the runtime profile digest to
-the `blocks_ranking_rgb` Franka scene and names the four evidence scopes that
+the `blocks_ranking_rgb` Franka scene and names the five readiness scopes that
 must be independently produced and reviewed before any motion request:
 attached-object collision, complete transport/descent/retreat, contact
-dynamics, and after-snapshot semantic verification. It also requires explicit
-stop/unknown handling and before/after snapshot artifacts.
+dynamics, workspace/joint limits, and stop control. It also requires explicit
+unknown handling, before/after snapshot artifacts, and a separate PAOS task
+Verifier handoff after execution.
 
 The checked-in profile is deliberately `state: disabled`,
 `motion_authorized: false`, and has no worker. Loading it is validation only:
@@ -355,7 +356,7 @@ it does not start RoboTwin, `play_once`, Dora, Gateway, or hardware. An
 approved profile additionally needs a dedicated approval record bound to the
 profile identity, an evidence-manifest SHA-256, and all evidence scopes, but that record is still not a
 replacement for Gateway/Runtime action admission. The profile does not claim
-that the missing readiness, contact, or semantic execution evidence exists.
+that the missing readiness, contact, or task-verification evidence exists.
 
 ### Simulation route-readiness worker (unavailable by design)
 
@@ -379,8 +380,8 @@ authorization can be reviewed.
 `route-evidence.yaml` and `robotwin_route_evidence_worker.py` provide the next
 adapter-owned boundary. The worker consumes an external evidence bundle rather
 than running a planner: the bundle must include a verified attached-geometry
-artifact, planner trajectory and joint-limit artifacts, all six route-readiness
-scope artifacts, and bound before/after snapshots plus a semantic verdict.
+artifact, planner trajectory and joint-limit artifacts, all five route-readiness
+scope artifacts, bound before/after snapshots, and a bounded `observed_outcome`.
 Every artifact is checked for SHA-256, root containment, immutability, and the
 same request/candidate/scene/frame/calibration identity. Before and after
 snapshots must be valid, bound JSON records with distinct state digests.
@@ -397,7 +398,7 @@ approval.
 `simulation-probe.yaml`, `simulation_probe.py`, and `robotwin_simulation_probe_worker.py` form a separately
 authorized simulation-only producer. The worker requires profile/producer/request/candidate binding and a
 stop file, checks Curobo trajectories and attached-object geometry, and records phase-level SAPIEN contacts,
-snapshots, failure diagnostics, and reset status. Its semantic result is explicitly `single_object_route_only`;
+snapshots, failure diagnostics, and reset status. Its observed outcome is explicitly limited to one selected object;
 it is not a `blocks_ranking_rgb` benchmark result or a hardware readiness claim.
 
 The latest Franka `blocks_ranking_rgb` seed-0 run is a negative readiness result: an active

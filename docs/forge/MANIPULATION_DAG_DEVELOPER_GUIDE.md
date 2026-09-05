@@ -1,96 +1,158 @@
-# Semantic Manipulation Planning Guide
+# PAOS Manipulation Planning Developer Guide
 
-This guide defines the first PAOS planning layer for long-horizon manipulation.
-It is intentionally provider-neutral and no-motion by default.
+This guide is normative for the current PAOS manipulation-planning extension.
+It derives ownership from PAOS task, Skill, Tool, Gateway, Evidence, and Verifier
+contracts. External projects may provide failure cases, but do not define this
+architecture and are not runtime dependencies.
 
-## Design Reference and PAOS Boundary
+## Ownership Matrix
 
-Hephaestus is a design reference only. PAOS does not import or depend on its
-classes. The useful ideas translated into PAOS contracts are immutable node and
-plan digests, explicit entity/evidence/resource bindings, dependency conditions
-with an `unknown` state, retry lineage, and a replan candidate that is separate
-from replan authorization and execution.
+| Concern | Authoritative owner | Non-owner |
+|:--|:--|:--|
+| User task lifecycle, recovery budget, revisions | `AgentTaskRecord`, `PlanRevision`, SQLite, `AgentTaskCoordinator` | Skill DAG, adapter, worker |
+| Semantic subtask dependencies | Skill-scoped `WorkflowDag` projection | PAOS core manipulation types, RoboTwin adapter |
+| Tool execution and concurrency | ToolSpec, Runtime, Gateway invocation | DAG, selector, readiness worker |
+| Candidate/arm adaptation and route geometry | embodiment/benchmark adapter and versioned profile | Skill, AgentTask store |
+| IK, collision, limits, complete-route feasibility | readiness provider and immutable evidence | selector, Verifier |
+| Measured before/after outcome | sensor/simulation probe evidence | readiness verdict |
+| User-level success or replan verdict | `ForgeTaskVerifier` against `TaskVerificationContract` | probe, adapter, selector |
 
-PAOS remains authoritative for `AgentTaskRecord`, `PlanRevision`, SQLite task
-lifecycle, CapabilityRuntime, Evidence, Verifier, and Gateway admission. The
-RoboTwin adapter owns arm profiles, planner calls, route geometry, and simulator
-evidence. No DAG, selector, or replan object starts a provider, simulator,
-Dora, Gateway, Action, or hardware path.
+## Where the DAG Lives
 
-## Contracts
+The canonical pick-place DAG is `WORKFLOW_DAG` in
+`examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py`.
+Each `WorkflowNodeSpec` declares a provider-neutral `tool_id`, Tool semantics,
+`depends_on`, and required opaque bindings. `WorkflowDag` validates identity,
+unknown dependencies and cycles, computes immutable node/DAG digests, and returns
+ready nodes from a caller-supplied completed-node set. `LongHorizonWorkflow`
+freezes that DAG identity into its state and uses dependency-derived ready nodes
+as the only successful-result admission rule; it does not advance by tuple index.
 
-`PhyAgentOS.forge.manipulation` provides:
+It deliberately does not persist status, append a revision, create an invocation,
+retry a Tool, or lock a robot. `LongHorizonWorkflow` is a replayable reducer over
+terminal Tool results. `begin_recovery(revision_id)` only rebinds the projection
+after `AgentTaskCoordinator.begin_revision()` has already created the revision.
+This prevents a second task scheduler from competing with PAOS SQLite truth.
 
-- `ManipulationDag` and `ManipulationDagNode`: semantic dependency graph,
-  immutable node/graph digests, bounded conditions, resource locks, expected
-  effects, and retry lineage.
-- `ManipulationIntent`: a node compiled with task/revision, entity,
-  observation, scene, frame, calibration, and candidate-set identities. It
-  always carries `motion_authorized=false`.
-- `RouteFailure`: one candidate/arm rejection with phase, owner, code, and
-  diagnostic detail.
-- `ReplanCoordinator` and `ReplanSignal`: a bounded `replan_required`
-  candidate that preserves the intent constraints. It does not mutate a task.
+The current six nodes form a linear DAG. The schema and tests support multiple
+ready nodes and joins, but the pick-place reducer accepts only the canonical
+version/digest because each semantic node also needs an explicit result-binding
+contract. Actual parallel execution must still be scheduled through PAOS Tool
+records and Gateway concurrency. `depends_on` is not a cross-Tool lease, and the
+reducer is not a Runtime scheduler.
 
-The existing `AgentTaskCoordinator.begin_revision()` remains the only PAOS
-operation that appends a `PlanRevision` to SQLite. A caller must first place the
-task in `awaiting_replan`, then pass a reviewed reason to that coordinator.
+## Core Manipulation Projection
 
-## RoboTwin Adapter
+`PhyAgentOS.forge.manipulation` contains only types shared with adapters:
 
-`arm_candidates.py` provides:
+- `ManipulationIntent` binds one ready DAG node to task/revision/node, entity,
+  observation, observation frame, scene revision, calibration, candidate set,
+  criteria, constraints, and allowed arms.
+- `RouteFailure` records one bounded candidate/arm rejection.
+- `ReplanSignal` is a no-motion recovery hint for the existing PAOS recovery path.
+- `ReplanCoordinator` validates and digests that hint; it never mutates a task.
 
-- `enumerate_arm_candidates(intent, candidates, profile)`: expands each grasp
-  candidate over configured arms for `alternative_arm`, one configured arm for
-  `single_arm`, and rejects `bimanual` until the profile supplies a synchronized
-  atomic two-arm route provider. It performs identity checks only and never
-  calls a planner.
-- `CompleteRouteSelector`: evaluates each option through an injected
-  no-motion evaluator, rejects malformed or non-passing route evidence, and
-  deterministically ranks accepted complete routes by configured route length
-  and speed-margin weights. Evaluator responses use
-  `paos-robotwin20-route-evaluation/v1`; the selector's returned projection uses
-  `paos-robotwin20-route-selection/v1`. If none pass, it returns `ReplanSignal`.
+There is no core `ManipulationDag`, retry lineage, resource lock, route planner, or
+provider branch. Those would duplicate existing PAOS owners or leak embodiment
+policy into the core.
 
-The current Franka profile is `manipulation-planning.yaml` and describes two
-independent single-arm resources. `blocks_ranking_rgb` should use
-`alternative_arm`, not `bimanual`; a future synchronized bimanual capability
-must provide one atomic two-arm route and one evidence bundle.
+## Route Data Model
 
-## Required Bindings
+Keep these representations distinct:
 
-Every route option and readiness result must preserve:
+1. Proposal candidate: perception/provider output in the observation frame.
+2. Execution grasp: adapter-approved TCP contact pose in the route frame, plus
+   normalized ingress and support-clear directions and adaptation provenance.
+3. Attached object: geometry, digest, object frame and measured `object_T_tcp`.
+4. Placement target: target object pose and destination provenance.
+5. Route template: ordered approach/contact/close/lift/transport/descent/release/
+   retreat Cartesian waypoints generated from the profile policy.
+6. Planner trajectory: provider output checked against joint, collision, speed,
+   workspace, contact and stop policies.
 
-`task_id`, `revision_id`, `node_id`, `node_digest`, `candidate_ref`, `entity_ref`,
-`candidate_set_ref`, `observation_ref`, `scene_revision`, `frame_id`,
-`calibration_ref`, route geometry digest, arm identity, and evidence refs.
+`release_tcp_pose` is computed as `world_T_object_target * object_T_tcp`; it is not
+the target object pose copied into a TCP command. A route selection is only a
+no-motion projection and remains `motion_authorized=false`.
 
-Any mismatch is a rejection. A stale scene requires fresh observation and a
-new candidate set; it must not be repaired by changing the request in place.
+## Frame and Calibration Contract
 
-## Failure and Replanning
+- `observation_frame_id` identifies the sensor frame used by `observation_ref` and
+  `candidate_set_ref`.
+- route `frame_id` identifies every execution pose and must equal the workspace
+  bounds frame.
+- positions are metres; joint speeds are radians per second; quaternions are
+  normalized `xyzw`.
+- calibration has an artifact reference, SHA-256 and revision. It is used once by
+  the adapter to transform proposal geometry into the route frame.
+- a route-frame pose must not be transformed by the calibration again.
+- `object_T_tcp` is a row-major homogeneous transform with a proper rotation and
+  last row `[0, 0, 0, 1]`; its provenance is mandatory.
 
-The selector stores every failed option in `rejected_routes`. If all options
-are rejected, the signal is `replan_required` with a digest over the failed
-routes, preserved constraints, and current scene/candidate-set identities.
-Recommended next actions are to regenerate candidates and/or refresh the
-observation. The signal is not a success verdict and carries no execution
-authority.
+Missing transforms, stale scene revisions, frame drift, invalid digests or
+non-finite values fail closed before a planner or probe is called.
 
-## Developer Rules
+## RoboTwin and Embodiment Extension
 
-1. Keep semantic DAG code in `PhyAgentOS/forge`; do not add RoboTwin or
-   planner-product branches there.
-2. Keep embodiment and planner details in adapter profiles and adapter code.
-3. Do not add route geometry or joint waypoints to the semantic DAG node.
-4. Do not treat selector success as readiness; independent route evidence and
-   manual review are still required.
-5. Preserve invocation-first Action lifecycle and the existing SQLite task
-   owner when execution is eventually introduced.
-6. Use fresh artifact roots for every probe and preserve negative evidence.
+`manipulation-planning.yaml` owns Franka arm identities, planner/workspace/limit
+references, route clearances/directions, option bound and deterministic scoring.
+`arm_candidates.py` expands a candidate over allowed independent arms. Bimanual
+coordination is rejected until an adapter supplies one atomic synchronized route,
+shared timing, inter-arm collision checking and one evidence bundle.
+
+To add a new robot or benchmark:
+
+1. add a strict adapter profile for topology, arms, planner, workspace, limits and
+   route policy;
+2. implement proposal-to-execution-grasp and destination-to-placement-target
+   adaptation with transform provenance;
+3. preserve the same Skill DAG and public ToolSpecs unless semantics change;
+4. run no-motion generation and readiness evidence first;
+5. add a simulation/hardware executor only through existing Gateway Action
+   admission, cancellation and reconciliation.
+
+Benchmark task names, actor IDs, URDFs, controllers and coordinates must not enter
+the Skill DAG or PAOS core. Replacing an embodiment should therefore change the
+adapter/profile and acceptance evidence, not the task lifecycle or Tool API.
+
+## Evidence and Verdict Boundary
+
+Route readiness checks are:
+
+- `attached_object_collision`;
+- `complete_transport_descent_retreat`;
+- `contact_dynamics`;
+- `workspace_and_joint_limits`;
+- `stop_control`.
+
+The external simulation probe may record before/after snapshots, displacement,
+selected arm and gripper measurements as `observed_outcome`. It must not emit a
+task `semantic_verdict`. The independent route-evidence verifier validates artifact
+identity and readiness scopes, then returns `task_success_authorized=false`.
+`ForgeTaskVerifier` alone compares task criteria with evidence and emits the
+user-level verdict.
+
+## Failure Taxonomy
+
+Use `RouteFailure.owner` to distinguish `input`, `binding`, `planner`, `policy`,
+`collision`, `readiness`, and `infrastructure`. Preserve phase, code, detail and
+route digest. All-options failure returns a bounded `ReplanSignal`; stale scenes
+normally request fresh observation and candidate regeneration. Unknown execution
+must be reconciled by its existing invocation ID, never replayed as a new route.
 
 ## Validation
 
-Run the focused contract tests, then the repository suite. A passing contract
-test proves binding and fail-closed behavior, not physical reachability or
-motion success.
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src:. \
+python -m pytest -p pytest_asyncio.plugin -q \
+  tests/test_manipulation.py \
+  examples/forge-skills/pick-place-workflow/tests/test_long_horizon.py \
+  examples/forge-adapters/robotwin20/tests/test_route_generation.py \
+  examples/forge-adapters/robotwin20/tests/test_arm_candidates.py \
+  examples/forge-adapters/robotwin20/tests/test_route_readiness.py \
+  examples/forge-adapters/robotwin20/tests/test_route_evidence.py
+```
+
+A passing contract suite proves deterministic binding and fail-closed behavior.
+It does not prove a real route, benchmark success, arbitrary grasping, or motion
+authorization.

@@ -10,7 +10,11 @@ from robotwin20_adapter import (
     ROUTE_CHECKS,
     ROUTE_PHASES,
     ROUTE_READINESS_PROFILE_SCHEMA_VERSION,
+    ROUTE_REQUEST_SCHEMA_VERSION,
+    RouteReadinessClient,
     RouteReadinessError,
+    RouteReadinessEvaluationAdapter,
+    RouteReadinessProfileError,
     build_route_readiness_client,
     load_route_readiness_profile,
     route_geometry_digest,
@@ -24,7 +28,7 @@ WORKER = Path(__file__).parents[1] / "runtime" / "robotwin_route_readiness_worke
 
 def _pose(z: float = 0.8) -> dict:
     return {
-        "frame_id": "head_camera",
+        "frame_id": "world",
         "position_m": [0.0, 0.0, z],
         "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
         "max_linear_speed_mps": 0.2,
@@ -34,21 +38,31 @@ def _pose(z: float = 0.8) -> dict:
 
 def _request(tmp_path: Path) -> dict:
     phases = []
+    z_by_phase = {
+        "approach": 0.8, "contact": 0.8, "close": 0.8, "lift": 0.8,
+        "transport": 0.8, "descent": 0.7, "release": 0.7, "retreat": 0.8,
+    }
     for phase in ROUTE_PHASES:
         phases.append({
             "phase": phase,
-            "waypoints": [_pose()],
-            "gripper_state": "open" if phase == "approach" else "closed" if phase in {"close", "lift", "transport", "descent"} else "released" if phase == "release" else "open",
+            "waypoints": [_pose(z_by_phase[phase])],
+            "gripper_state": "open" if phase in {"approach", "retreat"} else "contact" if phase == "contact" else "closed" if phase in {"close", "lift", "transport", "descent"} else "released",
         })
     return {
+        "schema_version": ROUTE_REQUEST_SCHEMA_VERSION,
         "request_id": "request-route-1",
         "observation_ref": "observation://blocks_ranking_rgb-0-1/head_camera",
+        "observation_frame_id": "head_camera",
         "scene_revision": "blocks_ranking_rgb-0-1",
-        "frame_id": "head_camera",
+        "frame_id": "world",
         "calibration_ref": "artifact://blocks/calibration",
+        "calibration_sha256": "c" * 64,
+        "calibration_revision": "calibration-1",
         "candidate_set_ref": "candidate-set://blocks_ranking_rgb-0-1/head_camera",
         "workspace_bounds_m": {
+            "frame_id": "world",
             "x_min_m": -0.5, "x_max_m": 0.5, "y_min_m": -0.5, "y_max_m": 0.5, "z_min_m": 0.5, "z_max_m": 1.2,
+            "provenance_ref": "artifact://blocks/workspace",
         },
         "joint_limits_ref": "artifact://blocks/joint-limits",
         "stop_policy_ref": "artifact://blocks/stop-policy",
@@ -56,13 +70,31 @@ def _request(tmp_path: Path) -> dict:
             "candidate_ref": "candidate://red-block/1",
             "entity_ref": "entity://red-block",
             "provenance": ["artifact://blocks/points/red"],
-            "grasp_frame": _pose(),
+            "execution_grasp": {
+                "contact_tcp_pose": _pose(),
+                "ingress_direction": {
+                    "frame_id": "world", "vector": [0.0, 0.0, -1.0],
+                    "provenance_ref": "artifact://blocks/grasp-adaptation",
+                },
+                "support_clear_direction": {
+                    "frame_id": "world", "vector": [0.0, 0.0, 1.0],
+                    "provenance_ref": "artifact://blocks/support-normal",
+                },
+                "adaptation_provenance_ref": "artifact://blocks/grasp-adaptation",
+            },
             "attached_object": {
                 "geometry_ref": "artifact://blocks/geometry/red",
                 "geometry_sha256": "a" * 64,
-                "frame_id": "head_camera",
+                "object_frame_id": "red-block",
                 "half_extents_m": [0.02, 0.02, 0.02],
-                "grasp_transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                "object_T_tcp": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                "transform_provenance_ref": "artifact://blocks/object-t-tcp",
+            },
+            "placement_target": {
+                "target_ref": "destination://blocks/red-slot",
+                "target_object_pose": _pose(0.7),
+                "release_tcp_pose": _pose(0.7),
+                "provenance_ref": "artifact://blocks/placement-target",
             },
             "route": phases,
         }],
@@ -80,9 +112,11 @@ def test_valid_route_request_is_deterministically_bound(tmp_path: Path):
     [
         (lambda r: r["candidates"][0]["route"].reverse(), "phases"),
         (lambda r: r["candidates"][0]["attached_object"].update(geometry_sha256="bad"), "SHA-256"),
-        (lambda r: r["candidates"][0]["attached_object"].update(frame_id="wrist"), "frame"),
+        (lambda r: r["workspace_bounds_m"].update(frame_id="wrist"), "share a frame"),
         (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(position_m=[0, 0, 2]), "workspace"),
         (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(max_linear_speed_mps=0), "positive"),
+        (lambda r: r["candidates"][0]["placement_target"]["release_tcp_pose"].update(position_m=[0.1, 0, 0.7]), "release TCP"),
+        (lambda r: r["candidates"][0]["route"][6].update(gripper_state="closed"), "gripper state"),
     ],
 )
 def test_route_request_fails_closed(tmp_path: Path, mutate, message: str):
@@ -130,6 +164,18 @@ def test_external_worker_records_unavailable_evidence_without_motion(tmp_path: P
         client.release()
 
 
+def test_route_readiness_profile_loader_rejects_duplicate_keys(tmp_path):
+    profile_path = tmp_path / "duplicate.yaml"
+    profile_path.write_text(
+        "schema_version: paos-robotwin20-route-readiness/v1\n"
+        "schema_version: overwritten\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RouteReadinessProfileError, match="duplicate YAML keys"):
+        load_route_readiness_profile(profile_path.resolve())
+
+
 def test_profile_owned_route_client_preserves_unavailable_boundary(tmp_path: Path):
     profile_path = tmp_path / "route-readiness.yaml"
     value = {
@@ -164,3 +210,78 @@ def test_profile_owned_route_client_preserves_unavailable_boundary(tmp_path: Pat
         assert response["motion_authorized"] is False
     finally:
         client.release()
+
+
+def test_route_readiness_evaluation_adapter_projects_unavailable_worker_result(tmp_path: Path):
+    request = _request(tmp_path)
+    option = {
+        "candidate_ref": request["candidates"][0]["candidate_ref"],
+        "task_id": "task-1", "revision_id": "revision-1", "node_id": "prepare-red",
+        "node_digest": "a" * 64, "observation_ref": request["observation_ref"],
+        "scene_revision": request["scene_revision"], "observation_frame_id": request["observation_frame_id"],
+        "frame_id": request["frame_id"], "calibration_ref": request["calibration_ref"],
+        "candidate_set_ref": request["candidate_set_ref"], "arm_ids": ["left"],
+        "option_id": "option-1",
+    }
+
+    class FakeClient:
+        def evaluate(self, value):
+            return {"status": "unavailable", "route_evidence": [project_route_evidence(
+                value,
+                value["candidates"][0],
+                capability_status={check: "unavailable" for check in ROUTE_CHECKS},
+                evidence_ref="artifact://route-readiness/item",
+            )]}
+
+    projected = RouteReadinessEvaluationAdapter(FakeClient()).evaluate(request, option)
+    assert projected["schema_version"] == "paos-robotwin20-route-evaluation/v1"
+    assert projected["status"] == "unavailable"
+    assert projected["code"] == "provider_unavailable"
+    assert projected["motion_authorized"] is False
+
+
+def test_route_readiness_client_rejects_tampered_candidate_evidence(tmp_path: Path):
+    request = _request(tmp_path)
+    evidence = project_route_evidence(
+        request,
+        request["candidates"][0],
+        capability_status={check: "unavailable" for check in ROUTE_CHECKS},
+        evidence_ref="artifact://route-readiness/item",
+    )
+    evidence["scene_revision"] = "stale"
+
+    class FakeProcessClient:
+        def request(self, _value):
+            return {
+                "request_id": request["request_id"],
+                "schema_version": "paos-robotwin20-simulation-route-readiness/v2",
+                "worker_id": "worker-1",
+                "status": "unavailable",
+                "provider_available": False,
+                "motion_authorized": False,
+                "world_change_started": False,
+                "route_evidence": [evidence],
+            }
+
+    with pytest.raises(RouteReadinessProfileError, match="identity"):
+        RouteReadinessClient(FakeProcessClient(), worker_id="worker-1").evaluate(request)
+
+
+def test_route_readiness_client_rejects_top_level_world_change(tmp_path: Path):
+    request = _request(tmp_path)
+
+    class FakeProcessClient:
+        def request(self, _value):
+            return {
+                "request_id": request["request_id"],
+                "schema_version": "paos-robotwin20-simulation-route-readiness/v2",
+                "worker_id": "worker-1",
+                "status": "unavailable",
+                "provider_available": False,
+                "motion_authorized": False,
+                "world_change_started": True,
+                "route_evidence": [],
+            }
+
+    with pytest.raises(RouteReadinessProfileError, match="world-change"):
+        RouteReadinessClient(FakeProcessClient(), worker_id="worker-1").evaluate(request)

@@ -100,8 +100,10 @@ verification of the released object's destination state; a successful Action is
 not by itself a user-level task verdict. Do not retry release blindly or infer
 placement from an unverified acquire result.
 
-For a long-horizon pick-and-place task, keep one AgentTask and one append-only
-workflow revision across the complete sequence:
+For a long-horizon pick-and-place task, keep one AgentTask and one PAOS-owned
+append-only PlanRevision across the complete sequence. The Skill exposes a
+read-only semantic DAG projection (`WORKFLOW_DAG`) for dependencies and ready
+nodes; it does not create revisions, hold resource leases, or execute Tools:
 
 ```text
 observe -> understand -> propose -> prepare -> acquire -> place
@@ -111,6 +113,7 @@ The workflow reducer is a replayable projection over existing Tool records. It
 accepts only terminal Tool results and opaque references, rejects skipped steps or
 cross-scene bindings, and exposes the next declared Tool without invoking a
 Gateway. `failed`, `cancelled`, and `unknown` stop automatic progression. Reconcile
-an unknown invocation by its existing ID; for a recoverable failure append a new
-PlanRevision on the same AgentTask and resume at the blocked step. Never create a
-second execution protocol or infer task success from a single Action summary.
+an unknown invocation by its existing ID; for a recoverable failure ask the PAOS
+task coordinator to append a new PlanRevision, then rebind this projection to
+that revision. Never create a second execution protocol or infer task success
+from a single Action summary.

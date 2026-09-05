@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -8,18 +9,26 @@ from PhyAgentOS.forge.manipulation import (
     CoordinationMode,
     ManipulationIntent,
 )
-from test_route_readiness import _request
+from test_route_readiness import WORKER, _request
 
 from robotwin20_adapter import (
     ARM_PLANNING_PROFILE_SCHEMA_VERSION,
     ROUTE_EVALUATION_SCHEMA_VERSION,
     ArmPlanningError,
     CompleteRouteSelector,
+    JsonlProcessWorkerClient,
+    ProcessWorkerConfig,
+    RouteReadinessClient,
+    RouteReadinessEvaluationAdapter,
     enumerate_arm_candidates,
     load_arm_planning_profile,
     validate_arm_planning_profile,
 )
-from robotwin20_adapter.route_readiness import ROUTE_CHECKS, route_geometry_digest
+from robotwin20_adapter.route_readiness import (
+    ROUTE_CHECKS,
+    project_route_evidence,
+    route_geometry_digest,
+)
 
 
 def _profile() -> dict:
@@ -27,10 +36,23 @@ def _profile() -> dict:
         "schema_version": ARM_PLANNING_PROFILE_SCHEMA_VERSION,
         "embodiment_id": "franka-panda",
         "topology": "dual_independent",
+        "route_frame_id": "world",
         "arms": [
             {"arm_id": "left", "planner_profile_ref": "artifact://planner/left", "workspace_ref": "artifact://workspace/left", "joint_limits_ref": "artifact://limits/left"},
             {"arm_id": "right", "planner_profile_ref": "artifact://planner/right", "workspace_ref": "artifact://workspace/right", "joint_limits_ref": "artifact://limits/right"},
         ],
+        "route_policy": {
+            "approach_clearance_m": 0.08,
+            "lift_clearance_m": 0.10,
+            "transport_clearance_m": 0.12,
+            "descent_clearance_m": 0.04,
+            "retreat_distance_m": 0.10,
+            "retreat_direction": {
+                "frame_id": "world",
+                "vector": [0.0, 0.0, 1.0],
+                "provenance_ref": "artifact://robotwin/franka/route-policy",
+            },
+        },
         "selection_policy": {
             "max_options": 8,
             "weights": {"route_length": 1.0, "speed_margin": 0.1},
@@ -52,7 +74,7 @@ def _intent() -> ManipulationIntent:
         coordination_mode=CoordinationMode.ALTERNATIVE_ARM,
         observation_ref="observation://blocks_ranking_rgb-0-1/head_camera",
         scene_revision="blocks_ranking_rgb-0-1",
-        frame_id="head_camera",
+        observation_frame_id="head_camera",
         calibration_ref="artifact://blocks/calibration",
         candidate_set_ref="candidate-set://blocks_ranking_rgb-0-1/head_camera",
         constraints=("preserve_scene_revision",),
@@ -60,6 +82,15 @@ def _intent() -> ManipulationIntent:
 
 
 def _result(request, option, *, status="pass"):
+    positions = [
+        waypoint["position_m"]
+        for phase in request["candidates"][0]["route"]
+        for waypoint in phase["waypoints"]
+    ]
+    route_length = sum(
+        sum((a - b) ** 2 for a, b in zip(left, right)) ** 0.5
+        for left, right in zip(positions, positions[1:])
+    )
     return {
         "schema_version": ROUTE_EVALUATION_SCHEMA_VERSION,
         "request_id": request["request_id"],
@@ -71,6 +102,7 @@ def _result(request, option, *, status="pass"):
         "entity_ref": option["entity_ref"],
         "observation_ref": option["observation_ref"],
         "scene_revision": option["scene_revision"],
+        "observation_frame_id": option["observation_frame_id"],
         "frame_id": option["frame_id"],
         "calibration_ref": option["calibration_ref"],
         "candidate_set_ref": option["candidate_set_ref"],
@@ -87,7 +119,7 @@ def _result(request, option, *, status="pass"):
         "motion_authorized": False,
         "world_change_started": False,
         "metrics": {
-            "route_length_m": 0.0,
+            "route_length_m": route_length,
             "min_joint_speed_margin_radps": 0.2,
         },
     }
@@ -120,6 +152,70 @@ def test_selector_returns_replan_when_all_options_fail():
     result = CompleteRouteSelector(lambda route_request, option: _result(route_request, option, status="fail"), _profile()).select(_intent(), request, options)
     assert result.status == "replan_required"
     assert len(result.failed_routes) == 2
+    assert result.motion_authorized is False
+
+
+def test_selector_integrates_one_argument_readiness_client_and_replans_unavailable():
+    request = _request(Path("/tmp"))
+    options = enumerate_arm_candidates(_intent(), [dict(request["candidates"][0])], _profile())
+
+    class OneArgumentClient:
+        def evaluate(self, route_request):
+            return {"status": "unavailable", "route_evidence": [project_route_evidence(
+                route_request,
+                route_request["candidates"][0],
+                capability_status={check: "unavailable" for check in ROUTE_CHECKS},
+                evidence_ref="artifact://route-readiness/unavailable",
+            )]}
+
+    result = CompleteRouteSelector(
+        RouteReadinessEvaluationAdapter(OneArgumentClient()), _profile()
+    ).select(_intent(), request, options)
+
+    assert result.status == "replan_required"
+    assert {failure.code for failure in result.failed_routes} == {"provider_unavailable"}
+    assert result.motion_authorized is False
+
+
+def test_selector_to_jsonl_route_worker_is_no_motion_and_replans_unavailable(tmp_path):
+    request = _request(tmp_path)
+    options = enumerate_arm_candidates(
+        _intent(), [dict(request["candidates"][0])], _profile()
+    )
+    config = ProcessWorkerConfig(
+        command=(
+            sys.executable,
+            str(WORKER),
+            "--artifact-root",
+            str(tmp_path),
+            "--worker-id",
+            "route-selector-integration/v1",
+        ),
+        cwd=WORKER.parent,
+        environment={
+            "PYTHONPATH": (
+                f"{Path(__file__).parents[1] / 'src'}:{WORKER.parent}"
+            )
+        },
+        startup_timeout_s=2,
+        request_timeout_s=2,
+        shutdown_timeout_s=2,
+    )
+    client = RouteReadinessClient(
+        JsonlProcessWorkerClient(config), worker_id="route-selector-integration/v1"
+    )
+    try:
+        result = CompleteRouteSelector(
+            RouteReadinessEvaluationAdapter(client), _profile()
+        ).select(_intent(), request, options)
+    finally:
+        client.release()
+
+    assert result.status == "replan_required"
+    assert len(result.failed_routes) == 2
+    assert {failure.code for failure in result.failed_routes} == {
+        "provider_unavailable"
+    }
     assert result.motion_authorized is False
 
 
@@ -190,6 +286,18 @@ def test_versioned_franka_profile_loads_and_topology_mismatch_fails_closed():
     invalid["topology"] = "single_arm"
     with pytest.raises(ArmPlanningError, match="topology"):
         validate_arm_planning_profile(invalid)
+
+
+def test_arm_profile_loader_rejects_duplicate_keys(tmp_path):
+    profile_path = tmp_path / "duplicate.yaml"
+    profile_path.write_text(
+        "schema_version: paos-robotwin20-arm-planning/v1\n"
+        "schema_version: overwritten\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ArmPlanningError, match="duplicate YAML keys"):
+        load_arm_planning_profile(profile_path.resolve())
 
 
 def test_enumeration_and_selection_are_deterministic_and_do_not_mutate_inputs():

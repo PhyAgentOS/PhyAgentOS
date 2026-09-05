@@ -169,7 +169,9 @@ def test_request_policies_are_materialized_and_strict(tmp_path: Path):
         _validate_request_policies(tmp_path, request, max_duration_s=12)
 
     request = _route_request(tmp_path)
-    request["candidates"][0]["grasp_frame"]["max_joint_speed_radps"] = 1.1
+    request["candidates"][0]["execution_grasp"]["contact_tcp_pose"][
+        "max_joint_speed_radps"
+    ] = 1.1
     with pytest.raises(SimulationProbeError, match="joint-limit policy"):
         _validate_request_policies(tmp_path, request, max_duration_s=12)
 

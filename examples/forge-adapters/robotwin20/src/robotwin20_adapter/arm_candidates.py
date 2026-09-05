@@ -18,6 +18,8 @@ from PhyAgentOS.forge.manipulation import (
     RouteFailure,
 )
 
+from .perception_profile import _read_unique_yaml
+from .route_generation import RouteGenerationError, validate_route_policy
 from .route_readiness import (
     ROUTE_CHECKS,
     ROUTE_PHASES,
@@ -63,14 +65,11 @@ def load_arm_planning_profile(path: str | os.PathLike[str]) -> dict[str, Any]:
     profile_path = Path(path).expanduser()
     if not profile_path.is_absolute() or not profile_path.is_file() or profile_path.is_symlink():
         raise ArmPlanningError("arm planning profile must be an absolute regular file")
-    try:
-        import yaml
-    except ImportError as exc:
-        raise ArmPlanningError("PyYAML is required to load arm planning profiles") from exc
-    try:
-        profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise ArmPlanningError("arm planning profile could not be loaded") from exc
+    profile = _read_unique_yaml(
+        profile_path,
+        error_type=ArmPlanningError,
+        label="arm planning profile",
+    )
     validate_arm_planning_profile(profile)
     return dict(profile)
 
@@ -82,13 +81,16 @@ def validate_arm_planning_profile(profile: Any) -> None:
         "schema_version",
         "embodiment_id",
         "topology",
+        "route_frame_id",
         "arms",
+        "route_policy",
         "selection_policy",
     }:
         raise ArmPlanningError("arm planning profile fields are invalid")
     if profile["schema_version"] != ARM_PLANNING_PROFILE_SCHEMA_VERSION:
         raise ArmPlanningError("arm planning profile schema_version is unsupported")
     _identity(profile["embodiment_id"], "embodiment_id")
+    route_frame_id = _identity(profile["route_frame_id"], "route_frame_id")
     if profile["topology"] not in {"single_arm", "dual_independent", "dual_coordinated"}:
         raise ArmPlanningError("arm planning topology is unsupported")
     arms = profile["arms"]
@@ -113,6 +115,10 @@ def validate_arm_planning_profile(profile: Any) -> None:
     expected_arm_count = 1 if profile["topology"] == "single_arm" else 2
     if len(arm_ids) != expected_arm_count:
         raise ArmPlanningError("arm planning topology does not match configured arms")
+    try:
+        validate_route_policy(profile["route_policy"], route_frame_id)
+    except RouteGenerationError as exc:
+        raise ArmPlanningError(str(exc)) from exc
     policy = profile["selection_policy"]
     if not isinstance(policy, Mapping) or set(policy) != {
         "max_options",
@@ -184,10 +190,21 @@ def enumerate_arm_candidates(
             raise ArmPlanningError("arm candidate observation binding is invalid")
         if candidate.get("scene_revision", intent.scene_revision) != intent.scene_revision:
             raise ArmPlanningError("arm candidate scene revision is stale")
-        if candidate.get("frame_id", intent.frame_id) != intent.frame_id:
+        observation_frame = candidate.get(
+            "observation_frame_id", intent.observation_frame_id
+        )
+        if observation_frame != intent.observation_frame_id:
             raise ArmPlanningError("arm candidate frame binding is invalid")
         if candidate.get("calibration_ref", intent.calibration_ref) != intent.calibration_ref:
             raise ArmPlanningError("arm candidate calibration binding is invalid")
+        route_frame = self_route_frame = profile["route_frame_id"]
+        route = candidate.get("route")
+        if isinstance(route, list) and route and isinstance(route[0], Mapping):
+            waypoints = route[0].get("waypoints")
+            if isinstance(waypoints, list) and waypoints and isinstance(waypoints[0], Mapping):
+                route_frame = waypoints[0].get("frame_id", route_frame)
+        if route_frame != self_route_frame:
+            raise ArmPlanningError("candidate route frame does not match embodiment profile")
         for arm_ids in arm_groups:
             option = {
                 "option_id": hashlib.sha256(
@@ -205,7 +222,8 @@ def enumerate_arm_candidates(
                 "observation_ref": intent.observation_ref,
                 "candidate_set_ref": intent.candidate_set_ref,
                 "scene_revision": intent.scene_revision,
-                "frame_id": intent.frame_id,
+                "observation_frame_id": intent.observation_frame_id,
+                "frame_id": route_frame,
                 "calibration_ref": intent.calibration_ref,
                 "motion_authorized": False,
                 "world_change_started": False,
@@ -342,7 +360,8 @@ class CompleteRouteSelector:
             "entity_ref": intent.entity_ref,
             "observation_ref": intent.observation_ref,
             "scene_revision": intent.scene_revision,
-            "frame_id": intent.frame_id,
+            "observation_frame_id": intent.observation_frame_id,
+            "frame_id": selected["frame_id"],
             "calibration_ref": intent.calibration_ref,
             "candidate_set_ref": intent.candidate_set_ref,
             "selected_option_id": selected["option_id"],
@@ -366,7 +385,7 @@ class CompleteRouteSelector:
         bindings = {
             "observation_ref": intent.observation_ref,
             "scene_revision": intent.scene_revision,
-            "frame_id": intent.frame_id,
+            "observation_frame_id": intent.observation_frame_id,
             "calibration_ref": intent.calibration_ref,
             "candidate_set_ref": intent.candidate_set_ref,
         }
@@ -395,6 +414,7 @@ class CompleteRouteSelector:
             "observation_ref",
             "candidate_set_ref",
             "scene_revision",
+            "observation_frame_id",
             "frame_id",
             "calibration_ref",
             "motion_authorized",
@@ -429,7 +449,11 @@ class CompleteRouteSelector:
             or option["observation_ref"] != intent.observation_ref
             or option["candidate_set_ref"] != intent.candidate_set_ref
             or option["scene_revision"] != intent.scene_revision
-            or option["frame_id"] != intent.frame_id
+            or option["observation_frame_id"] != intent.observation_frame_id
+            or option["frame_id"]
+            != candidate.get("route", [{}])[0]
+            .get("waypoints", [{}])[0]
+            .get("frame_id", option["frame_id"])
             or option["calibration_ref"] != intent.calibration_ref
             or option["motion_authorized"] is not False
             or option["world_change_started"] is not False
@@ -454,6 +478,7 @@ class CompleteRouteSelector:
             "entity_ref",
             "observation_ref",
             "scene_revision",
+            "observation_frame_id",
             "frame_id",
             "calibration_ref",
             "candidate_set_ref",
@@ -485,6 +510,7 @@ class CompleteRouteSelector:
             or raw["entity_ref"] != candidate["entity_ref"]
             or raw["observation_ref"] != option["observation_ref"]
             or raw["scene_revision"] != option["scene_revision"]
+            or raw["observation_frame_id"] != option["observation_frame_id"]
             or raw["frame_id"] != option["frame_id"]
             or raw["calibration_ref"] != option["calibration_ref"]
             or raw["candidate_set_ref"] != option["candidate_set_ref"]

@@ -1,12 +1,17 @@
 import json
+from dataclasses import replace
 
 import pytest
 
 from pick_place_workflow.long_horizon import (
+    WORKFLOW_DAG,
     WORKFLOW_ID,
     WORKFLOW_VERSION,
     LongHorizonWorkflow,
     WorkflowBindingError,
+    WorkflowDag,
+    WorkflowNodeSpec,
+    WorkflowState,
     WorkflowTransitionError,
 )
 
@@ -23,6 +28,7 @@ def test_start_exposes_only_declared_next_tool_and_immutable_steps():
     assert snapshot["status"] == "ready"
     assert snapshot["active_step"] == "observe"
     assert workflow.next_tool() == "scene.observe"
+    assert [node.node_id for node in workflow.ready_nodes()] == ["observe"]
     assert [step["tool_id"] for step in snapshot["steps"]] == [
         "scene.observe",
         "scene.understand",
@@ -33,6 +39,119 @@ def test_start_exposes_only_declared_next_tool_and_immutable_steps():
     ]
     assert "coordinates" not in json.dumps(snapshot).lower()
     assert "robotwin" not in json.dumps(snapshot).lower()
+    assert snapshot["dag_digest"] == WORKFLOW_DAG.dag_digest
+
+
+def test_skill_dag_projects_dependencies_without_execution():
+    assert [node.node_id for node in WORKFLOW_DAG.ready_nodes(set())] == ["observe"]
+    assert [node.node_id for node in WORKFLOW_DAG.ready_nodes({"observe"})] == ["understand"]
+    assert WORKFLOW_DAG.nodes[-1].depends_on == ("acquire",)
+    assert not hasattr(WORKFLOW_DAG, "execute")
+    assert not hasattr(WORKFLOW_DAG, "begin_revision")
+
+
+def test_dag_schema_projects_parallel_ready_nodes_and_waits_for_join():
+    dag = WorkflowDag(
+        WORKFLOW_DAG.version,
+        WORKFLOW_DAG.workflow_id,
+        (
+            WorkflowNodeSpec("root", "scene.observe", "query"),
+            WorkflowNodeSpec("left", "scene.understand", "query", ("root",)),
+            WorkflowNodeSpec("right", "grasp.propose", "query", ("root",)),
+            WorkflowNodeSpec("join", "manipulation.prepare", "query", ("left", "right")),
+        ),
+    )
+
+    assert [node.node_id for node in dag.ready_nodes(set())] == ["root"]
+    assert [node.node_id for node in dag.ready_nodes({"root"})] == ["left", "right"]
+    assert [node.node_id for node in dag.ready_nodes({"root", "right"})] == ["left"]
+    assert [node.node_id for node in dag.ready_nodes({"root", "left", "right"})] == ["join"]
+
+
+def test_dag_and_state_binding_validation_fail_closed():
+    with pytest.raises(WorkflowBindingError, match="required bindings"):
+        WorkflowNodeSpec("unsafe", "scene.observe", "query", required_bindings=("pose",))
+    with pytest.raises(WorkflowBindingError, match="dependencies"):
+        WorkflowNodeSpec("unsafe", "scene.observe", "query", depends_on=("observe", "observe"))
+    with pytest.raises(WorkflowBindingError, match="immutable node tuple"):
+        WorkflowDag(WORKFLOW_DAG.version, WORKFLOW_DAG.workflow_id, list(WORKFLOW_DAG.nodes))
+    with pytest.raises(WorkflowBindingError, match="string set"):
+        WORKFLOW_DAG.ready_nodes(["observe"])
+    with pytest.raises(WorkflowBindingError, match="dependency is invalid"):
+        WorkflowDag(
+            WORKFLOW_DAG.version,
+            WORKFLOW_DAG.workflow_id,
+            (WorkflowNodeSpec("orphan", "scene.observe", "query", ("missing",)),),
+        )
+    with pytest.raises(WorkflowBindingError, match="acyclic"):
+        WorkflowDag(
+            WORKFLOW_DAG.version,
+            WORKFLOW_DAG.workflow_id,
+            (
+                WorkflowNodeSpec("left", "scene.observe", "query", ("right",)),
+                WorkflowNodeSpec("right", "scene.understand", "query", ("left",)),
+            ),
+        )
+
+    workflow = LongHorizonWorkflow.start("task-1", "revision-1")
+    stale = replace(workflow.state, dag_digest="0" * 64)
+    with pytest.raises(WorkflowBindingError, match="DAG binding"):
+        LongHorizonWorkflow(stale)
+    impossible = WorkflowState(
+        **{
+            **workflow.state.__dict__,
+            "status": "running",
+            "active_step": "understand",
+        }
+    )
+    with pytest.raises(WorkflowBindingError, match="DAG readiness"):
+        LongHorizonWorkflow(impossible)
+
+    with pytest.raises(WorkflowBindingError, match="task_id"):
+        LongHorizonWorkflow(replace(workflow.state, task_id="../unsafe"))
+    with pytest.raises(WorkflowBindingError, match="immutable WorkflowSteps"):
+        LongHorizonWorkflow(replace(workflow.state, steps=list(workflow.state.steps)))
+
+
+def test_restored_blocked_state_requires_ready_failure_and_matching_reason():
+    workflow = LongHorizonWorkflow.start("task-1", "revision-1")
+    blocked = workflow.record("observe", "unavailable")
+
+    with pytest.raises(WorkflowBindingError, match="blocked workflow state"):
+        LongHorizonWorkflow(replace(blocked, block_reason="failed"))
+
+    impossible_steps = list(workflow.start("task-1", "revision-1").state.steps)
+    impossible_steps[-1] = replace(impossible_steps[-1], status="failed")
+    impossible = replace(
+        workflow.start("task-1", "revision-1").state,
+        status="blocked",
+        active_step="place",
+        steps=tuple(impossible_steps),
+        block_reason="failed",
+    )
+    with pytest.raises(WorkflowBindingError, match="blocked workflow state"):
+        LongHorizonWorkflow(impossible)
+
+    with pytest.raises(WorkflowBindingError, match="block reason"):
+        LongHorizonWorkflow(
+            replace(
+                workflow.start("task-1", "revision-1").state,
+                block_reason="stale",
+            )
+        )
+
+
+def test_recorded_references_and_dag_nodes_are_immutable():
+    source = {"observation_ref": OBS}
+    workflow = LongHorizonWorkflow.start("task-1", "revision-1")
+    state = workflow.record("observe", "available", source)
+    source["observation_ref"] = "observation://scene-8/camera_front"
+
+    assert state.steps[0].references["observation_ref"] == OBS
+    with pytest.raises(TypeError):
+        state.steps[0].references["observation_ref"] = source["observation_ref"]
+    with pytest.raises(TypeError):
+        WORKFLOW_DAG.nodes[0] = WORKFLOW_DAG.nodes[1]
 
 
 def test_complete_chain_requires_terminal_success_and_preserves_references():

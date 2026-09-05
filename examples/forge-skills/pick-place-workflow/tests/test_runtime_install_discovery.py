@@ -33,7 +33,7 @@ def _package_bundle(tmp_path: Path) -> Path:
         "--force",
     ]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
-    archive = output / "pick-place-workflow-0.8.0.tar.gz"
+    archive = output / "pick-place-workflow-0.9.0.tar.gz"
     assert archive.is_file(), completed.stdout
     return archive
 
@@ -95,7 +95,7 @@ def test_discovery_publishes_only_one_healthy_installed_runtime(tmp_path):
 
     assert active is not None
     assert active.skill_name == "pick-place-workflow"
-    assert active.skill_version == "0.8.0"
+    assert active.skill_version == "0.9.0"
     assert active.profile == "fake"
     assert active.gateway_identity == "gateway_fake_fixture"
     assert manager.calls == ["pick-place-workflow"]

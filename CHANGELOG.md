@@ -2,6 +2,42 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.2.0] - 2026-09-05
+
+完成 PAOS-first 操作规划收口与第二轮五维代码审查。Skill reducer 现在以 immutable DAG readiness 驱动；replan hint 绑定 node digest；RoboTwin route-readiness 明确适配到独立 route-evaluation contract，并拒绝 release TCP 变换或 phase gripper 语义不一致。PAOS task/revision/SQLite/Verifier/Gateway 权威边界和 no-motion 门禁保持不变。
+
+Closed the PAOS-first manipulation-planning refactor and the second five-dimension code review. The Skill reducer is now driven by immutable DAG readiness; replan hints bind node digests; RoboTwin route-readiness explicitly adapts to the independent route-evaluation contract and rejects inconsistent release-TCP transforms or phase gripper semantics. PAOS task/revision/SQLite/Verifier/Gateway authority and no-motion gates remain unchanged.
+
+### 文件变更详情 / Detailed changes
+
+- `PhyAgentOS/forge/manipulation.py:L1-L314`：移除重叠生命周期并增加带 `node_digest` 的自校验 `ReplanSignal`。
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py:L1-L639`：DAG-ready reducer、immutable references 和恢复状态校验。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py:L95-L579`：route semantic validation、完整 candidate evidence validation 与 `RouteReadinessEvaluationAdapter`。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py:L1-L583`、`route_generation.py:L1-L335`、`perception_profile.py:L27-L184`：adapter/profile ownership、路线选择和 strict YAML。
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L843-L886`、`docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L829-L842`、`changelog/2026-09_part2.md:L2947-L3037`：记录十一个 Major 修复、五维验收和后续门禁。
+
+### 验证 / Validation
+
+- 组合 core/adapter/Skill（排除缺少 NumPy 的 GraspGen collection）→ `616 passed, 2 skipped`；core/adapter `355 passed, 2 skipped`；Skill `261 passed`；根仓库 `168 passed`；route generation/readiness/selection 专项 `36 passed`；开发者指南完整 DAG/route/evidence 专项 `69 passed`。
+- `ruff check`、`compileall`、`git diff --check` → 通过。
+- 未启动 Gateway、Dora、Action、硬件或仿真运动；真实 readiness、人工批准和抓取放置闭环仍未完成。
+- Commit: pending on `feature/long-horizon-workflow`。
+
+## [v5.1.0] - 2026-09-05 (withdrawn)
+
+路线生成草案在实现审查中发现 PAOS 权威边界、frame/transform 语义和配置归属问题，未进入完成、提交或动作接入；未提交草案由 v5.2.0 PAOS-first 重构替代。
+
+The route-generation draft was withdrawn after review found PAOS authority-boundary, frame/transform-semantics, and configuration-ownership issues. It was not completed, committed, or wired to motion; the uncommitted draft was superseded by the v5.2.0 PAOS-first refactor.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_generation.py`：草案保留为后续 adapter 语义参考，未作为独立完成版本发布。
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`、`docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`：记录撤销原因和边界。
+
+### 验证 / Validation
+
+- 未创建 motion wiring、Gateway/Dora invocation 或 readiness approval；该版本不作为完成实现计入。
+
 ## [v5.0.0] - 2026-09-05
 
 新增 provider-neutral 语义 Manipulation DAG、双臂候选枚举、完整路线选择和失败重规划契约。公共层只
@@ -123,38 +159,9 @@ After:  approval binds calibration/joint/stop SHA-256; all post-reset failures p
 - Gateway, Dora, Action executor, and hardware remain disconnected. Commit: `f88778a` on
   `feature/long-horizon-workflow`.
 
-## [v4.12.0] - 2026-09-05
-
-新增独立 RoboTwin simulation-probe producer 与严格 profile-owned client。worker 在专用 approval 和
-Franka/task/request 绑定下执行八阶段单候选仿真路线，记录附着几何、planner/joint limits、active
-contacts、stop/failure snapshot 和 reset/reconciliation；不接入 Gateway、Dora 或硬件。真实 seed-0
-运行在 retreat 检测 `panda_rightfinger/table` active collision，返回 unavailable，未批准 readiness
-或 motion wiring。
-
-Added an independent RoboTwin simulation-probe producer and strict profile-owned client. Under dedicated
-approval and Franka/task/request bindings, the worker executes an eight-phase single-candidate simulation
-route and records attached geometry, planner/joint limits, active contacts, stop/failure snapshots, and
-reset/reconciliation; Gateway, Dora, and hardware remain disconnected. The real seed-0 run detected an
-active `panda_rightfinger/table` collision during retreat and returned unavailable; readiness and motion
-wiring were not approved.
-
-### Detailed changes
-
-- Added the simulation probe worker, profile-owned client/profile, and conformance tests.
-- Extended route-evidence snapshot/semantic validation and exported the probe API.
-- Updated diagnosis, implementation review, and adapter README with the five-dimension review and negative
-  readiness evidence boundary.
-
-### Validation
-
-- Probe/evidence conformance: `19 passed`; adapter composition excluding the PAOS missing-numpy grasp
-  proposal module: `145 passed, 2 skipped`.
-- Ruff, compileall, and `git diff --check` passed. Real artifact root:
-  `/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T0230Z`.
-- Commit: pending on `feature/long-horizon-workflow`.
-
 ## Archive
 
+- [2026-09 part 3](changelog/2026-09_part3.md)
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)
 

@@ -19,9 +19,9 @@ from typing import Any, Mapping
 
 from .perception_profile import PerceptionProfileError, _worker_config
 
-SIMULATION_AUTHORIZATION_PROFILE_SCHEMA_VERSION = "paos-robotwin20-simulation-motion/v1"
-SIMULATION_APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-motion-approval/v1"
-SIMULATION_EVIDENCE_MANIFEST_SCHEMA_VERSION = "paos-robotwin20-simulation-motion-evidence/v1"
+SIMULATION_AUTHORIZATION_PROFILE_SCHEMA_VERSION = "paos-robotwin20-simulation-motion/v2"
+SIMULATION_APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-motion-approval/v2"
+SIMULATION_EVIDENCE_MANIFEST_SCHEMA_VERSION = "paos-robotwin20-simulation-motion-evidence/v2"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ENV = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 _REQUIRED_SCOPES = frozenset(
@@ -29,7 +29,8 @@ _REQUIRED_SCOPES = frozenset(
         "attached_object_collision",
         "complete_transport_descent_retreat",
         "contact_dynamics",
-        "after_snapshot_semantic_verification",
+        "stop_control",
+        "workspace_and_joint_limits",
     }
 )
 
@@ -65,7 +66,7 @@ class SimulationMotionAuthorizationProfile:
     snapshot_artifact_root: Path
     before_snapshot_required: bool
     after_snapshot_required: bool
-    semantic_verifier_required: bool
+    task_verifier_handoff_required: bool
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -259,7 +260,7 @@ def load_simulation_motion_profile(
         raise SimulationAuthorizationError("simulation execution fields are invalid")
     if set(stop) != {"cancel_timeout_s", "hard_stop_timeout_s", "unknown_policy"}:
         raise SimulationAuthorizationError("simulation stop fields are invalid")
-    if set(snapshot) != {"artifact_root", "before_required", "after_required", "semantic_verifier_required"}:
+    if set(snapshot) != {"artifact_root", "before_required", "after_required", "task_verifier_handoff_required"}:
         raise SimulationAuthorizationError("simulation snapshot fields are invalid")
     variables = dict(os.environ if environ is None else environ)
     runtime_profile = _path(runtime["profile"], variables, "runtime.profile")
@@ -347,9 +348,12 @@ def load_simulation_motion_profile(
     artifact_root = _path(snapshot["artifact_root"], variables, "snapshot.artifact_root", directory=True)
     before_required = _bool(snapshot["before_required"], "snapshot.before_required")
     after_required = _bool(snapshot["after_required"], "snapshot.after_required")
-    semantic_required = _bool(snapshot["semantic_verifier_required"], "snapshot.semantic_verifier_required")
-    if not (before_required and after_required and semantic_required):
-        raise SimulationAuthorizationError("simulation snapshots and semantic verification are mandatory")
+    verifier_handoff_required = _bool(
+        snapshot["task_verifier_handoff_required"],
+        "snapshot.task_verifier_handoff_required",
+    )
+    if not (before_required and after_required and verifier_handoff_required):
+        raise SimulationAuthorizationError("simulation snapshots and task verifier handoff are mandatory")
     profile_sha256 = _profile_identity_digest(raw)
     if evidence_path is not None and evidence_hash is not None:
         if _digest(evidence_path, "simulation evidence manifest") != evidence_hash:
@@ -429,7 +433,7 @@ def load_simulation_motion_profile(
         snapshot_artifact_root=artifact_root,
         before_snapshot_required=before_required,
         after_snapshot_required=after_required,
-        semantic_verifier_required=semantic_required,
+        task_verifier_handoff_required=verifier_handoff_required,
     )
 
 

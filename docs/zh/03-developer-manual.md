@@ -217,6 +217,17 @@ attempt。Outcome source 将每个 revision verdict 映射到该 revision
 
 ## 13. 测试门禁
 
+### Manipulation / benchmark 扩展边界
+
+长程抓取放置的子任务依赖由 Skill 内的只读 `WORKFLOW_DAG` projection 表达；它不创建 PlanRevision、
+不执行 Tool，也不持有跨 Tool 资源租约。`AgentTaskRecord`、`PlanRevision`、SQLite 和
+`AgentTaskCoordinator` 仍是唯一生命周期事实源。
+
+RoboTwin/Franka 的本体、benchmark、route frame、候选到 execution grasp 的适配、`object_T_tcp`、
+workspace、joint/stop policy 和 route geometry 必须放在 adapter/profile。readiness worker 只产生
+IK/碰撞/完整路线/限幅/停止证据；probe 只保存 before/after 与 observed outcome；用户级成功仍由
+`ForgeTaskVerifier` 判定。替换机器人只替换 profile/adapter 和证据，不复制 Skill 或 PAOS core。
+
 ```bash
 ruff check PhyAgentOS tests
 python -m compileall -q PhyAgentOS tests

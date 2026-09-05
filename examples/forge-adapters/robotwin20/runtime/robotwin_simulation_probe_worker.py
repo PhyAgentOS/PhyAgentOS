@@ -167,28 +167,24 @@ def _validate_approval(
     return dict(approval)
 
 
-def _camera_pose(candidate: Mapping[str, Any], calibration: Mapping[str, Any]) -> list[float]:
+def _route_pose(pose_value: Mapping[str, Any], route_frame_id: str) -> list[float]:
     import numpy as np
-    import sapien.core as sapien
     import transforms3d as t3d
 
-    frame = candidate["grasp_frame"]
-    q = np.asarray(frame["orientation_xyzw"], dtype=np.float64)
+    if pose_value.get("frame_id") != route_frame_id:
+        raise SimulationProbeError("route pose frame binding is invalid")
+    q = np.asarray(pose_value["orientation_xyzw"], dtype=np.float64)
     norm = float(np.linalg.norm(q))
     if norm <= 1e-9 or not math.isfinite(norm):
         raise SimulationProbeError("candidate orientation is degenerate")
     q = q / norm
-    local = np.eye(4, dtype=np.float64)
-    local[:3, :3] = t3d.quaternions.quat2mat([q[3], q[0], q[1], q[2]])
-    local[:3, 3] = np.asarray(frame["position_m"], dtype=np.float64)
-    extrinsic = np.asarray(calibration.get("extrinsic_cv"), dtype=np.float64)
-    if extrinsic.shape != (3, 4) or not bool(np.isfinite(extrinsic).all()):
-        raise SimulationProbeError("calibration extrinsic_cv is invalid")
-    camera_to_world = np.eye(4, dtype=np.float64)
-    camera_to_world[:3, :] = extrinsic
-    world = camera_to_world @ local
-    pose = sapien.Pose(world[:3, 3], t3d.quaternions.mat2quat(world[:3, :3]))
-    return pose.p.tolist() + pose.q.tolist()
+    position = np.asarray(pose_value["position_m"], dtype=np.float64)
+    if position.shape != (3,) or not bool(np.isfinite(position).all()):
+        raise SimulationProbeError("route pose position is invalid")
+    q_wxyz = t3d.quaternions.mat2quat(
+        t3d.quaternions.quat2mat([q[3], q[0], q[1], q[2]])
+    )
+    return position.tolist() + q_wxyz.tolist()
 
 
 def _contact_state(
@@ -374,7 +370,7 @@ def _validate_request_policies(
     ):
         raise SimulationProbeError("stop policy is invalid")
     for candidate in request["candidates"]:
-        speed_limited_poses = [candidate["grasp_frame"]]
+        speed_limited_poses = [candidate["execution_grasp"]["contact_tcp_pose"]]
         speed_limited_poses.extend(
             waypoint
             for phase in candidate["route"]
@@ -595,7 +591,6 @@ def _run_candidate(
     task: Any,
     request: Mapping[str, Any],
     candidate: Mapping[str, Any],
-    calibration: Mapping[str, Any],
     policies: Mapping[str, Any],
     *,
     deadline: float,
@@ -616,13 +611,19 @@ def _run_candidate(
         planner = task.robot.left_planner if arm == "left" else task.robot.right_planner
         limits = _joint_limits(planner)
         try:
-            pose = _camera_pose(candidate, calibration)
+            pose = _route_pose(
+                candidate["execution_grasp"]["contact_tcp_pose"], request["frame_id"]
+            )
             fn = task.robot.left_plan_path if arm == "left" else task.robot.right_plan_path
             result = fn(pose)
             _validate_trajectory(
                 result,
                 limits,
-                max_joint_speed_radps=float(candidate["grasp_frame"]["max_joint_speed_radps"]),
+                max_joint_speed_radps=float(
+                    candidate["execution_grasp"]["contact_tcp_pose"][
+                        "max_joint_speed_radps"
+                    ]
+                ),
             )
             arm_results[arm] = (limits, result)
             arm_attempts.append({"arm": arm, "status": "pass"})
@@ -647,21 +648,20 @@ def _run_candidate(
         execution_state["phase"] = phase_name
         world_waypoints = []
         for waypoint in phase["waypoints"]:
-            probe_candidate = {"grasp_frame": waypoint}
-            world_pose = _camera_pose(probe_candidate, calibration)
+            world_pose = _route_pose(waypoint, request["frame_id"])
             _validate_world_pose(world_pose, request["workspace_bounds_m"], half_extents)
             world_waypoints.append(world_pose)
         planned_segments = []
-        for camera_waypoint, waypoint in zip(phase["waypoints"], world_waypoints):
+        for route_waypoint, waypoint in zip(phase["waypoints"], world_waypoints):
             result = fn(waypoint)
             _validate_trajectory(
                 result,
                 limits,
-                max_joint_speed_radps=float(camera_waypoint["max_joint_speed_radps"]),
+                max_joint_speed_radps=float(route_waypoint["max_joint_speed_radps"]),
             )
             planned_segments.append(
                 {
-                    "camera_waypoint": camera_waypoint,
+                    "route_waypoint": route_waypoint,
                     "world_pose_pq_wxyz": waypoint,
                     "position": np.asarray(result["position"], dtype=np.float64).tolist(),
                     "velocity": np.asarray(result["velocity"], dtype=np.float64).tolist(),
@@ -676,7 +676,7 @@ def _run_candidate(
                 stop_file=stop_file,
                 contacts=contact_trace,
                 execution_state=execution_state,
-                max_linear_speed_mps=float(camera_waypoint["max_linear_speed_mps"]),
+                max_linear_speed_mps=float(route_waypoint["max_linear_speed_mps"]),
             )
         _set_gripper(
             task,
@@ -916,22 +916,20 @@ def _finalize_candidate_success(
         )
     )
     selected_gripper = float(after["robot_grippers"][selected_arm])
-    semantic = {
-        "status": "pass",
-        "verifier_id": "robotwin20-single-object-route-semantic/v1",
-        "criteria_scope": "single_object_route_only",
-        "criteria": [
-            "single_object_target_actor_state_changed",
-            "selected_gripper_released",
-        ],
+    observed_outcome = {
+        "schema_version": "paos-robotwin20-observed-route-outcome/v1",
         "after_snapshot_ref": after_ref["artifact_ref"],
         "target_displacement_m": displacement,
+        "target_pose_changed": displacement >= 1e-4,
         "selected_arm": selected_arm,
         "selected_gripper_value": selected_gripper,
+        "selected_gripper_open": selected_gripper >= 0.8,
     }
-    semantic_ref = _json_artifact(artifact_root, prefix + "/semantic-verdict", semantic)
+    outcome_ref = _json_artifact(
+        artifact_root, prefix + "/observed-outcome", observed_outcome
+    )
     evidence = {
-        "schema_version": "paos-robotwin20-simulation-route-evidence/v1",
+        "schema_version": "paos-robotwin20-simulation-route-evidence/v2",
         "request_id": request["request_id"],
         "candidate_ref": candidate["candidate_ref"],
         "entity_ref": candidate["entity_ref"],
@@ -974,15 +972,11 @@ def _finalize_candidate_success(
                 "evidence": stop_ref,
                 "method": "worker-local-deadline-stop-file/v1",
             },
-            "semantic_verification": {
-                "status": "pass",
-                "evidence": semantic_ref,
-                "method": "robotwin20-single-object-route-semantic/v1",
-            },
         },
         "before_snapshot": dict(before_ref),
         "after_snapshot": after_ref,
-        "semantic_verdict": semantic,
+        "observed_outcome": observed_outcome,
+        "observed_outcome_artifact": outcome_ref,
         "producer_binding": dict(producer_binding),
         "probe_execution": {
             "simulation_only": True,
@@ -1073,7 +1067,6 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
             geometry_path = _artifact_path(artifact_root, geometry_ref)
             if _sha_bytes(geometry_path.read_bytes()) != candidate["attached_object"]["geometry_sha256"]:
                 raise SimulationProbeError("attached geometry artifact digest mismatch")
-            calibration = _load_json_artifact(artifact_root, request["calibration_ref"])
             policies = _validate_request_policies(
                 artifact_root,
                 request,
@@ -1165,7 +1158,6 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
                 task,
                 request,
                 candidate,
-                calibration,
                 policies,
                 deadline=deadline,
                 stop_file=stop_file,

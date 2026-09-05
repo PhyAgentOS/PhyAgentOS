@@ -24,8 +24,8 @@ from robotwin20_adapter.route_readiness import (
 )
 
 
-def _artifact_path(root: Path, candidate_ref: str) -> tuple[Path, str]:
-    token = hashlib.sha256(candidate_ref.encode("utf-8")).hexdigest()
+def _artifact_path(root: Path, request_id: str, candidate_ref: str) -> tuple[Path, str]:
+    token = hashlib.sha256(f"{request_id}\n{candidate_ref}".encode("utf-8")).hexdigest()
     directory = root / "simulation-route-readiness"
     directory.mkdir(parents=True, exist_ok=True)
     return directory / f"{token}.json", f"artifact://simulation-route-readiness/{token}"
@@ -45,7 +45,9 @@ def _handle_factory(artifact_root: Path, worker_id: str):
             for check in ROUTE_CHECKS
         }
         for candidate in request["candidates"]:
-            path, ref = _artifact_path(artifact_root, candidate["candidate_ref"])
+            path, ref = _artifact_path(
+                artifact_root, request["request_id"], candidate["candidate_ref"]
+            )
             item = project_route_evidence(
                 request,
                 candidate,
@@ -67,6 +69,7 @@ def _handle_factory(artifact_root: Path, worker_id: str):
             "status": "unavailable",
             "worker_id": worker_id,
             "motion_authorized": False,
+            "world_change_started": False,
             "provider_available": False,
             "route_evidence": evidence,
             "unavailable_reasons": [

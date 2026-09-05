@@ -662,14 +662,14 @@ object route readiness、真实运动和 after-snapshot/语义验收仍是后续
   均 fail-closed；disabled/pending 状态禁止携带 approval record，approved 状态必须同时提供
   worker 和专用 approval schema。
 - **权威边界：通过。** 当前样例固定 `state=disabled`、`motion_authorized=false`；approved
-  profile 还必须绑定 `paos-robotwin20-simulation-motion-evidence/v1` manifest 及每个 scope 的 artifact 摘要；profile
+  profile 还必须绑定 `paos-robotwin20-simulation-motion-evidence/v2` manifest 及每个 scope 的 artifact 摘要；profile
   loader 不启动任何进程，也不产生 motion authority。审批记录只证明未来可申请的配置条件，
   不能替代 Gateway/Runtime admission 或执行后语义 Verifier。
 - **配置：通过。** runtime/artifact 路径、digest、worker 和停止参数全部外置；disabled
   profile 不硬编码模型、URL、设备或凭据。严格 schema 防止把 no-motion readiness evidence
   误当成 simulation approval。
 - **可维护性：通过。** 新模块复用现有 process-worker 配置校验，使用 dataclass 表达声明，
-  将四个缺失证据 scope 和停止/快照策略集中命名；专项测试覆盖 disabled、approved、篡改和
+  将五个 readiness scope 和停止/快照策略集中命名；专项测试覆盖 disabled、approved、篡改和
   配置边界，未引入 RoboTwin/SAPIEN 依赖。
 
 专项 profile conformance 为 `10 passed`。没有发现 Blocker/Major。仍未实现 attached-object
@@ -704,14 +704,14 @@ collision、接触动力学、停止控制、before/after snapshot 或语义 Ver
 
 本阶段新增 `route_evidence.py`、`robotwin_route_evidence_worker.py`、
 `route-evidence.yaml` 及 conformance tests。verifier 消费外部证据，不执行 planner 或
-仿真；只有附着 geometry、trajectory/joint-limit、六个 readiness scope、before/after 快照
-和 semantic verdict 全部通过绑定与摘要校验时才生成 projection。
+仿真；只有附着 geometry、trajectory/joint-limit、五个 readiness scope、before/after 快照
+和 bounded `observed_outcome` 全部通过绑定与摘要校验时才生成 projection。
 
 - **架构集成：通过。** verifier 位于 RoboTwin adapter，复用现有 bounded JSONL
   `ProcessWorkerClient` 和 route-readiness contract；不注册 Tool、Session、Action route，
   不创建第二套生命周期或执行平面。
 - **失败路径：通过。** 缺失/损坏/越界/符号链接 artifact、摘要漂移、身份漂移、阶段顺序
-  错误、scope 不全、planner/semantic 非 pass 和 before/after 无状态变化均 fail-closed；
+  错误、scope 不全、planner 非 pass、observed outcome 漂移和 before/after 无状态变化均 fail-closed；
   worker 异常由 JSONL 边界投影为 unavailable，client 不把它升级为可用。
 - **权威边界：通过。** external evidence 是被审计的输入而非运动授权；canonical projection
   与响应固定 `motion_authorized=false`、`world_change_started=false`，不能绕过 Gateway
@@ -741,7 +741,7 @@ collision、接触动力学、停止控制、before/after snapshot 或语义 Ver
 - **配置：通过。** runtime/profile/artifact root、approval、worker identity、producer digest、超时和 stop-file 全部由 profile/CLI 绑定；strict loader 拒绝重复 key、缺失绑定和路径漂移。
 - **可维护性：通过（功能门槛未关闭）。** phase/check 常量、不可变 artifact、接触/快照 schema、失败 diagnostics 和 profile client 分层明确；但当前候选路线仍有真实 attached-phase finger/table collision，不能用测试通过替代路线修正。
 
-专项 probe/evidence conformance 为 `19 passed`；adapter 组合（排除 PAOS 环境缺失 numpy 的 grasp proposal 测试）为 `145 passed, 2 skipped`，ruff、compileall、diff check 通过。代码审查无 Blocker/Major，但 readiness 证据门禁仍未通过；下一步必须基于 failure trace 修正路线并用全新 artifact root 重跑，六个 scope 全部通过并人工审核后才可申请受控 simulation motion gate。
+专项 probe/evidence conformance 为 `19 passed`；adapter 组合（排除 PAOS 环境缺失 numpy 的 grasp proposal 测试）为 `145 passed, 2 skipped`，ruff、compileall、diff check 通过。代码审查无 Blocker/Major，但 readiness 证据门禁仍未通过；下一步必须基于 failure trace 修正路线并用全新 artifact root 重跑，五个 readiness scope 全部通过并人工审核后才可申请受控 simulation motion gate。
 
 ## 30. simulation-probe lift 真实性复审（2026-09-05）
 
@@ -756,7 +756,7 @@ collision、接触动力学、停止控制、before/after snapshot 或语义 Ver
   unavailable；所有第三方 runtime 异常均进入相同的 detach/snapshot/reset recovery，after-failure
   snapshot 自身失败也不会阻止 reset；reset 完成后 `reconciliation_required=false` 被 client 正确接受。
 - **权威边界：通过。** planner attached model、gripper contact 或 simulator world change 不再单独构成
-  readiness。只有目标实体真实 lift、完整路线和六项 scope 全部 pass 才允许 no-motion verifier 消费；
+  readiness。只有目标实体真实 lift、完整路线和五项 scope 全部 pass 才允许 no-motion verifier 消费；
   probe approval 仍不等同于 Action/Gateway motion authority。
 - **配置：通过。** runtime/profile/artifact root、approval、producer/profile digest、deadline 和 stop-file
   仍完全外置；新运行使用独立 request `probe-green-2-20260905-1100` 和不可覆盖的 artifact root。
@@ -805,15 +805,23 @@ NaN/反转边界；worker 多次请求会造成 scene revision 漂移；scene re
 
 ## 32. 语义 DAG 与双臂路线选择实现验收（2026-09-05）
 
-本阶段新增功能不是 Hephaestus 代码复用，而是对其成熟边界的设计参考适配。公共契约保持在
-`PhyAgentOS/forge/manipulation.py`，只描述 PAOS 可持久化的语义节点、条件三态、资源锁、预期效果、
-retry lineage、node/dag digest、route failure 和 bounded replan signal；现有 `AgentTaskRecord`/
+### 32.1 复审纠偏（2026-09-05）
+
+上一版本节把已经撤销的 core DAG 类型和 Hephaestus 参考字段列为已实现，结论撤销。有效实现是
+Skill-scoped `WORKFLOW_DAG` projection、provider-neutral `ManipulationIntent`、RoboTwin profile-owned
+route generation/selection，以及 no-motion route evidence。PAOS task/revision/SQLite、Gateway、Evidence
+和 `ForgeTaskVerifier` 的权威边界不变；simulation probe 的语义输出已改为 `observed_outcome`，不会生成
+任务级 `semantic_verdict`。
+
+本阶段新增功能不是 Hephaestus 代码复用，而是对其失败案例的非规范性参考。公共契约保持在
+`PhyAgentOS/forge/manipulation.py`，只描述单个 ready node 的 provider-neutral intent、route failure
+和 bounded replan signal；Skill 的 `WORKFLOW_DAG` 保存语义依赖和 node/dag digest。现有 `AgentTaskRecord`/
 `PlanRevision`/SQLite 仍是任务生命周期事实源，新增 replan 类型不直接写库或启动执行。
 
-- **架构集成：通过。** DAG/Intent 属于 PAOS 控制平面；`arm_candidates.py` 属于 RoboTwin adapter；
+- **架构集成：通过。** DAG 属于 Skill projection，Intent 属于 PAOS provider-neutral projection；`arm_candidates.py` 属于 RoboTwin adapter；
   selector 仅调用注入的 no-motion readiness evaluator，不注册 Tool、Gateway、Dora 或 Action route。
   现有 `AgentTaskCoordinator.begin_revision()` 仍是唯一的 SQLite PlanRevision 写入入口。
-- **失败路径：通过。** DAG 循环、未知依赖、非法条件状态、候选/手臂 identity 漂移、scene revision
+- **失败路径：通过。** DAG 循环、未知依赖、状态/DAG digest 漂移、候选/手臂 identity 漂移、scene revision
   过期、非法 readiness result 和 all-options rejection 均 fail-closed；逐 route `RouteFailure` 保留
   owner/phase/code/detail，统一生成带 digest 的 `replan_required`。新模块不生成授权；stale revision、
   期限和预算继续由现有 `AgentTaskCoordinator.begin_revision()` 拒绝。
@@ -823,11 +831,56 @@ retry lineage、node/dag digest、route failure 和 bounded replan signal；现�
 - **配置：通过。** Franka 双臂、planner/workspace/joint-limit refs、最大 option 数和评分权重位于
   `profiles/robotwin20/manipulation-planning.yaml`；公共模块不包含 RoboTwin/Franka/Curobo 分支，
   bimanual 在没有同步原子 route provider 时明确拒绝。
-- **可维护性：通过。** Hephaestus 的不可变 digest、evidence/resource binding 和 replan separation
-  被翻译为 PAOS Pydantic schema；option/result 完整绑定 task/revision/node/observation/candidate-set/
+- **可维护性：通过。** Skill DAG 与 core intent/replan projection 保持独立，避免复制 task lifecycle；
+  option/result 完整绑定 task/revision/node/observation/candidate-set/
   scene/frame/calibration/profile，非通过结果不能伪装为全检查通过。
 
 实现验收：专项 `16 passed`；组合 PAOS/RoboTwin adapter 套件 `338 passed, 2 skipped`；根仓库套件
 `171 passed`；ruff、compileall 和 `git diff --check` 通过。该验收仍不等于物理 readiness。后续仍需
 独立 RoboTwin probe 的真实 lift 和完整 transport/descent/release/retreat 证据，才能进入已有
 route-evidence verifier 和人工审核，更不能据此进入 Action/Gateway/Dora wiring。
+
+### 32.2 PAOS-first 重构第二轮五维验收（2026-09-05）
+
+本轮不是重复增加 happy-path 测试，而是先审查实现，再修复审查发现的十一个 Major：reducer 仍按 tuple
+下标推进而绕过 DAG、冻结 dataclass 内的 evidence references 仍可变、`ReplanSignal` 不能独立验证
+内容摘要、机器人 YAML profile 会静默接受重复 key、replan hint 未绑定 `node_digest`、恢复状态未校验
+task/revision 与 blocked reason、route selector 未适配现有单参数 readiness client，以及 route request 未校验
+release TCP 变换和 phase gripper 语义、client 未完整复核逐 candidate evidence、双臂 option evidence
+文件名冲突，以及 evaluation adapter 会在 worker 未返回证据时虚构 fallback evidence ref 且 client 未约束
+顶层 world-change 状态。修复后复审如下：
+
+- **架构集成：通过。** `WorkflowDag`/`WORKFLOW_DAG` 留在 pick-place Skill；
+  `LongHorizonWorkflow` 只接受 canonical DAG version/digest，并以 `ready_nodes()` 作为节点结果准入依据。
+  `AgentTaskRecord`、`PlanRevision`、SQLite、Tool execution 和 Gateway invocation owner 均未迁移到 Skill。
+  core `manipulation.py` 只保留单节点 intent、route failure 和 replan hint；`RouteReadinessEvaluationAdapter`
+  将既有 bounded worker client 明确投影为独立 route-evaluation schema；RoboTwin 几何与本体选择仍在
+  adapter/profile。
+- **失败路径：通过。** 未知/重复依赖、cycle、非法 required binding、非 ready 节点、状态/DAG digest
+  漂移、非法 task/revision 或 block reason、跨 scene/reference 漂移、重复 YAML key、候选耗尽、worker
+  unavailable、release TCP 变换不一致、phase gripper 错配、逐 candidate evidence 漂移、缺失 evidence ref、
+  顶层 world change、双臂 artifact identity 冲突和 evaluator 异常均 fail-closed。
+  blocked workflow 必须先由 PAOS 创建新 revision，之后 reducer 才能重新绑定；unknown action 仍按原
+  invocation reconciliation，不盲目重试。
+- **权威边界：通过。** DAG 不执行 Tool、不锁机器人、不创建 revision；`ReplanSignal` 自校验 identity、
+  failure uniqueness、next action 和 digest，但不能写 SQLite。selector/readiness/verifier projection 均保持
+  `motion_authorized=false`；probe 的 bounded `observed_outcome` 不是 task verdict，用户级 verdict 仍只由
+  `ForgeTaskVerifier` 产生。
+- **配置：通过。** Skill manifest/package 同步升级至 `0.9.0`；Franka arms、route frame、workspace/limit
+  refs、route policy 和评分仍由版本化 adapter profile 提供。共享 strict YAML loader 对 perception、arm
+  planning、route readiness 和 route evidence profile 拒绝任意层级重复 key；URL、凭据、设备和运行路径
+  未进入 core/Skill DAG。
+- **可维护性：通过。** node/DAG/state/replan digest、immutable tuple 与 mapping-proxy reference、明确 schema
+  version、共享 YAML parser 和 owner matrix 降低第二套生命周期与隐式配置风险。没有 TODO、placeholder、
+  fake-success 或隐藏 Action wiring；Skill changelog 和中英文开发者手册同步更新。
+
+验收结果：组合 core/Skill/adapter 套件 `616 passed, 2 skipped`，core/adapter `355 passed, 2 skipped`，
+Skill 专项 `261 passed`，根仓库 `168 passed`，ruff、compileall、`git diff --check` 通过；core/reducer
+身份与 DAG 专项 `22 passed`、route generation/readiness/selection 专项 `36 passed`、开发者指南完整
+DAG/route/evidence 专项 `69 passed`。当前 PAOS
+解释器运行 `test_grasp_proposal.py` 在 collection 阶段因 `ModuleNotFoundError: No module named 'numpy'`
+失败；含 NumPy 的隔离环境又不含 PAOS 的 `pydantic_settings`，所以该 provider 测试未伪装为通过。
+
+复审后无代码级 Blocker/Major。剩余功能门禁不变：未取得新的真实 lift、完整
+transport/descent/release/retreat、五项 readiness evidence 或人工批准，不具备任意抓取，也没有进入
+Action/Gateway/Dora wiring。
