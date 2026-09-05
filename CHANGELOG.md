@@ -2,6 +2,17 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.7.7] - 2026-09-05
+
+回写 v5.7.6 simulation-only probe 记录的提交哈希 `d5aa0de`；无实现、证据或安全边界变化。
+
+Recorded commit hash `d5aa0de` for the v5.7.6 simulation-only probe; no implementation, evidence, or safety-boundary changes.
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.7.6] - 2026-09-05
 
 针对 reviewer `yanxu` 批准的 v3 route package，完成一次独立 simulation-only probe。审批与 route/source-manifest digest 严格绑定；RoboTwin20 Python 3.10 worker 在 contact 阶段因超过 profile 的 `0.2 m/s` simulator waypoint linear-speed limit 返回 `unavailable`，保存 before/after snapshot、contact trace、failure artifact 和 reset 状态。该负结果未被解释为 readiness 或任务成功，Gateway/Dora/Action/硬件仍未启用。
