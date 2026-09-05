@@ -10,7 +10,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -228,7 +228,7 @@ def _render_document(*, kind: str, revision: str, source: str, data: Mapping[str
     _validate_scalar(normalized, "data")
     envelope = {
         "paos": {
-            "generated_at": datetime.now(UTC).isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "kind": kind,
             "mode": "projection",
             "protocol": PROTOCOL_VERSION,

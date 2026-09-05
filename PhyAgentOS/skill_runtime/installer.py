@@ -8,7 +8,7 @@ import os
 import shutil
 import tarfile
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -118,7 +118,7 @@ class SkillInstaller:
                                 old_version = str(legacy.get("version", "legacy"))
                             except Exception:
                                 old_version = "legacy"
-                        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+                        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
                         backup = (
                             self.root
                             / ".backups"
