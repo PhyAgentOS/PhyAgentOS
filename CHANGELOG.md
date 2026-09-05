@@ -2,6 +2,17 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.7.1] - 2026-09-05
+
+规划模块最终收口审查通过：未发现 Blocker/Major；全量组合回归 `708 passed, 1 skipped`，核心/Skill/adapter 回归 `205 passed`，Ruff、compileall、`git diff --check` 通过。真实 Gateway/Dora/Action、仿真运动和 benchmark evidence 仍按 PAOS 门禁后置。
+
+The final planning-module closeout review passed with no Blocker/Major findings. Full combined regression: `708 passed, 1 skipped`; core/Skill/adapter regression: `205 passed`; Ruff, compileall, and `git diff --check` passed. Real Gateway/Dora/Action, simulation motion, and benchmark evidence remain deferred behind PAOS gates.
+
+### Git 提交 / Git Commit
+
+- Commit: `aadc833`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.7.0] - 2026-09-05
 
 规划模块已完成 AgentLoop 的只读 `agent_composed` dispatch bridge 与 Experience 的 review-gated workflow-policy candidate ledger。`forge_plan_activate` 只接受可信 `AdmissionContext` provider，`forge_plan_ready` 暴露 ready semantic nodes；Registry guard 在现有 Forge Query/Action/Session wrapper 前执行 fail-closed admission。候选按 base/proposed policy digest 聚合，必须有独立 replay receipt、不同 episode 支持和人工审核，promotion 还必须由 Skill Runtime callback 返回 `artifact://` receipt。组合回归 `707 passed, 1 skipped`，未启动 Gateway、Dora、Action、仿真动作或硬件。
@@ -17,7 +28,7 @@ The planning module now has a read-only `agent_composed` dispatch bridge in Agen
 
 ### Git 提交 / Git Commit
 
-- Commit: pending
+- Commit: `aadc833`
 - Branch: `feature/long-horizon-workflow`
 
 ## [v5.6.0] - 2026-09-05
