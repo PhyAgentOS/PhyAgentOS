@@ -24,6 +24,10 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [集成开发指南](user_development_guide/README.md)：Tool/Node/Skill 接入、Bundle 打包与不可变发布、本地闭环、证据源、Provider 和 PAOS 扩展边界。
 - [通信架构](user_development_guide/COMMUNICATION.md)：Agent 消息、Forge HTTP/WebSocket、system event、SQLite 与 Artifact 边界。
 - [Forge Tool API 接入契约](forge/README_zh.md)：Query/Action/Session、不可变 Skill binding、ToolInvocation、AgentTask、证据、验证、恢复和 Skill Runtime 契约。
+- [v1.0 功能引用卡](forge/FEATURE_REFERENCE_CARDS.md)：把规范章节、扩展点、代码模块、测试证据和 PR 追踪绑定到同一张功能卡。
+- [RoboTwin Adapter 重构诊断](forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md)：记录 capability runtime、provider port 与环境适配器的可复用边界及六个 Tool 的迁移顺序。
+- [PAOS 状态文件架构诊断](forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md)：记录五类报告状态文件与 PAOS 权威持久化边界的对应关系，以及抓取放置和自主进化的审核方向。
+- [State File Adapter 功能引用卡](forge/STATE_FILE_ADAPTER_FEATURE_CARD.md)：记录第一阶段文件协议、projection、shadow validation 和 `SESSIONS.md` dry-run 的扩展点与验收边界。
 
 ### 推荐阅读路径
 
@@ -55,6 +59,10 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [Integration Development Guide](user_development_guide/README_en.md): Tool, Node, and Skill integration; Bundle packaging and immutable publication; the local loop; evidence sources; providers; and PAOS extension boundaries.
 - [Communication Architecture](user_development_guide/COMMUNICATION_en.md): Agent messages, Forge HTTP/WebSocket, system events, SQLite, and artifact boundaries.
 - [Forge Tool API Integration Contract](forge/README.md): Query/Action/Session, immutable Skill binding, ToolInvocation, AgentTask, evidence, verification, recovery, and Skill Runtime contracts.
+- [v1.0 Feature Reference Cards](forge/FEATURE_REFERENCE_CARDS.md): connect normative sections, extension points, code modules, test evidence, and PR traceability for each feature.
+- [RoboTwin Adapter Refactor Diagnosis](forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md): records the reusable boundary between capability runtime, provider ports, and environment adapters, plus the migration order for the six Tools.
+- [PAOS State-File Architecture Diagnosis](forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md): records how the five report state-file concepts map to PAOS authoritative stores and the review direction for pick-place integration and autonomous evolution.
+- [State File Adapter Feature Card](forge/STATE_FILE_ADAPTER_FEATURE_CARD.md): records the phase-one extension point and acceptance boundaries for the file protocol, projections, shadow validation, and `SESSIONS.md` dry-run.
 
 ### Suggested reading paths
 

@@ -1,0 +1,24 @@
+schema_version: paos-robotwin20-readiness/v1
+worker_id: robotwin20-readiness-replay/v1
+runtime_profile: ${ROBOTWIN20_RUNTIME_PROFILE}
+embodiment_binding:
+  robot_identity: franka-panda
+  gripper_identity: panda-gripper
+  embodiment_topology: two-single-arm
+  planner_profile: curobo
+  profile_digest: c96fa14de0a898a4d7c1de2b082e4eafb27f5d3ea8cf2ca31fc5cd9a7e000f4d
+fixture: ${READINESS_FIXTURE}
+fixture_sha256: ${READINESS_FIXTURE_SHA256}
+evidence_manifest: ${READINESS_EVIDENCE_MANIFEST}
+evidence_manifest_sha256: ${READINESS_EVIDENCE_MANIFEST_SHA256}
+
+worker:
+  python: ${READINESS_WORKER_PYTHON}
+  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/readiness_replay_worker.py
+  cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  startup_timeout_s: 10
+  request_timeout_s: 10
+  shutdown_timeout_s: 5
+  environment:
+    PYTHONUNBUFFERED: "1"
+  arguments: []

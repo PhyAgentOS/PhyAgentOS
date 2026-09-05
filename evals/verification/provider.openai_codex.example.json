@@ -1,0 +1,11 @@
+{
+  "version": "verification_eval_provider_v1",
+  "evaluation_mode": "real_model",
+  "provider_name": "openai_codex",
+  "model": "openai-codex/gpt-5.1-codex",
+  "api_base": null,
+  "api_key_env": null,
+  "temperature": 0.0,
+  "max_tokens": 2048,
+  "reasoning_effort": "medium"
+}

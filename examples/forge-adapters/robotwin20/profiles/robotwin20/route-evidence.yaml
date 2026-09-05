@@ -1,0 +1,26 @@
+schema_version: paos-robotwin20-route-evidence/v1
+worker_id: robotwin20-route-evidence/v1
+artifact_root: ${ROBOTWIN20_SIMULATION_ARTIFACT_ROOT}
+trusted_producer:
+  producer_id: ${ROBOTWIN20_ROUTE_PRODUCER_ID}
+  profile_sha256: ${ROBOTWIN20_ROUTE_PRODUCER_PROFILE_SHA256}
+  evidence_mode: independent_simulation_probe
+worker:
+  python: ${ROBOTWIN20_ROUTE_WORKER_PYTHON}
+  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/robotwin_route_evidence_worker.py
+  cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  startup_timeout_s: 10
+  request_timeout_s: 30
+  shutdown_timeout_s: 10
+  environment:
+    PYTHONUNBUFFERED: "1"
+    PYTHONPATH: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/src:${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
+  arguments:
+    - --artifact-root
+    - ${ROBOTWIN20_SIMULATION_ARTIFACT_ROOT}
+    - --worker-id
+    - robotwin20-route-evidence/v1
+    - --trusted-producer-id
+    - ${ROBOTWIN20_ROUTE_PRODUCER_ID}
+    - --trusted-profile-sha256
+    - ${ROBOTWIN20_ROUTE_PRODUCER_PROFILE_SHA256}

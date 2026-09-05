@@ -537,6 +537,12 @@ class ExperienceStore:
                     cluster.recovery_principles + [observation.recovery_principle]
                 )
             )
+            cluster.capability_failure_owners = list(
+                dict.fromkeys(
+                    cluster.capability_failure_owners
+                    + observation.capability_failure_owners
+                )
+            )
             if inserted_support and cluster.status == "blocked":
                 cluster.status = "collecting"
                 cluster.draft = None
@@ -744,6 +750,23 @@ class ExperienceStore:
         with self._lock, self._connection() as connection:
             self._event(connection, event_type, subject_id, payload or {})
             connection.commit()
+
+    def record_event_once(
+        self, event_type: str, subject_id: str, payload: dict[str, Any] | None = None
+    ) -> bool:
+        """Record a deterministic event at most once for one subject and payload."""
+        encoded = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True)
+        with self._lock, self._connection() as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM evolution_events WHERE event_type = ? AND subject_id = ? "
+                "AND payload_json = ? LIMIT 1",
+                (event_type, subject_id, encoded),
+            ).fetchone()
+            if exists:
+                return False
+            self._event(connection, event_type, subject_id, payload or {})
+            connection.commit()
+        return True
 
     def metadata(self, key: str) -> str | None:
         with self._lock, self._connection() as connection:

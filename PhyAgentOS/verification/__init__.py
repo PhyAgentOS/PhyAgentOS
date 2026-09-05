@@ -18,6 +18,13 @@ from PhyAgentOS.verification.contracts import (
     VerificationVerdict,
 )
 from PhyAgentOS.verification.engine import VerificationEngine
+from PhyAgentOS.verification.outcome_projection import (
+    CapabilityOutcomeProjection,
+    CapabilityOutcomeProjectionError,
+    CapabilityOutcomeProjectionResult,
+    PostReleaseEvidenceProjection,
+    project_terminal_outcomes,
+)
 
 __all__ = [
     "EvidenceArtifact",
@@ -36,4 +43,9 @@ __all__ = [
     "VerificationEvidencePolicy",
     "VerificationState",
     "VerificationVerdict",
+    "CapabilityOutcomeProjection",
+    "CapabilityOutcomeProjectionError",
+    "CapabilityOutcomeProjectionResult",
+    "PostReleaseEvidenceProjection",
+    "project_terminal_outcomes",
 ]

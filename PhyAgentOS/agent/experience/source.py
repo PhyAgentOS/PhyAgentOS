@@ -2,10 +2,36 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Protocol
 
-from PhyAgentOS.agent.experience.contracts import LineageOutcome, TaskOutcomeEnvelope
+from PhyAgentOS.agent.experience.contracts import (
+    CapabilityOutcomeErrorFact,
+    CapabilityOutcomeFact,
+    CapabilityOutcomeSummary,
+    LineageOutcome,
+    TaskOutcomeEnvelope,
+)
 from PhyAgentOS.agent.experience.redaction import opaque_ref, redact_text
+from PhyAgentOS.verification.outcome_projection import project_terminal_outcomes
+
+_PRIVATE_CAPABILITY_MARKERS = (
+    "robotwin",
+    "sapien",
+    "xpolicylab",
+    "simulator",
+    "provider",
+    "task_name",
+    "embodiment",
+)
+
+
+def _public_capability_name(tool_id: str) -> str:
+    """Keep provider-private Tool IDs out of persisted evolution facts."""
+    normalized = tool_id.strip().lower()
+    if not normalized or any(marker in normalized for marker in _PRIVATE_CAPABILITY_MARKERS):
+        return "bounded_action"
+    return normalized
 
 
 class TaskOutcomeSource(Protocol):
@@ -153,6 +179,61 @@ class AgentTaskOutcomeSource:
             criteria_statuses = {
                 item: "unknown" for item in task.verification.success_criteria
             }
+        capability_projection = project_terminal_outcomes(task.execution_records)
+        capability_outcomes = [
+            CapabilityOutcomeFact(
+                record_ref=opaque_ref(item.record_id),
+                capability=_public_capability_name(item.tool_id),
+                status=item.status,
+                capability_phase=item.capability_phase,
+                failure_owner=item.failure_owner,
+                world_change_started=item.world_change_started,
+                outcome_known=item.outcome_known,
+                evidence_availability=item.evidence_availability,
+                post_release_evidence_availability=(
+                    item.post_release_evidence.availability
+                    if item.post_release_evidence is not None
+                    else None
+                ),
+            )
+            for item in capability_projection.projections
+        ]
+        capability_outcome_errors = [
+            CapabilityOutcomeErrorFact(
+                record_ref=opaque_ref(item.record_id),
+                code=item.code,
+            )
+            for item in capability_projection.errors
+        ]
+        capability_outcome_summary = CapabilityOutcomeSummary(
+            status_counts=dict(
+                sorted(Counter(item.status for item in capability_outcomes).items())
+            ),
+            failure_owner_counts=dict(
+                sorted(
+                    Counter(
+                        item.failure_owner
+                        for item in capability_outcomes
+                        if item.failure_owner not in {None, "none"}
+                    ).items()
+                )
+            ),
+            evidence_availability_counts=dict(
+                sorted(
+                    Counter(item.evidence_availability for item in capability_outcomes).items()
+                )
+            ),
+            world_change_started_count=sum(
+                item.world_change_started for item in capability_outcomes
+            ),
+            outcome_unknown_count=sum(
+                not item.outcome_known for item in capability_outcomes
+            ),
+            projection_error_count=len(capability_outcome_errors),
+            projection_error_codes=sorted(
+                {item.code for item in capability_outcome_errors}
+            ),
+        )
         return TaskOutcomeEnvelope(
             task_id=task.task_id,
             root_task_id=task.task_id,
@@ -173,5 +254,8 @@ class AgentTaskOutcomeSource:
                 for item in task.execution_records
                 if item.invocation_id is not None
             ],
+            capability_outcomes=capability_outcomes,
+            capability_outcome_errors=capability_outcome_errors,
+            capability_outcome_summary=capability_outcome_summary,
             completed_at=task.terminal_at or task.updated_at,
         )

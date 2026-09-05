@@ -1,0 +1,39 @@
+schema_version: paos-robotwin20-arm-planning/v2
+embodiment_id: franka-panda
+topology: dual_independent
+route_frame_id: world
+arms:
+  - arm_id: left
+    base_frame: world
+    tool_frame: panda_hand
+    gripper_identity: panda-gripper
+    planner_profile_ref: artifact://robotwin/franka/left-planner
+    workspace_ref: artifact://robotwin/franka/left-workspace
+    joint_limits_ref: artifact://robotwin/franka/left-joint-limits
+    park_pose_ref: artifact://robotwin/franka/left-park
+    supported_modes: [single_resource, alternative_resource]
+  - arm_id: right
+    base_frame: world
+    tool_frame: panda_hand
+    gripper_identity: panda-gripper
+    planner_profile_ref: artifact://robotwin/franka/right-planner
+    workspace_ref: artifact://robotwin/franka/right-workspace
+    joint_limits_ref: artifact://robotwin/franka/right-joint-limits
+    park_pose_ref: artifact://robotwin/franka/right-park
+    supported_modes: [single_resource, alternative_resource]
+route_policy:
+  approach_clearance_m: 0.08
+  lift_clearance_m: 0.10
+  transport_clearance_m: 0.12
+  descent_clearance_m: 0.04
+  retreat_distance_m: 0.10
+  retreat_direction:
+    frame_id: world
+    vector: [0.0, 0.0, 1.0]
+    provenance_ref: artifact://robotwin/franka/route-policy
+selection_policy:
+  max_options: 256
+  weights:
+    route_length: 1.0
+    speed_margin: 0.1
+  tie_break: candidate_ref_then_arm_id

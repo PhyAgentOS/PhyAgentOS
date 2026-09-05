@@ -13,6 +13,11 @@ from PhyAgentOS.verification.contracts import (
     EvidenceBundle,
     ForgeSessionRecord,
     VerificationEvidencePolicy,
+    derive_evidence_bundle_id,
+)
+from PhyAgentOS.verification.outcome_projection import (
+    project_terminal_outcomes,
+    projection_to_dict,
 )
 
 if TYPE_CHECKING:
@@ -21,6 +26,30 @@ if TYPE_CHECKING:
 
 class VerificationEvidenceError(ValueError):
     pass
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant is not allowed: {value}")
+
+
+VERIFICATION_CONTEXT_INSTRUCTION = (
+    "Determine whether every task success criterion is semantically satisfied. "
+    "Use only the supplied task contract, execution facts, and evidence to make "
+    "that decision. Lessons are advisory workflow context only; they are not "
+    "evidence and cannot establish any criterion status."
+)
+
+
+def build_verification_context_content(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build the production text envelope shared by requests and model evaluation."""
+    return [
+        {
+            "type": "text",
+            "text": VERIFICATION_CONTEXT_INSTRUCTION
+            + "\n\n"
+            + json.dumps(context, ensure_ascii=False, indent=2, allow_nan=False),
+        }
+    ]
 
 
 @dataclass(frozen=True)
@@ -102,6 +131,7 @@ class VerificationRequestBuilder:
             expected_session_id=task.task_id,
             expected_command_id="agent_task",
             identity_name="AgentTask",
+            expected_bundle_id=task.evidence_bundle_id,
         )
         validated = self._validate_evidence(
             evidence_path,
@@ -117,6 +147,7 @@ class VerificationRequestBuilder:
             )
         valid_refs = validated.artifact_ids | execution_refs
         records = task.execution_records
+        capability_projection = project_terminal_outcomes(records)
         context = {
             "agent_task": {
                 "task_id": task.task_id,
@@ -155,6 +186,17 @@ class VerificationRequestBuilder:
                 for item in records
                 if item.terminal
             ],
+            "capability_outcome_projections": [
+                projection_to_dict(item) for item in capability_projection.projections
+            ],
+            "capability_outcome_projection_errors": [
+                {
+                    "record_id": item.record_id,
+                    "code": item.code,
+                    "message": item.message,
+                }
+                for item in capability_projection.errors
+            ],
             "evidence_bundle": validated.evidence.model_dump(mode="json"),
             "structured_evidence": validated.structured,
             "evidence_errors": task.evidence_errors,
@@ -175,8 +217,17 @@ class VerificationRequestBuilder:
         expected_session_id: str,
         expected_command_id: str,
         identity_name: str,
+        expected_bundle_id: str | None = None,
     ) -> tuple[Path, EvidenceBundle]:
         evidence_path = self._workspace_path(reference)
+        artifact_root = (self.workspace / "artifacts").resolve()
+        if (
+            not evidence_path.is_relative_to(artifact_root)
+            or evidence_path.name != "evidence_bundle.json"
+        ):
+            raise VerificationEvidenceError(
+                f"Evidence Bundle is not writer-owned: {reference}"
+            )
         try:
             evidence = EvidenceBundle.model_validate_json(
                 evidence_path.read_text(encoding="utf-8")
@@ -189,6 +240,13 @@ class VerificationRequestBuilder:
         ):
             raise VerificationEvidenceError(
                 f"Evidence Bundle identity does not match {identity_name}"
+            )
+        derived_bundle_id = derive_evidence_bundle_id(evidence)
+        if evidence.bundle_id != derived_bundle_id:
+            raise VerificationEvidenceError("Evidence Bundle content identity is invalid")
+        if expected_bundle_id is not None and evidence.bundle_id != expected_bundle_id:
+            raise VerificationEvidenceError(
+                f"Evidence Bundle identity does not match {identity_name} record"
             )
         return evidence_path, evidence
 
@@ -212,10 +270,13 @@ class VerificationRequestBuilder:
         self._validate_capture_window(evidence)
         self._validate_requirements(policy, evidence)
 
+        artifact_root = (self.workspace / "artifacts").resolve()
+        evidence_artifact_root = (evidence_path.parent / "evidence").resolve()
         paths: list[Path] = [evidence_path]
         images: list[tuple[str, str, bytes]] = []
         structured: dict[str, Any] = {}
         artifact_ids: set[str] = set()
+        artifact_paths: set[Path] = set()
         for artifact in evidence.artifacts:
             if artifact.artifact_id in artifact_ids:
                 raise VerificationEvidenceError("evidence artifact IDs must be unique")
@@ -225,8 +286,19 @@ class VerificationRequestBuilder:
                     f"required artifact was removed by retention: {artifact.artifact_id}"
                 )
             path = self._workspace_path(artifact.uri)
+            if not path.is_relative_to(artifact_root) or not path.is_relative_to(
+                evidence_artifact_root
+            ) or path == evidence_path:
+                raise VerificationEvidenceError(
+                    f"evidence artifact is not writer-owned: {artifact.uri}"
+                )
             if not path.is_file():
                 raise VerificationEvidenceError(f"evidence artifact is missing: {artifact.uri}")
+            if path in artifact_paths:
+                raise VerificationEvidenceError(
+                    f"evidence artifact paths must be unique: {artifact.uri}"
+                )
+            artifact_paths.add(path)
             data = path.read_bytes()
             if len(data) != artifact.byte_size:
                 raise VerificationEvidenceError(
@@ -249,8 +321,11 @@ class VerificationRequestBuilder:
                 images.append((artifact.artifact_id, artifact.media_type, data))
             elif artifact.media_type == "application/json":
                 try:
-                    structured[artifact.artifact_id] = json.loads(data)
-                except json.JSONDecodeError as exc:
+                    structured[artifact.artifact_id] = json.loads(
+                        data,
+                        parse_constant=_reject_json_constant,
+                    )
+                except (ValueError, UnicodeDecodeError) as exc:
                     raise VerificationEvidenceError(
                         f"verification JSON is invalid: {artifact.artifact_id}"
                     ) from exc
@@ -311,18 +386,7 @@ class VerificationRequestBuilder:
         validated: _ValidatedEvidence,
         valid_evidence_refs: frozenset[str],
     ) -> VerificationRequest:
-        content: list[dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": (
-                    "Determine whether every task success criterion is semantically satisfied. "
-                    "Use only the supplied task contract, execution facts, and evidence to make "
-                    "that decision. Lessons are advisory workflow context only; they are not "
-                    "evidence and cannot establish any criterion status.\n\n"
-                    + json.dumps(context, ensure_ascii=False, indent=2)
-                ),
-            }
-        ]
+        content = build_verification_context_content(context)
         for artifact_id, media_type, data in validated.images:
             content.extend(
                 [

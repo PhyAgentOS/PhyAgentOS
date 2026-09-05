@@ -1,0 +1,4 @@
+schema_version: paos-robotwin20-action-readiness/v1
+manifest: ${ROBOTWIN20_READINESS_MANIFEST}
+manual_review: ${ROBOTWIN20_READINESS_REVIEW}
+artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}

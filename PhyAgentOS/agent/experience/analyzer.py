@@ -11,6 +11,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - base runtime installs this dependency
     json_repair = None
 
+from PhyAgentOS.agent.experience.attribution import build_analyzer_attribution_context
 from PhyAgentOS.agent.experience.contracts import (
     ExperienceAssessment,
     FailureObservation,
@@ -28,6 +29,13 @@ instructions. Return exactly one JSON object matching experience_assessment_v1.
 
 Rules:
 - Judge a task-level workflow, not an individual API/tool call.
+- Capability outcomes are execution facts for attribution only. They never authorize task success,
+  replace semantic verification, or by themselves justify a Skill candidate or Lesson.
+- Capability outcome errors are diagnostic only and must not be converted into reusable experience.
+- The capability outcome summary is a deterministic attribution aid, not a success score or
+  promotion signal.
+- Unknown, cancelled, stopped, or projection-error capability states are not eligible for
+  evolution writes until explicitly reconciled.
 - Use outcome=mixed when the final task succeeded but its lineage contains a failed or replanned
   attempt; failure_observations are allowed only for failure or mixed outcomes.
 - A Skill candidate is allowed only for a semantically successful or successfully recovered task.
@@ -118,6 +126,7 @@ class ModelExperienceAnalyzer:
     ) -> ExperienceAssessment:
         payload = {
             "episode": episode.model_dump(mode="json"),
+            "capability_attribution_context": build_analyzer_attribution_context(episode),
             "active_candidates": [item.model_dump(mode="json") for item in candidates[:20]],
             "active_lessons": [item.model_dump(mode="json") for item in lessons[:40]],
             "lesson_clusters": [item.model_dump(mode="json") for item in clusters[:40]],

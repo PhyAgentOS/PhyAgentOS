@@ -6,13 +6,15 @@
 
 ## 1. Development invariants
 
-1. Robot execution has one physical path: `ForgeToolClient → Gateway Tool API → ToolEndpoint`.
+1. Robot or simulator execution has one physical path: `ForgeToolClient → Gateway Tool API → ToolEndpoint → Dora → robot/simulator`.
 2. AgentTask aggregates planning, evidence, and verdicts; it never executes the robot.
 3. `binding_id`, `task_id`, `revision_id`, record ID, `caller_id`, `invocation_id`, and `attempt_id` are distinct.
 4. Forge ToolResult and invocation events are authoritative execution facts.
 5. Action/Session admission, cancel/stop acceptance, timeout, and `unknown` do not prove physical stop.
 6. General Agent tools, verification, experience, evolution, and dynamic MCP remain independent.
 7. Runtime artifacts are installed only after bounded archive and digest verification.
+8. PAOS core and public Skills remain provider-neutral; RoboTwin, SAPIEN, task, embodiment, and
+   benchmark configuration belong to the Gateway/ToolEndpoint adapter and profile.
 
 ## 2. Module map
 
@@ -115,6 +117,19 @@ deadline. `begin_revision` checks the same `task_id`, replan budget, deadline, a
 appends a revision. Earlier attempts remain visible to experience analysis. Verifier exceptions are
 persisted as failed attempts; audit preserves execution semantics, while enforce/recovery fail.
 
+### 7.1 Capability outcome projection
+
+The generic verification layer may project a terminal Action's versioned
+`capability_outcome_summary_v1` into `capability_outcome_projections` in the verifier
+context. This is an `execution_fact_only` view: it preserves the capability phase,
+failure ownership, unknown status, bounded metric names, and optional post-release
+evidence while keeping Gateway artifact references opaque. Malformed, unsupported, or
+status-mismatched summaries are reported as bounded projection errors and are not used
+as task evidence. The projection always carries `task_success_authorized=false`; only
+the user-level `TaskVerificationContract`, its evidence policy, and the verifier may
+produce a task verdict. The projection performs no Gateway call, motion admission,
+retry, or PlanRevision mutation.
+
 ## 8. Evidence and retention
 
 Evidence paths are workspace-relative and written atomically. Before semantic verification, the
@@ -194,18 +209,40 @@ Evolution failures remain fail-open.
 
 To add a robot capability:
 
-1. implement or package the ToolEndpoint operation;
-2. publish a Query, Action, or Session ToolSpec with exact schemas and binding;
-3. define operation `max_concurrency` in Gateway;
-4. add the locked node and profile references to a manifest-v2 Bundle;
-5. test binding drift, context, invocation, pending, terminal, cancel/stop, ownership, and unknown outcomes;
-6. add workflow guidance to a Skill without embedding task-specific coordinates or secrets.
+1. publish a provider-neutral Query, Action, or Session ToolSpec with exact schemas and binding;
+2. implement or package the ToolEndpoint operation and define its `max_concurrency` in Gateway;
+3. use the Fake Gateway to test binding drift, context, route, invocation, pending, terminal,
+   cancel/stop, ownership, and unknown outcomes;
+4. for a simulator, implement an `EnvironmentAdapter` and provider ports in the independent runtime for the
+   generic Gateway/ToolEndpoint to call, and keep RoboTwin/SAPIEN task, embodiment, and benchmark settings in
+   its adapter/profile; simulator actor/entity truth, segmentation, metadata, and internal poses are comparison
+   facts only and must not replace sensor observations or real perception providers;
+5. add the locked Node and Dora profile references to a manifest-v2 Bundle, then let RuntimeManager
+   start the flow and wait for `/tools` plus every required Tool context;
+6. add provider-neutral workflow guidance to a Skill without embedding simulator names, task-specific
+   coordinates, provider payloads, or secrets;
+7. perform simulation or hardware acceptance only after the complete runtime and Tool contexts are ready.
 
-Do not create a second PAOS execution protocol, direct Agent-to-Dora calls, or a cross-Tool lease.
+Do not create a second PAOS execution protocol, direct Agent-to-Dora/SDK calls, simulator-bound Skill
+names, or a cross-Tool lease.
 A new Agent tool is justified only when the generic task and Tool API tools cannot express the
 capability.
 
 ## 13. Test gates
+
+### Manipulation and benchmark extension boundary
+
+Long-horizon pick-and-place dependencies are expressed by the Skill-scoped,
+read-only `WORKFLOW_DAG` projection. It does not create PlanRevisions, execute
+Tools, or hold cross-Tool leases. `AgentTaskRecord`, `PlanRevision`, SQLite, and
+`AgentTaskCoordinator` remain the sole lifecycle authority.
+
+RoboTwin/Franka embodiment, benchmark, route frame, proposal-to-execution-grasp
+adaptation, `object_T_tcp`, workspace, joint/stop policies, and route geometry
+belong in adapter profiles. Readiness workers produce only IK/collision/route/
+limit/stop evidence; probes record before/after and bounded observed outcomes;
+`ForgeTaskVerifier` owns user-level success. Replacing a robot changes the
+profile/adapter and evidence, not the Skill or PAOS core.
 
 ```bash
 ruff check PhyAgentOS tests

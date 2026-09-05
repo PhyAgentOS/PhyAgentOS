@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.utils.helpers import load_environment_doc
+from PhyAgentOS.state_io import StateFileError, parse_environment_projection
 
 
 class SceneGraphQueryTool(Tool):
@@ -48,7 +48,18 @@ class SceneGraphQueryTool(Tool):
         target_id: str | None = None,
         robot_id: str | None = None,
     ) -> str:
-        env = load_environment_doc(self.workspace / "ENVIRONMENT.md")
+        try:
+            env = parse_environment_projection(self.workspace / "ENVIRONMENT.md").data.model_dump(
+                mode="json"
+            )
+        except StateFileError as exc:
+            return json.dumps(
+                {
+                    "error": "invalid_environment_projection",
+                    "message": str(exc),
+                },
+                ensure_ascii=False,
+            )
         scene_graph = env.get("scene_graph", {})
         nodes = scene_graph.get("nodes", [])
 

@@ -71,6 +71,10 @@ task.verification.evidence_policy.required_sources（非空）
 
 Verification Service 启动 readiness 等待为有界操作。服务不可用时拒绝新建非 `off` AgentTask。
 
+Provider 凭据可使用 `apiKey` 或独立文件 `apiKeyFile`，两者不可同时配置。`apiKeyFile` 相对路径以
+`config.json` 所在目录为基准；文件必须由当前用户拥有、为普通非符号链接文件、权限不开放给 group/other，且只包含一个非空 token。
+解析后的 key 仅在运行时使用，不会写回配置或状态文件。
+
 ## 5. `agents.evolution`
 
 | JSON 字段 | 类型 | 默认值 | 约束与含义 |

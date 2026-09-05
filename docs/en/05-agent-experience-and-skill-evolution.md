@@ -57,6 +57,36 @@ The binding also freezes the applicable active Lessons returned by each activate
 
 It does not copy raw tool output, input values, evidence locators, endpoints, credentials, absolute paths, or executable Gateway IDs into learned content. Task, revision, invocation, and attempt identities remain opaque internal references and cannot appear in generated Lessons or Skills.
 
+Capability outcome summaries are additionally reduced to `CapabilityOutcomeFact` records before
+they enter a `TaskOutcomeEnvelope`. These facts retain only provider-neutral capability, terminal
+status, bounded phase, failure owner, world-change state, outcome-known state, and evidence
+availability. Record identities are opaque fingerprints; artifact URIs and failure codes are
+excluded. Invalid or unsupported summaries produce no fact and remain diagnostic verification
+errors. Facts provide attribution context to reflection only: they do not establish a task verdict,
+make an episode learnable, or satisfy Skill candidate/Lesson promotion gates.
+
+Before applying an assessment, evolution runs a deterministic attribution guard. Any unknown,
+cancelled, or stopped capability outcome, or any projection error, blocks Lesson observations and
+Skill candidate writes and records one bounded `capability_attribution_blocked` event. The guard is
+idempotent and does not change the AgentTask verdict; a reconciled episode can be processed later.
+
+The analyzer also receives a read-only `capability_attribution_context` containing bounded owner
+and evidence counts. Planner, execution, and readiness owners are exposed as
+`requires_semantic_attribution_owners`; infrastructure-only and evidence-only failures carry a
+required Lesson reason. Evolution rejects only assessments that contradict those explicit facts.
+
+Each normalized failure observation and LessonCluster records its bounded capability failure-owner
+scope. A matched cluster with a different non-empty owner scope is rejected, so independent tasks
+cannot merge infrastructure, planner, and execution failures into one reusable Lesson pattern.
+
+Active Lesson counterexamples use the same scope. A successful episode counts toward retirement only
+when its owner scope exactly matches the Lesson (or both are legacy-unscoped); mismatches record a
+bounded diagnostic and leave counterexample support and cluster status unchanged.
+
+Skill candidates use the same bounded scope partition. Support episodes with different owner scopes
+are stored in independent candidates and never share promotion counts; legacy-unscoped episodes only
+share support with other legacy-unscoped episodes.
+
 The outcome policy is:
 
 | Outcome | Experience behavior |

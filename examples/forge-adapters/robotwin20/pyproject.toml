@@ -1,0 +1,32 @@
+[project]
+name = "paos-robotwin20-adapter"
+version = "0.3.0"
+description = "PAOS EnvironmentAdapter seam for RoboTwin20 sensor-backed observations."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+openai = ["openai>=1.0,<4"]
+perception = ["numpy>=1.26,<3", "PyYAML>=6,<7"]
+grasp = ["numpy>=1.26,<3", "PyYAML>=6,<7"]
+
+[project.scripts]
+robotwin20-preflight = "robotwin20_adapter.preflight:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/robotwin20_adapter"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]

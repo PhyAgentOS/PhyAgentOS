@@ -1,0 +1,12 @@
+schema_version: paos-robotwin20-runtime-profile/v1
+task_name: blocks_ranking_rgb
+task_config: demo_clean
+embodiment: [franka-panda, franka-panda, 0.8]
+sensor_ref: camera/head
+seed: 0
+
+# Adapter-owned identity used to bind independent readiness evidence.
+robot_identity: franka-panda
+gripper_identity: panda-gripper
+embodiment_topology: two-single-arm
+planner_profile: curobo

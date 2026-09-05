@@ -203,6 +203,7 @@ Mock Gateway 测试可完成代码与契约验收；硬件/MuJoCo 验收单独�
 
 ## 相关文档
 
+- [RoboTwin Adapter 重构诊断](ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md)
 - [框架介绍](../zh/01-framework-introduction.md)
 - [配置参考](../zh/04-forge-configuration-reference.md)
 - [集成开发指南](../user_development_guide/README.md)

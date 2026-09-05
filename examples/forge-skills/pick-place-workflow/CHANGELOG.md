@@ -1,0 +1,238 @@
+# Change Log
+
+## v0.9.0 (2026-09-05) - codex
+
+- [policy] [refactor] [completed] Added an immutable Skill-scoped semantic DAG
+  projection and made the replay reducer derive admissible nodes from declared
+  dependencies rather than tuple position. The state freezes DAG version/digest,
+  exposes all ready nodes, validates branch joins and restored-state bindings, and
+  remains separate from PAOS task persistence, Tool execution, and motion authority.
+- [policy] [refactor] [完成] 新增不可变的 Skill-scoped 语义 DAG projection，并让
+  replay reducer 根据声明式依赖而非 tuple 下标判断可执行节点。状态冻结 DAG
+  version/digest、公开全部 ready nodes、校验分支汇合与恢复状态绑定，同时继续与
+  PAOS 任务持久化、Tool 执行和运动授权分离。
+
+### Verification
+
+- Tests cover dependency and cycle rejection, immutable node/DAG digests, parallel
+  ready-node projection, join blocking, restored-state tampering, required bindings,
+  terminal failures, and revision rebinding.
+- The DAG does not create `PlanRevision`, invoke Gateway/Action/Dora, acquire a robot
+  lease, or grant readiness/task/motion verdicts.
+
+## v0.8.0 (2026-09-03) - codex
+
+- [sense] [feat] [completed] Extended the provider-neutral `scene.understand` result with
+  auditable derived perception artifacts for instance masks, object point clouds, and metric
+  localization, including strict observation/entity/frame/calibration/source/provenance binding.
+- [sense] [feat] [完成] 扩展 provider-neutral `scene.understand` 结果，增加可审计的实例
+  mask、目标点云和度量定位派生资产，并严格绑定 observation、entity、frame、calibration、
+  source 与 provenance。
+
+### Verification
+
+- Generic runtime and Fake Gateway reject unknown kinds, duplicate/unbound/out-of-order lineage,
+  mismatched observation/entity/frame/calibration, malformed descriptors, and provider-private
+  fields without creating an Action or authorizing motion.
+- RoboTwin adapter only forwards plain provider-neutral mappings; model, CUDA, simulator, and
+  artifact materialization remain outside the PAOS package.
+
+## v0.7.0 (2026-09-02) - codex
+
+- [policy] [feat] [completed] Added a replayable long-horizon pick-and-place workflow
+  reducer over the existing Forge Tool API. It enforces the six-step order, preserves
+  opaque references and terminal state, blocks skipped/unknown/failed transitions, and
+  resumes only through an append-only revision without adding a Gateway route.
+- [policy] [feat] [完成] 新增基于现有 Forge Tool API 的可重放长程 pick-and-place workflow
+  reducer。它固定六阶段顺序，保存 opaque 引用与终态，阻断跳步/unknown/失败迁移，
+  仅通过追加 revision 恢复，不新增 Gateway 路由。
+
+### Verification
+
+- Added `src/scene_observe/long_horizon.py` and `tests/test_long_horizon.py`; exported
+  the reducer and workflow state types and updated the manifest, package version,
+  README, SKILL.md, and discovery version assertions.
+- The reducer delegates all execution to the existing AgentTask/ForgeToolClient path,
+  accepts only terminal statuses and opaque references, validates observation,
+  candidate-set, preparation, acquire, and place bindings, and serializes a redacted
+  projection with no coordinates or provider/simulator fields.
+- `pytest`: 169 passed; `ruff check`, `compileall`, and `git diff --check` passed before
+  this metadata-only version bump. PAOS core remains unchanged and no new motion route
+  or second execution protocol was introduced.
+
+### Git Commit
+
+- Commit: `4e3c57e` (bundle SHA-256 `f285ee78ee7dbf3374f3a1e86b025ad6860a4fb065ca4fc62f9542bda1eb0357`, 46,093 bytes)
+- Branch: `feature/long-horizon-workflow`
+- Time: 2026-09-02 (Asia/Shanghai)
+
+## v0.6.0 (2026-09-01) - codex
+
+- [policy] [feat] [completed] Added the provider-neutral `object.place` bounded Action.
+  It requires a terminal successful acquire invocation, preserves immutable scene and
+  candidate bindings, keeps transport/descent/release/retreat internal, and reports
+  typed post-release evidence in the redacted `capability_outcome_summary_v1`.
+- [policy] [feat] [完成] 新增 provider-neutral `object.place` bounded Action：要求引用已终态
+  成功的 acquire invocation，保持场景与候选不可变绑定，transport/descent/release/retreat
+  保持 Gateway 内部，并在脱敏的 `capability_outcome_summary_v1` 中返回类型化释放后证据。
+
+### Verification
+
+- Added `contracts/object.place.tool.yaml`, `src/scene_observe/object_place.py`, and
+  `tests/test_object_place.py`; updated Fake Gateway routing, per-tool concurrency,
+  Bundle manifest, package version, README, SKILL.md, and discovery assertions.
+- Admission rejects stale, missing-calibration, malformed, unbound, unavailable, and
+  non-terminal or unsuccessful acquire references before placement invocation identity
+  allocation. Standard status/result and cancel routes preserve pending, terminal,
+  cancellation, and unknown semantics.
+- Public inputs contain only provider-neutral references and an opaque destination;
+  no RoboTwin, simulator, provider-private, coordinate, or internal-phase fields are
+  exposed. PAOS core remains unchanged and all tests remain no-motion fixtures.
+
+### Git Commit
+
+- Commit: `e51dbc9`
+- Branch: `feature/object-place`
+- Time: 2026-09-01 (Asia/Shanghai)
+
+## v0.5.0 (2026-09-01) - codex
+
+- [policy] [feat] [completed] Added the provider-neutral `object.acquire` bounded Action.
+  It consumes a fresh preparation/candidate binding through standard Action admission,
+  keeps approach/contact/close/lift/hold internal, and exposes a redacted,
+  versioned `capability_outcome_summary_v1` only in terminal results.
+- [policy] [feat] [完成] 新增 provider-neutral `object.acquire` bounded Action，通过标准
+  Action admission 消费新鲜的 preparation/candidate 绑定；approach/contact/close/lift/hold
+  保持 Gateway 内部阶段，仅在终态返回脱敏、版本化的 `capability_outcome_summary_v1`。
+
+### Verification
+
+- Added `contracts/object.acquire.tool.yaml`, `src/scene_observe/object_acquire.py`,
+  and Action lifecycle coverage in `tests/test_object_acquire.py`; updated Fake Gateway,
+  manifest, package version, README, SKILL.md, and discovery assertions.
+- Admission rejects stale, missing-calibration, malformed, unbound, unavailable, and
+  over-concurrency requests before invocation identity allocation. Standard status/result
+  and cancel routes preserve pending, terminal, cancellation, and unknown semantics.
+- No RoboTwin, simulator, provider-private, coordinate, or direct Agent-to-backend fields
+  are included in the public contract; PAOS core remains unchanged.
+
+### Git Commit
+
+- Commit: `292457e`
+- Branch: `feature/object-acquire`
+- Time: 2026-09-01 (Asia/Shanghai)
+
+
+## v0.4.0 (2026-09-01) - codex
+
+- [sense] [feat] [completed] Added the provider-neutral `manipulation.prepare` Query
+  for non-mutating workspace, kinematic, and collision readiness assessment over a
+  bound `grasp.propose` candidate set. It returns per-candidate pass evidence,
+  explicit empty/stale/unavailable/invalid states, and a deterministic preparation
+  reference while keeping `motion_authorized=false` and exposing no Action or Session.
+- [sense] [feat] [完成] 新增 provider-neutral `manipulation.prepare` Query，对绑定的
+  `grasp.propose` 候选集执行非侵入式 workspace、kinematic、collision 准备评估。
+  它返回逐候选通过证据、明确的 empty/stale/unavailable/invalid 状态和确定性
+  preparation 引用，同时保持 `motion_authorized=false`，不暴露 Action 或 Session。
+
+### Verification
+
+- Added `contracts/manipulation.prepare.tool.yaml`,
+  `src/scene_observe/manipulation_prepare.py`, and
+  `tests/test_manipulation_prepare.py`; updated the Fake Gateway, Bundle manifest,
+  README, SKILL.md, and package version.
+- Inputs are strictly bound to one observation, scene revision, frame, calibration,
+  freshness window, candidate-set reference, and provider-neutral candidates. Stale
+  observations and missing calibration fail closed before the provider runs; empty
+  candidates do not invoke the provider or fabricate preparation.
+- Provider snapshots are checked for candidate/entity binding, exact fields, artifact
+  provenance, and all three checks being `pass` before a candidate is marked prepared.
+  Query output always contains `motion_authorized: false`.
+- Tests exercise the real PAOS `ForgeToolClient` through the Fake Gateway and prove
+  that preparation creates no Action, Session, invocation-status, or motion route.
+- The package initializer now exports the preparation endpoint, provider protocol,
+  snapshot, and ToolSpec; README and manifest descriptions cover all four Query
+  capabilities and their provider-neutral adapter boundary.
+
+### Git Commit
+
+- Commit: `3d686da`
+- Branch: `feature/manipulation-prepare`
+- Time: 2026-09-01 15:05 (Asia/Shanghai)
+
+## v0.3.0 (2026-09-01) - codex
+
+- [sense] [feat] [completed] Added the provider-neutral `grasp.propose` Query as the third
+  capability on a separate branch. It converts one verified scene understanding result into
+  a generic grasp candidate set with candidate identity, frame/calibration binding,
+  provenance, confidence/score, bounded funnel evidence, and explicit empty-candidate
+  semantics while staying synchronous, read-only, and free of IK, planning, collision
+  checking, Actions, Sessions, and motion authorization.
+- [sense] [feat] [完成] 在独立分支上新增 provider-neutral `grasp.propose` Query 作为第三个能力。
+  它把一个已验证的 scene understanding 结果转换为带候选身份、frame/calibration 绑定、
+  provenance、置信度/评分、有界漏斗证据和明确空候选语义的通用抓取候选集；保持同步只读，
+  不包含 IK、规划、碰撞检测、Action、Session 或运动授权。
+
+### Verification
+
+- Added `contracts/grasp.propose.tool.yaml`, `src/scene_observe/grasp_proposal.py`, and
+  `tests/test_grasp_propose.py`; updated the Fake Gateway routes, Bundle manifest, and
+  workflow guidance.
+- Input requires the named observation reference, scene revision, frame, calibration,
+  freshness, `max_age_ms`, and observation-bound targets. Stale and missing-calibration
+  inputs fail closed before the provider runs; an empty target list returns `status=empty`
+  without fabricated candidates.
+- Output preserves `candidate_set_ref`, per-candidate identity/frame/provenance, reconciled
+  funnel counts, and ambiguity evidence. Qualification is limited to `proposed`,
+  `low_confidence`, and `ambiguous`; no field expresses IK success, collision clearance,
+  reachability, or action admission, and `motion_authorized` stays `false`.
+- The Fake Gateway advertises all three Query specs, reflects grasp-provider availability
+  in the `grasp.propose` context, and fails closed when the provider is not configured.
+- Tests use PAOS's real `ForgeToolClient.invoke_query_tool("grasp.propose", ...)` through the
+  documented Gateway routes and prove no Action, Session, invocation, or motion route exists.
+
+## v0.1.0 (2026-09-01) - codex
+
+- [sense] [feat] Provider-neutral `scene.observe` Query contract, endpoint interface,
+  no-motion Fake Gateway transport, and PAOS ForgeToolClient conformance tests.
+
+## v0.1.1 (2026-09-01) - codex
+
+- [sense] [fix] [completed] Added the named `observation_ref` required by the PAOS
+  perception architecture so downstream Query capabilities can bind to one immutable
+  observation without importing a provider or simulator.
+- [sense] [fix] [完成] 增加 PAOS 感知架构要求的命名 `observation_ref`，使下游 Query
+  能绑定一个不可变观测，而无需导入 provider 或仿真器。
+
+### Verification
+
+- `scene.observe` ToolSpec/output now requires `observation_ref` with the
+  `observation://<scene_revision>/<frame>` shape.
+- `pytest`: 7 passed; `ruff check`: passed; `compileall`: passed.
+- Changed files: `contracts/scene.observe.tool.yaml`,
+  `src/scene_observe/fake_gateway.py`, `tests/test_scene_observe.py`.
+
+## v0.2.0 (2026-09-01) - codex
+
+- [sense] [feat] [completed] Added the provider-neutral `scene.understand` Query as a
+  separate capability branch. It will consume one named observation, preserve
+  provenance/frame/calibration bindings, and return entity claims, relations,
+  spatial envelopes, confidence, and ambiguity without motion or provider fields.
+- [sense] [feat] [完成] 新增 provider-neutral `scene.understand` Query 独立能力分支。
+  它将消费一个命名观测，保留 provenance/frame/calibration 绑定，并返回实体声明、关系、
+  空间包络、置信度和歧义信息；不包含运动或 provider 字段。
+
+### Verification
+
+- Added `contracts/scene.understand.tool.yaml`, `src/scene_observe/understanding.py`,
+  and `tests/test_scene_understand.py`; updated the Bundle manifest, workflow guidance,
+  and Fake Gateway routes.
+- Input requires the named observation reference, scene revision, frame, calibration,
+  freshness, and artifact references. Output preserves entity/relation/spatial provenance
+  and confidence while keeping `motion_authorized=false`.
+- `pytest`: 13 passed; `ruff check`: passed; `compileall`: passed; Bundle archive
+  validation passed (SHA-256 `d1766c1965e6b6dd664d4a5b08d79719e3826855e7b99a0f8d71e2373f912f20`, 12839 bytes).
+- Fake Gateway advertises both Query specs while reflecting understanding-provider
+  availability in the `scene.understand` context; unavailable providers remain fail-closed.
+- [sense] [feat] Provider-neutral `scene.observe` Query contract, endpoint interface,
+  no-motion Fake Gateway transport, and PAOS ForgeToolClient conformance tests.

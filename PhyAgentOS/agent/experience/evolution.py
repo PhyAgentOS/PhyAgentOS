@@ -9,6 +9,12 @@ from typing import Iterable
 
 import yaml
 
+from PhyAgentOS.agent.experience.attribution import (
+    assess_evolution_attribution,
+    validate_assessment_attribution,
+    validate_cluster_owner_scope,
+    validate_counterexample_scope,
+)
 from PhyAgentOS.agent.experience.contracts import (
     ExperienceAssessment,
     FailureObservation,
@@ -83,6 +89,22 @@ class SkillEvolutionManager:
 
     def apply(self, episode: TaskEpisode, assessment: ExperienceAssessment) -> set[str]:
         self._validate_assessment_binding(episode, assessment)
+        attribution = assess_evolution_attribution(episode)
+        if not attribution.allowed:
+            self.store.record_event_once(
+                "capability_attribution_blocked",
+                episode.episode_id,
+                attribution.event_payload,
+            )
+            return set()
+        consistency = validate_assessment_attribution(episode, assessment)
+        if not consistency.allowed:
+            self.store.record_event_once(
+                "capability_attribution_rejected",
+                episode.episode_id,
+                consistency.event_payload,
+            )
+            return set()
         touched_skills: set[str] = set()
         scheduled_clusters: set[str] = set()
         if episode.outcome.has_failed_attempt:
@@ -137,7 +159,7 @@ class SkillEvolutionManager:
 
         if episode.outcome.successful:
             for lesson_id in assessment.contradicted_lesson_ids:
-                lesson = self._add_counterexample(lesson_id, episode.episode_id)
+                lesson = self._add_counterexample(lesson_id, episode)
                 if lesson and lesson.skill_name:
                     touched_skills.add(lesson.skill_name)
 
@@ -177,6 +199,9 @@ class SkillEvolutionManager:
     def _observation_from_proposal(
         self, episode: TaskEpisode, proposal: FailureObservationProposal
     ) -> tuple[FailureObservation, LessonCluster]:
+        capability_failure_owners = sorted(
+            episode.outcome.capability_outcome_summary.failure_owner_counts
+        )
         target = proposal.skill_name or episode.primary_skill
         target_activation = next(
             (item for item in episode.skill_activations if item.skill_name == target),
@@ -199,6 +224,16 @@ class SkillEvolutionManager:
                 or cluster.skill_version_spec != version_spec
             ):
                 raise SkillEvolutionError("matched Lesson cluster has a different scope")
+            if (
+                cluster.capability_failure_owners
+                and capability_failure_owners
+                and cluster.capability_failure_owners != capability_failure_owners
+            ):
+                raise SkillEvolutionError(
+                    "matched Lesson cluster has a different capability failure scope"
+                )
+            if not cluster.capability_failure_owners:
+                cluster.capability_failure_owners = capability_failure_owners
         else:
             digest = hashlib.sha256(
                 f"{target or 'unbound'}\n{version_spec or '*'}\n{workflow_key}\n{pattern_key}".encode("utf-8")
@@ -213,6 +248,7 @@ class SkillEvolutionManager:
                 applies_when=proposal.applies_when,
                 does_not_apply_when=proposal.does_not_apply_when,
                 recovery_principles=[proposal.recovery_principle or ""],
+                capability_failure_owners=capability_failure_owners,
             )
         observation_id = "failure_observation_" + hashlib.sha256(
             f"{episode.episode_id}\n{cluster.cluster_id}".encode("utf-8")
@@ -230,6 +266,7 @@ class SkillEvolutionManager:
             applies_when=proposal.applies_when,
             does_not_apply_when=proposal.does_not_apply_when,
             recovery_principle=proposal.recovery_principle or "",
+            capability_failure_owners=capability_failure_owners,
         )
         return observation, cluster
 
@@ -299,6 +336,11 @@ class SkillEvolutionManager:
         validation: LessonAbstractionValidation,
     ) -> ScopedLesson:
         self.validate_cluster_draft(cluster, draft)
+        scope = validate_cluster_owner_scope(
+            cluster, self.store.list_observations(cluster.cluster_id)
+        )
+        if not scope.allowed:
+            raise SkillEvolutionError(scope.reason)
         if (
             not validation.reusable
             or validation.contains_specific_answer
@@ -349,6 +391,7 @@ class SkillEvolutionManager:
             supporting_episode_ids=episode_ids,
             supersedes_lesson_ids=draft.supersedes_lesson_ids,
             cluster_id=cluster.cluster_id,
+            capability_failure_owners=list(cluster.capability_failure_owners),
             observation_count=max(1, len(episode_ids)),
         )
         self._validate_supersede_targets(lesson)
@@ -382,7 +425,20 @@ class SkillEvolutionManager:
                 touched.add(previous.skill_name)
         return touched
 
-    def _add_counterexample(self, lesson_id: str, episode_id: str) -> ScopedLesson | None:
+    def _add_counterexample(
+        self, lesson_id: str, episode: TaskEpisode
+    ) -> ScopedLesson | None:
+        lesson = self.store.get_lesson(lesson_id)
+        if lesson is None:
+            return None
+        scope = validate_counterexample_scope(lesson, episode)
+        if not scope.allowed:
+            self.store.record_event_once(
+                "lesson_counterexample_scope_blocked", lesson_id, scope.event_payload
+            )
+            return lesson
+        episode_id = episode.episode_id
+
         def mutate(lesson: ScopedLesson) -> None:
             lesson.counterexample_episode_ids = list(
                 dict.fromkeys(lesson.counterexample_episode_ids + [episode_id])
@@ -418,14 +474,19 @@ class SkillEvolutionManager:
         self._bind_matching_unbound_lessons(
             proposal.skill_name, proposal.workflow_key
         )
+        capability_scope = sorted(
+            episode.outcome.capability_outcome_summary.failure_owner_counts
+        )
+        scope_key = ",".join(capability_scope) or "legacy"
         base = hashlib.sha256(
-            f"{proposal.skill_name}\n{proposal.workflow_key}".encode("utf-8")
+            f"{proposal.skill_name}\n{proposal.workflow_key}\n{scope_key}".encode("utf-8")
         ).hexdigest()[:20]
         related = [
             item
             for item in self.store.list_candidates()
             if item.proposal.skill_name == proposal.skill_name
             and item.proposal.workflow_key == proposal.workflow_key
+            and sorted(item.capability_failure_owners) == capability_scope
         ]
         collecting = next(
             (item for item in related if item.status in {"collecting", "blocked"}), None
@@ -435,11 +496,13 @@ class SkillEvolutionManager:
             collecting = SkillCandidate(
                 candidate_id=f"candidate_{base}_r{revision}",
                 proposal=proposal,
+                capability_failure_owners=capability_scope,
                 supporting_episode_ids=[episode.episode_id],
                 target_revision=revision,
             )
         else:
             collecting.proposal = proposal
+            collecting.capability_failure_owners = capability_scope
             collecting.supporting_episode_ids = list(
                 dict.fromkeys(collecting.supporting_episode_ids + [episode.episode_id])
             )

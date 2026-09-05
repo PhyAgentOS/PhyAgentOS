@@ -285,6 +285,8 @@ def _make_provider(
         else config.get_provider(model)
     )
 
+    api_key = p.resolve_api_key(base_dir=(config._config_path or Path.cwd()).parent) if p else ""
+
     def api_base() -> str | None:
         if p is not None and p.api_base:
             return p.api_base
@@ -304,19 +306,19 @@ def _make_provider(
     elif provider_name == "custom":
         from PhyAgentOS.providers.custom_provider import CustomProvider
         provider = CustomProvider(
-            api_key=p.api_key if p else "no-key",
+            api_key=api_key or "no-key",
             api_base=api_base() or "http://localhost:8000/v1",
             default_model=model,
         )
     # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
     elif provider_name == "azure_openai":
-        if not p or not p.api_key or not p.api_base:
+        if not p or not api_key or not p.api_base:
             console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
             console.print("Set them in ~/.PhyAgentOS/config.json under providers.azure_openai section")
             console.print("Use the model field to specify the deployment name.")
             raise typer.Exit(1)
         provider = AzureOpenAIProvider(
-            api_key=p.api_key,
+            api_key=api_key,
             api_base=p.api_base,
             default_model=model,
         )
@@ -324,12 +326,12 @@ def _make_provider(
         from PhyAgentOS.providers.litellm_provider import LiteLLMProvider
         from PhyAgentOS.providers.registry import find_by_name
         spec = find_by_name(provider_name)
-        if not model.startswith("bedrock/") and not (p and p.api_key) and not (spec and (spec.is_oauth or spec.is_local)):
+        if not model.startswith("bedrock/") and not api_key and not (spec and (spec.is_oauth or spec.is_local)):
             console.print("[red]Error: No API key configured.[/red]")
             console.print("Set one in ~/.PhyAgentOS/config.json under providers section")
             raise typer.Exit(1)
         provider = LiteLLMProvider(
-            api_key=p.api_key if p else None,
+            api_key=api_key or None,
             api_base=api_base(),
             default_model=model,
             extra_headers=p.extra_headers if p else None,
@@ -416,6 +418,8 @@ def _make_forge_verifier(config: Config, provider):
         service_host=settings.service_host,
         service_port=settings.service_port,
         service_provider_spec=provider_spec,
+        service_startup_timeout_s=settings.service_startup_timeout_s,
+        service_max_request_bytes=settings.service_max_request_bytes,
         max_calls=settings.max_verifier_calls_per_run,
         write_legacy_lessons=not config.agents.evolution.enabled,
     )
@@ -1655,7 +1659,7 @@ def status():
                 else:
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
-                has_key = bool(p.api_key)
+                has_key = bool(p.api_key or p.api_key_file)
                 console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
 
 

@@ -26,3 +26,6 @@ test
 tests/*
 plan/
 external/
+artifacts/evals/
+evals/verification/provider.*.local.json
+evals/verification/.secrets/

@@ -1,0 +1,378 @@
+from types import SimpleNamespace
+
+from PhyAgentOS.agent.experience.analyzer import ModelExperienceAnalyzer
+from PhyAgentOS.agent.experience.attribution import (
+    assess_evolution_attribution,
+    build_analyzer_attribution_context,
+    validate_assessment_attribution,
+    validate_cluster_owner_scope,
+    validate_counterexample_scope,
+)
+from PhyAgentOS.agent.experience.contracts import (
+    CapabilityOutcomeSummary,
+    ExperienceAssessment,
+    FailureObservation,
+    FailureObservationProposal,
+    LessonCluster,
+    LessonEligibility,
+    ScopedLesson,
+    SkillWorkflowProposal,
+    TaskEpisode,
+    TaskOutcomeEnvelope,
+)
+from PhyAgentOS.agent.experience.evolution import SkillEvolutionError, SkillEvolutionManager
+
+
+def _episode(summary):
+    return TaskEpisode(
+        episode_id="episode-1",
+        root_task_id="task-1",
+        task_summary="pick and place",
+        goal="complete task",
+        outcome=TaskOutcomeEnvelope(
+            task_id="task-1",
+            root_task_id="task-1",
+            goal="complete task",
+            capability_outcome_summary=summary,
+        ),
+    )
+
+
+def test_known_capability_outcomes_are_allowed():
+    decision = assess_evolution_attribution(_episode(CapabilityOutcomeSummary()))
+    assert decision.allowed is True
+    assert decision.reason == "ready"
+
+
+def test_unknown_and_unsettled_statuses_are_blocked_with_bounded_payload():
+    summary = CapabilityOutcomeSummary(
+        status_counts={"unknown": 1, "cancelled": 2},
+        outcome_unknown_count=1,
+    )
+    decision = assess_evolution_attribution(_episode(summary))
+    assert decision.allowed is False
+    assert decision.reason == "capability_outcome_unsettled"
+    assert decision.event_payload == {
+        "reason": "capability_outcome_unsettled",
+        "status_counts": {"cancelled": 2, "unknown": 1},
+        "projection_error_count": 0,
+        "projection_error_codes": [],
+    }
+
+
+def test_projection_errors_take_precedence_over_unsettled_status():
+    summary = CapabilityOutcomeSummary(
+        status_counts={"unknown": 1},
+        projection_error_count=1,
+        projection_error_codes=["invalid_summary_fields"],
+    )
+    decision = assess_evolution_attribution(_episode(summary))
+    assert decision.allowed is False
+    assert decision.reason == "capability_projection_error"
+
+
+def test_attribution_context_maps_owner_classes_without_authorizing_success():
+    summary = CapabilityOutcomeSummary(
+        status_counts={"failed": 1},
+        failure_owner_counts={"planner": 1},
+        evidence_availability_counts={"partial": 1},
+    )
+    context = build_analyzer_attribution_context(_episode(summary))
+    assert context["requires_semantic_attribution_owners"] == ["planner"]
+    assert context["required_lesson_reason"] is None
+    assert context["task_success_authorized"] is False
+
+
+def _related_observation():
+    return FailureObservationProposal(
+        eligibility=LessonEligibility(
+            decision="related",
+            reason="workflow_related",
+            confidence=0.9,
+            rationale="workflow issue",
+        ),
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        pattern_summary="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        recovery_principle="recheck state",
+    )
+
+
+def test_new_observation_records_owner_scope_and_mismatched_cluster_is_rejected():
+    store = type("Store", (), {"get_cluster": lambda self, _: LessonCluster(
+        cluster_id="cluster-1",
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        canonical_pattern="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        capability_failure_owners=["execution"],
+    )})()
+    manager = SkillEvolutionManager(workspace=".", store=store)
+    episode = _episode(
+        CapabilityOutcomeSummary(
+            status_counts={"failed": 1},
+            failure_owner_counts={"planner": 1},
+        )
+    )
+    proposal = _related_observation()
+    proposal.matched_cluster_id = "cluster-1"
+    try:
+        manager._observation_from_proposal(episode, proposal)
+    except SkillEvolutionError as exc:
+        assert str(exc) == "matched Lesson cluster has a different capability failure scope"
+    else:
+        raise AssertionError("owner-scope mismatch was accepted")
+
+
+def _observation(owner_scope):
+    return FailureObservation(
+        observation_id="observation-1",
+        episode_id="episode-1",
+        root_task_id="task-1",
+        workflow_key="pick-place",
+        cluster_id="cluster-1",
+        pattern_key="check-before-action",
+        pattern_summary="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        recovery_principle="recheck state",
+        capability_failure_owners=owner_scope,
+    )
+
+
+def test_cluster_owner_scope_allows_same_scope_and_rejects_mixed_scope():
+    cluster = LessonCluster(
+        cluster_id="cluster-1",
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        canonical_pattern="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+    )
+    allowed = validate_cluster_owner_scope(
+        cluster, [_observation(["planner"]), _observation(["planner"])]
+    )
+    assert allowed.allowed is True
+    assert allowed.event_payload["owner_scope"] == ["planner"]
+    rejected = validate_cluster_owner_scope(
+        cluster, [_observation(["planner"]), _observation(["execution"])]
+    )
+    assert rejected.allowed is False
+    assert rejected.reason == "lesson_cluster_capability_scope_conflict"
+
+
+def test_cluster_owner_scope_rejects_mixed_scoped_and_legacy_observations():
+    cluster = LessonCluster(
+        cluster_id="cluster-1",
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        canonical_pattern="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+    )
+    rejected = validate_cluster_owner_scope(
+        cluster, [_observation(["execution"]), _observation([])]
+    )
+    assert rejected.allowed is False
+    assert rejected.event_payload["unscoped_observation_count"] == 1
+
+
+def _lesson(owner_scope):
+    return ScopedLesson(
+        lesson_id="lesson-1",
+        workflow_key="pick-place",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        failure_mode="state check omitted",
+        recommendation="recheck state",
+        capability_failure_owners=owner_scope,
+    )
+
+
+def test_counterexample_requires_exact_owner_scope_or_both_legacy_empty():
+    matching = validate_counterexample_scope(
+        _lesson(["planner"]),
+        _episode(CapabilityOutcomeSummary(failure_owner_counts={"planner": 1})),
+    )
+    assert matching.allowed is True
+    mismatch = validate_counterexample_scope(
+        _lesson(["planner"]),
+        _episode(CapabilityOutcomeSummary(failure_owner_counts={"execution": 1})),
+    )
+    assert mismatch.allowed is False
+    legacy = validate_counterexample_scope(_lesson([]), _episode(CapabilityOutcomeSummary()))
+    assert legacy.allowed is True
+
+
+def test_counterexample_scope_mismatch_does_not_retire_lesson():
+    lesson = _lesson(["planner"])
+    events = []
+
+    class Store:
+        def get_lesson(self, _):
+            return lesson
+
+        def record_event_once(self, event_type, subject_id, payload):
+            events.append((event_type, subject_id, payload))
+            return True
+
+        def update_lesson(self, *args, **kwargs):
+            raise AssertionError("scope mismatch must not update Lesson")
+
+    manager = SkillEvolutionManager(workspace=".", store=Store())
+    episode = _episode(CapabilityOutcomeSummary(failure_owner_counts={"execution": 1}))
+    assert manager._add_counterexample("lesson-1", episode) is lesson
+    assert lesson.counterexample_episode_ids == []
+    assert lesson.status == "active"
+    assert events[0][0] == "lesson_counterexample_scope_blocked"
+
+
+def test_skill_candidate_support_is_partitioned_by_capability_owner_scope():
+    candidates = []
+
+    class Store:
+        def list_candidates(self):
+            return list(candidates)
+
+        def list_lessons(self, *, status):
+            return []
+
+        def upsert_candidate(self, candidate):
+            existing = next(
+                (item for item in candidates if item.candidate_id == candidate.candidate_id),
+                None,
+            )
+            if existing is None:
+                candidates.append(candidate)
+            else:
+                candidates[candidates.index(existing)] = candidate
+            return candidate
+
+    manager = SkillEvolutionManager(workspace=".", store=Store())
+    manager._bind_matching_unbound_lessons = lambda *args: None
+    proposal = SkillWorkflowProposal(
+        operation="update",
+        skill_name="pick-place-workflow",
+        workflow_key="pick-place",
+        description="bounded workflow",
+        steps=["observe"],
+        verification_checkpoints=["verify"],
+        applicability_boundaries=["known scene"],
+    )
+    planner_episode = _episode(
+        CapabilityOutcomeSummary(failure_owner_counts={"planner": 1})
+    )
+    execution_episode = _episode(
+        CapabilityOutcomeSummary(failure_owner_counts={"execution": 1})
+    )
+    first = manager._support_candidate(planner_episode, proposal, [])
+    second = manager._support_candidate(execution_episode, proposal, [])
+    assert first.candidate_id != second.candidate_id
+    assert first.supporting_episode_ids == ["episode-1"]
+    assert second.supporting_episode_ids == ["episode-1"]
+    assert first.capability_failure_owners == ["planner"]
+    assert second.capability_failure_owners == ["execution"]
+
+
+def test_infrastructure_and_evidence_only_claims_must_use_bounded_lesson_reason():
+    related = FailureObservationProposal(
+        eligibility=LessonEligibility(
+            decision="related",
+            reason="workflow_related",
+            confidence=0.9,
+            rationale="workflow issue",
+        ),
+        workflow_key="pick-place",
+        pattern_key="check-before-action",
+        pattern_summary="check readiness before action",
+        applies_when=["before action"],
+        does_not_apply_when=["external outage"],
+        recovery_principle="recheck state",
+    )
+    infrastructure = _episode(
+        CapabilityOutcomeSummary(
+            status_counts={"failed": 1},
+            failure_owner_counts={"infrastructure": 1},
+        )
+    )
+    assessment = ExperienceAssessment(
+        outcome="failure",
+        reusable=False,
+        confidence=0.5,
+        rationale="failure",
+        failure_observations=[related],
+    )
+    decision = validate_assessment_attribution(infrastructure, assessment)
+    assert decision.allowed is False
+    assert decision.reason == "external_or_infrastructure_misattributed"
+
+    evidence_only = _episode(
+        CapabilityOutcomeSummary(
+            status_counts={"failed": 1},
+            evidence_availability_counts={"unknown": 1},
+        )
+    )
+    decision = validate_assessment_attribution(evidence_only, assessment)
+    assert decision.allowed is False
+    assert decision.reason == "evidence_limit_misattributed"
+
+
+def test_evolution_manager_blocks_writes_and_records_event():
+    events = []
+    seen = set()
+
+    class Store:
+        def list_lessons(self, *, status):
+            return []
+
+        def record_event_once(self, event_type, subject_id, payload):
+            key = (event_type, subject_id, repr(payload))
+            if key in seen:
+                return False
+            seen.add(key)
+            events.append((event_type, subject_id, payload))
+            return True
+
+    manager = SkillEvolutionManager(workspace=".", store=Store())
+    episode = _episode(CapabilityOutcomeSummary(status_counts={"stopped": 1}))
+    assessment = ExperienceAssessment(
+        outcome="failure",
+        reusable=False,
+        confidence=0.5,
+        rationale="unsettled",
+    )
+    assert manager.apply(episode, assessment) == set()
+    assert manager.apply(episode, assessment) == set()
+    assert len(events) == 1
+    assert events[0][0] == "capability_attribution_blocked"
+    assert events[0][2]["status_counts"] == {"stopped": 1}
+
+
+async def test_analyzer_receives_attribution_context_as_untrusted_input():
+    captured = {}
+
+    class Provider:
+        async def chat_with_retry(self, **kwargs):
+            captured["messages"] = kwargs["messages"]
+            return SimpleNamespace(
+                finish_reason="stop",
+                content=(
+                    '{"version":"experience_assessment_v1","outcome":"ignored",'
+                    '"reusable":false,"confidence":0.1,"rationale":"diagnostic",'
+                    '"skill_candidate":null,"failure_observations":[],'
+                    '"contradicted_lesson_ids":[],"conflicts":[]}'
+                ),
+            )
+
+    summary = CapabilityOutcomeSummary(
+        status_counts={"failed": 1},
+        failure_owner_counts={"planner": 1},
+    )
+    await ModelExperienceAnalyzer(provider=Provider(), model="test").assess(
+        _episode(summary), candidates=[], lessons=[], clusters=[], skill_catalog=[]
+    )
+    assert "capability_attribution_context" in captured["messages"][1]["content"]
+    assert "task_success_authorized" in captured["messages"][1]["content"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -118,6 +119,13 @@ class EvidenceCaptureWindow(BaseModel):
     command_terminal_at: datetime | None = None
     after_command_at: datetime | None = None
 
+    @field_validator("before_command_at", "command_terminal_at", "after_command_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("evidence capture timestamps must include a timezone")
+        return value
+
 
 class EvidenceArtifact(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -126,7 +134,7 @@ class EvidenceArtifact(BaseModel):
     phase: Literal["before", "during", "after"]
     kind: str
     source_id: str
-    captured_at: float | None = None
+    captured_at: float | None = Field(default=None, allow_inf_nan=False)
     received_at: datetime
     sequence: int | None = Field(default=None, ge=0)
     media_type: str
@@ -143,6 +151,13 @@ class EvidenceArtifact(BaseModel):
         if not normalized or normalized.startswith("/") or ".." in normalized.split("/"):
             raise ValueError("evidence uri must be a safe workspace-relative path")
         return normalized
+
+    @field_validator("received_at", "deleted_at")
+    @classmethod
+    def require_timestamp_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("evidence artifact timestamps must include a timezone")
+        return value
 
 
 class EvidenceQuality(BaseModel):
@@ -168,6 +183,50 @@ class EvidenceBundle(BaseModel):
     artifacts: list[EvidenceArtifact] = Field(default_factory=list)
     quality: EvidenceQuality
     created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def require_created_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("evidence bundle created_at must include a timezone")
+        return value
+
+
+def evidence_bundle_semantic_payload(bundle: EvidenceBundle) -> dict[str, Any]:
+    """Return capture facts covered by the stable Evidence Bundle identity.
+
+    Retention fields are excluded because byte deletion is a controlled lifecycle
+    update that must preserve the identity of the original capture.
+    """
+
+    return {
+        "version": bundle.version,
+        "session_id": bundle.session_id,
+        "command_id": bundle.command_id,
+        "gateway_instance_id": bundle.gateway_instance_id,
+        "capture_window": bundle.capture_window.model_dump(mode="json"),
+        "artifacts": [
+            artifact.model_dump(
+                mode="json",
+                exclude={"retained", "deleted_at"},
+            )
+            for artifact in bundle.artifacts
+        ],
+        "quality": bundle.quality.model_dump(mode="json"),
+    }
+
+
+def derive_evidence_bundle_id(bundle: EvidenceBundle) -> str:
+    """Derive the stable identity for one immutable set of capture facts."""
+
+    encoded = json.dumps(
+        evidence_bundle_semantic_payload(bundle),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return f"forge_evidence_{hashlib.sha256(encoded).hexdigest()[:20]}"
 
 
 class CriterionVerdict(BaseModel):

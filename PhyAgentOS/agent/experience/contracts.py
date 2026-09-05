@@ -50,6 +50,92 @@ class LineageOutcome(ExperienceModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class CapabilityOutcomeFact(ExperienceModel):
+    """Redacted execution fact available to experience analysis."""
+
+    version: Literal["capability_outcome_fact_v1"] = "capability_outcome_fact_v1"
+    record_ref: str = Field(pattern=r"^evidence:[0-9a-f]{24}$")
+    capability: str = Field(min_length=1, max_length=96)
+    status: Literal["succeeded", "failed", "cancelled", "stopped", "unknown"]
+    capability_phase: Literal[
+        "approach",
+        "contact",
+        "close",
+        "lift",
+        "hold",
+        "transport",
+        "descent",
+        "release",
+        "retreat",
+        "none",
+    ]
+    failure_owner: Literal[
+        "none",
+        "input",
+        "binding",
+        "readiness",
+        "planner",
+        "execution",
+        "settlement",
+        "operator",
+        "infrastructure",
+    ] | None = None
+    world_change_started: bool
+    outcome_known: bool
+    evidence_availability: Literal["complete", "partial", "none", "unknown"]
+    post_release_evidence_availability: Literal[
+        "complete", "partial", "none", "unknown"
+    ] | None = None
+
+
+class CapabilityOutcomeErrorFact(ExperienceModel):
+    """Bounded diagnostic for a summary that could not become an execution fact."""
+
+    version: Literal["capability_outcome_error_v1"] = "capability_outcome_error_v1"
+    record_ref: str = Field(pattern=r"^evidence:[0-9a-f]{24}$")
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+
+
+class CapabilityOutcomeSummary(ExperienceModel):
+    """Deterministic counts for reflection; never a task verdict."""
+
+    version: Literal["capability_fact_summary_v1"] = "capability_fact_summary_v1"
+    status_counts: dict[
+        Literal["succeeded", "failed", "cancelled", "stopped", "unknown"], int
+    ] = Field(default_factory=dict)
+    failure_owner_counts: dict[str, int] = Field(default_factory=dict)
+    evidence_availability_counts: dict[
+        Literal["complete", "partial", "none", "unknown"], int
+    ] = Field(default_factory=dict)
+    world_change_started_count: int = Field(default=0, ge=0)
+    outcome_unknown_count: int = Field(default=0, ge=0)
+    projection_error_count: int = Field(default=0, ge=0)
+    projection_error_codes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "CapabilityOutcomeSummary":
+        for values in (
+            self.status_counts,
+            self.failure_owner_counts,
+            self.evidence_availability_counts,
+        ):
+            if any(value < 0 for value in values.values()):
+                raise ValueError("capability summary counts must be non-negative")
+        if len(set(self.projection_error_codes)) != len(self.projection_error_codes):
+            raise ValueError("capability summary error codes must be unique")
+        if any(
+            not isinstance(code, str)
+            or not code
+            or not code[0].islower()
+            or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789_" for char in code)
+            for code in self.projection_error_codes
+        ):
+            raise ValueError("capability summary error codes must be bounded names")
+        if self.projection_error_count < len(self.projection_error_codes):
+            raise ValueError("projection error count cannot be below unique error codes")
+        return self
+
+
 class TaskOutcomeEnvelope(ExperienceModel):
     version: Literal["task_outcome_envelope_v1"] = "task_outcome_envelope_v1"
     task_id: str
@@ -67,6 +153,11 @@ class TaskOutcomeEnvelope(ExperienceModel):
     record_refs: list[str] = Field(default_factory=list)
     agent_task_ref: str | None = None
     tool_invocation_refs: list[str] = Field(default_factory=list)
+    capability_outcomes: list[CapabilityOutcomeFact] = Field(default_factory=list)
+    capability_outcome_errors: list[CapabilityOutcomeErrorFact] = Field(default_factory=list)
+    capability_outcome_summary: CapabilityOutcomeSummary = Field(
+        default_factory=CapabilityOutcomeSummary
+    )
     completed_at: datetime = Field(default_factory=utc_now)
 
     @property
@@ -205,6 +296,7 @@ class FailureObservation(ExperienceModel):
     applies_when: list[str] = Field(min_length=1)
     does_not_apply_when: list[str] = Field(min_length=1)
     recovery_principle: str = Field(min_length=1, max_length=1000)
+    capability_failure_owners: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -230,6 +322,7 @@ class LessonCluster(ExperienceModel):
     applies_when: list[str] = Field(min_length=1)
     does_not_apply_when: list[str] = Field(min_length=1)
     recovery_principles: list[str] = Field(default_factory=list)
+    capability_failure_owners: list[str] = Field(default_factory=list)
     observation_ids: list[str] = Field(default_factory=list)
     supporting_root_task_ids: list[str] = Field(default_factory=list)
     status: Literal["collecting", "blocked", "activated"] = "collecting"
@@ -308,6 +401,7 @@ class ScopedLesson(ExperienceModel):
     supersedes_lesson_ids: list[str] = Field(default_factory=list)
     superseded_by_lesson_id: str | None = None
     cluster_id: str | None = None
+    capability_failure_owners: list[str] = Field(default_factory=list)
     supporting_episode_ids: list[str] = Field(default_factory=list)
     observation_count: int = Field(default=1, ge=1)
     created_at: datetime = Field(default_factory=utc_now)
@@ -318,6 +412,7 @@ class SkillCandidate(ExperienceModel):
     version: Literal["skill_candidate_v1"] = "skill_candidate_v1"
     candidate_id: str
     proposal: SkillWorkflowProposal
+    capability_failure_owners: list[str] = Field(default_factory=list)
     supporting_episode_ids: list[str] = Field(default_factory=list)
     status: Literal[
         "collecting", "blocked", "promoted", "rejected"

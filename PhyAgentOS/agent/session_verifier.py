@@ -12,9 +12,12 @@ from uuid import uuid4
 from PhyAgentOS.providers.base import LLMProvider
 from PhyAgentOS.utils.atomic_file import atomic_write_text
 from PhyAgentOS.verification.contracts import (
+    EvidenceBundle,
     ForgeSessionRecord,
     VerificationAttempt,
     VerificationVerdict,
+    derive_evidence_bundle_id,
+    evidence_bundle_semantic_payload,
     utc_now,
 )
 from PhyAgentOS.verification.engine import VerificationEngine
@@ -23,6 +26,10 @@ from PhyAgentOS.verification.request_builder import (
     VerificationRequestBuilder,
 )
 from PhyAgentOS.verification.service import VerificationServiceProcess
+from PhyAgentOS.verification.validation import (
+    VerificationVerdictBoundaryError,
+    validate_verification_verdict_boundary,
+)
 
 if TYPE_CHECKING:
     from PhyAgentOS.forge.task import AgentTaskRecord
@@ -49,6 +56,8 @@ class ForgeTaskVerifier:
         service_port: int = 8100,
         session_secret: str | None = None,
         service_provider_spec: dict[str, Any] | None = None,
+        service_startup_timeout_s: float = 5.0,
+        service_max_request_bytes: int = 64 * 1024 * 1024,
         max_calls: int = 50,
         write_legacy_lessons: bool = True,
     ) -> None:
@@ -65,6 +74,8 @@ class ForgeTaskVerifier:
             port=service_port,
             session_secret=session_secret or uuid4().hex,
             provider_spec=service_provider_spec,
+            startup_timeout_s=service_startup_timeout_s,
+            max_request_bytes=service_max_request_bytes,
         )
         self._lesson_lock = threading.Lock()
 
@@ -171,20 +182,14 @@ class ForgeTaskVerifier:
         valid_evidence_refs: set[str],
         verdict: VerificationVerdict,
     ) -> None:
-        expected = expected_criteria
-        actual = [item.criterion for item in verdict.criteria]
-        if len(actual) != len(expected) or set(actual) != set(expected):
-            raise VerificationVerdictError(
-                "verifier must return exactly one result for each success criterion"
+        try:
+            validate_verification_verdict_boundary(
+                expected_criteria=expected_criteria,
+                valid_evidence_refs=valid_evidence_refs,
+                verdict=verdict,
             )
-        refs = set(verdict.evidence_refs)
-        for criterion in verdict.criteria:
-            refs.update(criterion.evidence_refs)
-        unknown = refs - valid_evidence_refs
-        if unknown:
-            raise VerificationVerdictError(
-                "verifier referenced unknown evidence: " + ", ".join(sorted(unknown))
-            )
+        except VerificationVerdictBoundaryError as exc:
+            raise VerificationVerdictError(str(exc)) from exc
 
     def apply_retention(
         self,
@@ -197,21 +202,55 @@ class ForgeTaskVerifier:
         )
         deleted: list[str] = []
         errors: list[dict[str, str]] = []
-        evidence = request.evidence.model_copy(deep=True)
         if should_delete:
+            bundle_path = request.artifact_paths[0].resolve()
+            artifact_root = (self.workspace / "artifacts").resolve()
+            evidence_root = (bundle_path.parent / "evidence").resolve()
+            if (
+                not bundle_path.is_relative_to(artifact_root)
+                or bundle_path.name != "evidence_bundle.json"
+            ):
+                raise VerificationVerdictError(
+                    "retention requires a writer-owned Evidence Bundle"
+                )
+            try:
+                evidence = EvidenceBundle.model_validate_json(
+                    bundle_path.read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                raise VerificationVerdictError(
+                    "retention requires a valid persisted Evidence Bundle"
+                ) from exc
+            if (
+                evidence.bundle_id != derive_evidence_bundle_id(evidence)
+                or evidence.bundle_id != request.evidence.bundle_id
+                or evidence_bundle_semantic_payload(evidence)
+                != evidence_bundle_semantic_payload(request.evidence)
+            ):
+                raise VerificationVerdictError(
+                    "retention Evidence Bundle identity changed after request validation"
+                )
+            validated_paths = {
+                path.resolve() for path in request.artifact_paths[1:]
+            }
+            persisted_paths = [(self.workspace / item.uri).resolve() for item in evidence.artifacts]
+            if (
+                len(persisted_paths) != len(set(persisted_paths))
+                or set(persisted_paths) != validated_paths
+                or any(not path.is_relative_to(evidence_root) for path in persisted_paths)
+            ):
+                raise VerificationVerdictError(
+                    "retention artifact set differs from the validated request"
+                )
             deleted_at = utc_now()
-            for artifact in evidence.artifacts:
-                path = (self.workspace / artifact.uri).resolve()
+            for artifact, path in zip(evidence.artifacts, persisted_paths, strict=True):
                 try:
-                    if not path.is_relative_to(self.workspace):
-                        raise ValueError("artifact escapes workspace")
                     path.unlink(missing_ok=True)
                     artifact.retained = False
                     artifact.deleted_at = deleted_at
                     deleted.append(artifact.uri)
                 except Exception as exc:
                     errors.append({"path": artifact.uri, "error": str(exc)})
-            bundle_path = request.artifact_paths[0]
             atomic_write_text(
                 bundle_path,
                 json.dumps(

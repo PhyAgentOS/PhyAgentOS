@@ -1,6 +1,7 @@
 """Context builder for assembling agent prompts."""
 
 import base64
+import json
 import mimetypes
 import platform
 import time
@@ -175,10 +176,53 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
                 continue
             file_path = self.workspace / filename
             if file_path.exists():
+                if filename == "ENVIRONMENT.md":
+                    parts.append(self._environment_context(file_path))
+                    continue
                 content = file_path.read_text(encoding="utf-8")
                 parts.append(f"## {filename}\n\n{content}")
 
         return "\n\n".join(parts) if parts else ""
+
+    @staticmethod
+    def _environment_context(file_path: Path) -> str:
+        """Expose only validated projection identity, never raw Markdown or scene data."""
+
+        from PhyAgentOS.state_io import StateFileError, parse_environment_projection
+
+        try:
+            projection = parse_environment_projection(file_path)
+        except StateFileError:
+            return (
+                "## ENVIRONMENT.md\n\n"
+                "The environment projection is unavailable because strict validation failed. "
+                "Use query_scene_graph or a live Forge Query before planning. "
+                "Validation error code: invalid_environment_projection"
+            )
+        data = projection.data
+        metadata = {
+            "authority": "non_authoritative_projection_identity_only",
+            "motion_authorized": False,
+            "instruction_content_authorized": False,
+            "revision": projection.source.revision,
+            "data_sha256": projection.source.data_sha256,
+            "source": projection.source.source,
+            "snapshot_ref": data.snapshot_ref,
+            "phase": data.phase,
+            "captured_at": data.captured_at,
+            "source_id": data.source_id,
+            "frame": data.frame,
+            "calibration_ref": data.calibration_ref,
+            "query_requirement": (
+                "Use query_scene_graph or a live Forge Query for scene contents."
+            ),
+        }
+        return "## ENVIRONMENT.md\n\n" + json.dumps(
+            metadata,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
 
     def build_messages(
         self,

@@ -9,6 +9,9 @@
 PhyAgentOS is an Agent framework for embodied tasks. The Agent interprets a user goal, selects
 Forge tools, defines task-level success, and decides whether to continue or recover. Forge Gateway
 owns Tool execution, ToolEndpoint selection, Dora integration, and robot or simulator access.
+RoboTwin 2.0 therefore belongs to the independent `robot/simulator` runtime at the end of this
+plane; PAOS does not import RoboTwin or SAPIEN. Its task, embodiment, benchmark, and simulator
+parameters stay inside the Gateway/ToolEndpoint adapter and profile.
 
 The boundary keeps cognitive planning separate from physical effects. General Agent tools,
 verification, task experience, evolution, Skill activation, and dynamic MCP tools remain part of
@@ -34,6 +37,11 @@ User / Channel / Scheduled Event
 
 terminal AgentTask ─────► Experience Coordinator ──► evolution ledger
 ```
+
+The adapter boundary is deliberately provider-neutral on the PAOS side: a Skill exposes only
+ToolSpec and workflow guidance, while the Gateway adapter translates those operations to the
+selected RoboTwin/SAPIEN runtime. A simulator name must not be embedded in a capability Skill name
+or in the public ToolSpec.
 
 Bound calls and diagnostic Query use the same Gateway endpoints. A diagnostic Query does not
 occupy the AgentTask slot; Action and task-owned Session require a frozen task binding. PAOS does

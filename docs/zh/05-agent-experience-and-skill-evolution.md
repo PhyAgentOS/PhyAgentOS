@@ -57,6 +57,34 @@ Binding 同时冻结每个已激活 Skill 当时返回的适用 active Lesson。
 
 学习内容不复制原始工具输出、input 值、evidence locator、endpoint、凭据、绝对路径或可执行 Gateway ID。Task、revision、invocation 与 attempt identity 只保留为内部不透明 reference，不能进入生成的 Lesson 或 Skill。
 
+在进入 `TaskOutcomeEnvelope` 前，能力终态摘要还会被压缩为 `CapabilityOutcomeFact`。该 fact
+只保留 provider-neutral capability、终态 status、有界 capability phase、failure owner、世界
+变化状态、outcome-known 状态和证据可用性；record identity 使用 opaque fingerprint，排除
+artifact URI 与 failure code。非法或不支持的摘要不会生成 fact，只保留为 verification 诊断
+错误。fact 只为 reflection 提供归因上下文，不能建立任务 verdict、使 episode 自动可学习，
+也不能满足 Skill candidate/Lesson 晋升门槛。
+
+在应用 assessment 前，evolution 会运行确定性的 attribution guard。只要存在 unknown、
+cancelled、stopped 能力终态或 projection error，就阻止 Lesson observation 与 Skill candidate
+写入，并记录一次有界的 `capability_attribution_blocked` event。该 guard 幂等且不修改
+AgentTask verdict；episode 完成 reconciliation 后可以再次处理。
+
+Analyzer 还会接收只读的 `capability_attribution_context`，其中只包含有界的 owner 与证据计数。
+Planner、execution 和 readiness owner 会标记为 `requires_semantic_attribution_owners`；仅有
+infrastructure 或证据缺口的失败会携带必需的 Lesson reason。只有与这些明确事实冲突的
+assessment 才会被 evolution 拒绝。
+
+每个规范化 failure observation 和 LessonCluster 都会记录有界的 capability failure-owner 作用域。
+如果匹配到的 cluster 已有不同的非空 owner 作用域，系统会拒绝合并，避免把 infrastructure、
+planner 和 execution 失败混成一个可复用 Lesson pattern。
+
+Active Lesson 的 counterexample 使用相同作用域。成功 episode 只有在 owner scope 与 Lesson
+完全一致（或双方都是 legacy 空 scope）时才计入退休门槛；不一致时只记录有界诊断，不增加
+counterexample 支持，也不改变 cluster 状态。
+
+Skill candidate 使用相同的有界作用域分桶。不同 owner scope 的支持 episode 会保存到独立
+candidate，不能共享 promotion 计数；legacy 空 scope 只能与其他 legacy 空 scope 合并。
+
 Outcome 策略：
 
 | 结果 | 经验行为 |

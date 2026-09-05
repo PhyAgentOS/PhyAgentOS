@@ -1,0 +1,68 @@
+tool_id: scene.observe
+implementation_id: scene.observation
+endpoint_id: scene_observation
+operation: observe
+semantics: query
+description: Return a measured, calibrated scene observation without causing a physical effect.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [sensor_ref, max_age_ms]
+  properties:
+    sensor_ref:
+      type: string
+      minLength: 1
+    requested_frame:
+      type: string
+      minLength: 1
+    max_age_ms:
+      type: integer
+      minimum: 1
+output_schema:
+  type: object
+  additionalProperties: false
+  required: [status, observation_ref, captured_at, scene_revision, frame, calibration_ref, freshness_ms, artifacts]
+  properties:
+    status:
+      enum: [available, unavailable, stale, invalid]
+    observation_ref:
+      type: string
+      pattern: '^observation://[^/]+/[^/]+$'
+    captured_at:
+      type: string
+      format: date-time
+    scene_revision:
+      type: string
+      minLength: 1
+    frame:
+      type: object
+      additionalProperties: false
+      required: [frame_id]
+      properties:
+        frame_id: {type: string, minLength: 1}
+        unit: {const: m}
+    calibration_ref:
+      type: [string, 'null']
+    freshness_ms:
+      type: integer
+      minimum: 0
+    artifacts:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [ref, kind, media_type]
+        properties:
+          ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
+          kind: {enum: [rgb, depth, point_cloud, state]}
+          media_type: {type: string, minLength: 1}
+    error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: {type: string, minLength: 1}
+        message: {type: string, minLength: 1}
+robot_frame_profile:
+  observation_frame: sensor
+  unit: m

@@ -338,13 +338,27 @@ class AgentVerificationConfig(Base):
     service_enabled: bool = True
     model: str | None = None
     provider: str | None = None
-    timeout_s: float = Field(default=180.0, gt=0)
+    timeout_s: float = Field(default=180.0, gt=0, le=3600.0)
     evidence_retention: Literal["all", "failed", "none"] = "none"
     max_replans_per_episode: int = Field(default=2, ge=0)
     max_verifier_calls_per_run: int = Field(default=50, ge=0)
     replan_timeout_s: float = Field(default=120.0, gt=0)
     service_host: str = "127.0.0.1"
     service_port: int = Field(default=8100, ge=1, le=65535)
+    service_startup_timeout_s: float = Field(default=5.0, gt=0, le=120.0)
+    service_max_request_bytes: int = Field(
+        default=64 * 1024 * 1024,
+        ge=1024,
+        le=512 * 1024 * 1024,
+    )
+
+    @field_validator("service_host")
+    @classmethod
+    def validate_service_host(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or any(char.isspace() for char in normalized):
+            raise ValueError("agents.verification.serviceHost is invalid")
+        return normalized
 
 
 class AgentEvolutionConfig(Base):
@@ -380,8 +394,23 @@ class ProviderConfig(Base):
     """LLM provider configuration."""
 
     api_key: str = ""
+    api_key_file: str | None = None
     api_base: str | None = None
     extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
+
+    @model_validator(mode="after")
+    def validate_credential_sources(self) -> "ProviderConfig":
+        if self.api_key and self.api_key_file:
+            raise ValueError("configure only one of api_key or api_key_file")
+        return self
+
+    def resolve_api_key(self, *, base_dir: Path) -> str:
+        """Resolve the configured key at runtime; never mutate this config."""
+        if self.api_key_file:
+            from PhyAgentOS.config.credentials import read_api_key_file
+
+            return read_api_key_file(self.api_key_file, base_dir=base_dir)
+        return self.api_key
 
 
 class ProvidersConfig(Base):
@@ -478,6 +507,7 @@ class Config(BaseSettings):
     embodiments: EmbodimentsConfig = Field(default_factory=EmbodimentsConfig)
     forge: ForgeConfig = Field(default_factory=ForgeConfig)
     resource_registry: ResourceRegistryConfig = Field(default_factory=ResourceRegistryConfig)
+    _config_path: Path | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -517,6 +547,8 @@ class Config(BaseSettings):
         from PhyAgentOS.providers.registry import PROVIDERS
 
         forced = self.agents.defaults.provider
+        def has_key(provider: ProviderConfig) -> bool:
+            return bool(provider.api_key or provider.api_key_file)
         if forced != "auto":
             p = getattr(self.providers, forced, None)
             return (p, forced) if p else (None, None)
@@ -534,14 +566,14 @@ class Config(BaseSettings):
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and model_prefix and normalized_prefix == spec.name:
-                if spec.is_oauth or spec.is_local or p.api_key:
+                if spec.is_oauth or spec.is_local or has_key(p):
                     return p, spec.name
 
         # Match by keyword (order follows PROVIDERS registry)
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and any(_kw_matches(kw) for kw in spec.keywords):
-                if spec.is_oauth or spec.is_local or p.api_key:
+                if spec.is_oauth or spec.is_local or has_key(p):
                     return p, spec.name
 
         # Fallback: configured local providers can route models without
@@ -559,7 +591,7 @@ class Config(BaseSettings):
             if spec.is_oauth:
                 continue
             p = getattr(self.providers, spec.name, None)
-            if p and p.api_key:
+            if p and has_key(p):
                 return p, spec.name
         return None, None
 
@@ -576,7 +608,9 @@ class Config(BaseSettings):
     def get_api_key(self, model: str | None = None) -> str | None:
         """Get API key for the given model. Falls back to first available key."""
         p = self.get_provider(model)
-        return p.api_key if p else None
+        if not p:
+            return None
+        return p.resolve_api_key(base_dir=(self._config_path or Path.cwd()).parent)
 
     def get_api_base(self, model: str | None = None) -> str | None:
         """Get API base URL for the given model. Applies default URLs for gateway/local providers."""

@@ -1,6 +1,17 @@
 """Task-level experience capture and guarded Skill evolution."""
 
+from PhyAgentOS.agent.experience.attribution import (
+    EvolutionAttributionDecision,
+    assess_evolution_attribution,
+    build_analyzer_attribution_context,
+    validate_assessment_attribution,
+    validate_cluster_owner_scope,
+    validate_counterexample_scope,
+)
 from PhyAgentOS.agent.experience.contracts import (
+    CapabilityOutcomeErrorFact,
+    CapabilityOutcomeFact,
+    CapabilityOutcomeSummary,
     ExperienceAssessment,
     FailureObservation,
     FailureObservationProposal,
@@ -21,6 +32,9 @@ from PhyAgentOS.agent.experience.source import ForgeTaskOutcomeSource, TaskOutco
 
 __all__ = [
     "ExperienceAssessment",
+    "CapabilityOutcomeFact",
+    "CapabilityOutcomeErrorFact",
+    "CapabilityOutcomeSummary",
     "FailureObservation",
     "FailureObservationProposal",
     "ForgeTaskOutcomeSource",
@@ -37,4 +51,10 @@ __all__ = [
     "TaskOutcomeSource",
     "TaskOutcomeEnvelope",
     "WorkflowTraceItem",
+    "EvolutionAttributionDecision",
+    "assess_evolution_attribution",
+    "build_analyzer_attribution_context",
+    "validate_assessment_attribution",
+    "validate_cluster_owner_scope",
+    "validate_counterexample_scope",
 ]

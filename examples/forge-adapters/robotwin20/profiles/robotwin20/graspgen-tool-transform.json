@@ -1,0 +1,22 @@
+{
+  "schema_version": "paos-robotwin20-grasp-transform-attestation/v2",
+  "provider": "graspgen",
+  "upstream_repository": "https://github.com/NVlabs/GraspGen.git",
+  "upstream_commit": "2dd8852e1be60f5f9d277fafcc621835cdf59110",
+  "origin_frame": "gripper_base_link",
+  "target_frame": "canonical_contact_center",
+  "units": "m",
+  "provider_T_contact_center": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.10527314, 0, 0, 0, 1],
+  "source_chain": [
+    {"path": "docs/GRIPPER_DESCRIPTION.md", "sha256": "41ea804d607ba185913ac426836014ae63bb05485d3e223e683e6bf850f84370"},
+    {"path": "config/grippers/franka_panda.yaml", "sha256": "91321c3a7de51e0d1a1c9ed57cddf75d0749fe29c2b6c32f051581c227c480c2"},
+    {"path": "config/grippers/franka_panda.py", "sha256": "2b895f760bd5d7e172fe9c30dba48a3838905e0c021ad7f9affa8383dc0f637f"},
+    {"path": "grasp_gen/robot.py", "sha256": "565abf2a1733615d4a8596660dc77d09f7c59d67845038b05b3db9a428e93b40"},
+    {"path": "grasp_gen/models/action_decoder.py", "sha256": "9104fc4689230975e8bf81c4e9db423ea5c4770751b1a577c6c211be43f6cb26"},
+    {"path": "grasp_gen/dataset/dataset_utils.py", "sha256": "e68c61583868937e4e41761a94facc049d04a632122acb171603976f2df93ef2"},
+    {"path": "grasp_gen/grasp_server.py", "sha256": "c9d8679891f7ed16f6fed49d20148fc924fe7054688a00660dcbe82aae0bbac9"}
+  ],
+  "model_executed": false,
+  "hardware_io_performed": false,
+  "motion_authorized": false
+}

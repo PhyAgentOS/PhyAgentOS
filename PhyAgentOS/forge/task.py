@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Iterator, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import (
@@ -40,6 +40,20 @@ class AgentTaskError(RuntimeError):
 
 class AgentTaskBusyError(AgentTaskError):
     """Raised when the global non-terminal AgentTask slot is occupied."""
+
+
+class AgentTaskOriginConflictError(AgentTaskError):
+    """Raised when an immutable task origin has already been compiled."""
+
+    def __init__(self, origin_dedup_key: str, existing_task_id: str) -> None:
+        self.origin_dedup_key = origin_dedup_key
+        # Compatibility alias for callers that used the old exception attribute.
+        self.origin_session_key = origin_dedup_key
+        self.existing_task_id = existing_task_id
+        super().__init__(
+            f"AgentTask origin {origin_dedup_key!r} already belongs to "
+            f"{existing_task_id}"
+        )
 
 
 class AgentTaskStatus(StrEnum):
@@ -79,6 +93,11 @@ class ToolExecutionRecord(BaseModel):
     skill_binding_id: str | None = None
     tool_spec_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     caller_id: str
+    node_id: str | None = None
+    node_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    obligation_id: str | None = None
+    input_binding_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    decision_trace_ref: str | None = None
     ownership: Literal["task", "runtime", "shared"] = "task"
     arguments: dict[str, Any] = Field(default_factory=dict)
     status: Literal[
@@ -98,6 +117,33 @@ class ToolExecutionRecord(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="after")
+    def validate_node_binding(self) -> "ToolExecutionRecord":
+        planning_fields = (
+            self.node_id,
+            self.node_digest,
+            self.obligation_id,
+            self.input_binding_digest,
+            self.decision_trace_ref,
+        )
+        if any(value is not None for value in planning_fields):
+            if self.node_id is None or self.node_digest is None or self.obligation_id is None:
+                raise ValueError(
+                    "planning-bound Tool execution records require node_id, node_digest, and obligation_id"
+                )
+        return self
+
+    @field_validator("arguments", "response", "error")
+    @classmethod
+    def require_finite_json(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        try:
+            json.dumps(value, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Tool execution payload must contain finite JSON values") from exc
+        return value
 
     @field_validator("record_id", "revision_id", "tool_id")
     @classmethod
@@ -122,11 +168,69 @@ class PlanRevision(BaseModel):
     number: int = Field(ge=1)
     reason: str = Field(min_length=1)
     skill_binding_id: str | None = None
+    plan_graph_ref: str | None = None
+    plan_graph_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    planner_decision_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    policy_snapshot_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     execution_records: list[ToolExecutionRecord] = Field(default_factory=list)
     verdict: VerificationVerdict | None = None
     verification_attempts: list[VerificationAttempt] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     closed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_plan_binding(self) -> "PlanRevision":
+        planning_fields = (
+            self.plan_graph_ref,
+            self.plan_graph_digest,
+            self.planner_decision_digest,
+            self.policy_snapshot_digest,
+        )
+        if any(value is not None for value in planning_fields) and not all(
+            value is not None for value in planning_fields
+        ):
+            raise ValueError(
+                "PlanRevision planning binding requires graph ref, graph, planner, and policy digests"
+            )
+        if self.plan_graph_ref is not None and not self.plan_graph_ref.startswith("artifact://"):
+            raise ValueError("PlanRevision plan_graph_ref must be an artifact:// reference")
+        return self
+
+
+class AgentTaskOriginApproval(BaseModel):
+    """Immutable audit receipt for a human-approved declarative task origin."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: Literal["agent_task_origin_approval_v1"] = "agent_task_origin_approval_v1"
+    source_kind: Literal["paos.state-file.v1/sessions"] = (
+        "paos.state-file.v1/sessions"
+    )
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    declaration_id: str = Field(min_length=1)
+    approval_id: str = Field(min_length=1)
+    approved_by: str = Field(min_length=1)
+    confirmed_at: datetime
+
+    @field_validator("declaration_id", "approval_id", "approved_by")
+    @classmethod
+    def validate_audit_identity(cls, value: str) -> str:
+        normalized = value.strip()
+        if (
+            not normalized
+            or normalized in {".", ".."}
+            or "/" in normalized
+            or "\\" in normalized
+        ):
+            raise ValueError("origin approval identities must be non-empty and path-safe")
+        return normalized
+
+    @field_validator("confirmed_at")
+    @classmethod
+    def require_approval_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("origin approval timestamp must include a timezone")
+        return value
 
 
 class AgentTaskRecord(BaseModel):
@@ -139,7 +243,7 @@ class AgentTaskRecord(BaseModel):
     task_description: str = Field(min_length=1)
     verification: TaskVerificationContract = Field(default_factory=TaskVerificationContract)
     status: AgentTaskStatus = AgentTaskStatus.EXECUTING
-    revisions: list[PlanRevision]
+    revisions: list[PlanRevision] = Field(min_length=1)
     active_revision_id: str
     primary_skill_binding: ForgeSkillBinding | None = None
     supporting_skill_bindings: list[ForgeSkillBinding] = Field(default_factory=list)
@@ -149,10 +253,15 @@ class AgentTaskRecord(BaseModel):
     before_snapshot_ref: str | None = None
     after_snapshot_ref: str | None = None
     evidence_bundle_ref: str | None = None
+    evidence_bundle_id: str | None = None
     evidence_errors: list[str] = Field(default_factory=list)
     cancellation_requested: bool = False
     replan_deadline: datetime | None = None
     origin_session_key: str | None = None
+    origin_dedup_key: str | None = None
+    origin_approval: AgentTaskOriginApproval | None = None
+    parent_task_id: str | None = None
+    retry_limit: int = Field(default=0, ge=0)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     terminal_at: datetime | None = None
@@ -164,6 +273,47 @@ class AgentTaskRecord(BaseModel):
         if not normalized or normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
             raise ValueError("AgentTask identifiers must be non-empty and path-safe")
         return normalized
+
+    @field_validator("parent_task_id")
+    @classmethod
+    def validate_parent_identity(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized or normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
+            raise ValueError("parent_task_id must be non-empty and path-safe")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_aggregate(self) -> "AgentTaskRecord":
+        if self.origin_approval is not None:
+            expected = (
+                f"statefile+sessions://{self.origin_approval.source_sha256}/"
+                f"{self.origin_approval.declaration_id}"
+            )
+            if self.origin_session_key != expected or self.origin_dedup_key != expected:
+                raise ValueError(
+                    "origin approval must match the state-file session identities"
+                )
+        revision_ids = [revision.revision_id for revision in self.revisions]
+        if len(revision_ids) != len(set(revision_ids)):
+            raise ValueError("AgentTask revision identities must be unique")
+        revision_numbers = [revision.number for revision in self.revisions]
+        if len(revision_numbers) != len(set(revision_numbers)):
+            raise ValueError("AgentTask revision numbers must be unique")
+        if self.active_revision_id not in set(revision_ids):
+            raise ValueError("active_revision_id must identify an AgentTask revision")
+        execution_ids: set[str] = set()
+        for revision in self.revisions:
+            for execution in revision.execution_records:
+                if execution.revision_id != revision.revision_id:
+                    raise ValueError(
+                        "ToolExecutionRecord revision_id must match its PlanRevision"
+                    )
+                if execution.record_id in execution_ids:
+                    raise ValueError("Tool execution record identities must be unique")
+                execution_ids.add(execution.record_id)
+        return self
 
     @property
     def terminal(self) -> bool:
@@ -215,7 +365,9 @@ class AgentTaskStore:
                     status TEXT NOT NULL,
                     record_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    origin_session_key TEXT,
+                    origin_dedup_key TEXT
                 );
                 CREATE INDEX IF NOT EXISTS agent_tasks_status_idx
                     ON agent_tasks(status);
@@ -229,10 +381,76 @@ class AgentTaskStore:
                 );
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(agent_tasks)").fetchall()
+            }
+            if "origin_session_key" not in columns:
+                connection.execute(
+                    "ALTER TABLE agent_tasks ADD COLUMN origin_session_key TEXT"
+                )
+            if "origin_dedup_key" not in columns:
+                connection.execute(
+                    "ALTER TABLE agent_tasks ADD COLUMN origin_dedup_key TEXT"
+                )
+            legacy_rows = connection.execute(
+                "SELECT task_id, record_json FROM agent_tasks "
+                "WHERE origin_session_key IS NULL"
+            ).fetchall()
+            for row in legacy_rows:
+                try:
+                    payload = json.loads(row["record_json"])
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                origin_session_key = (
+                    payload.get("origin_session_key")
+                    if isinstance(payload, dict)
+                    else None
+                )
+                if isinstance(origin_session_key, str) and origin_session_key:
+                    connection.execute(
+                        "UPDATE agent_tasks SET origin_session_key = ? WHERE task_id = ?",
+                        (origin_session_key, row["task_id"]),
+                    )
+            duplicate = connection.execute(
+                "SELECT origin_dedup_key FROM agent_tasks "
+                "WHERE origin_dedup_key IS NOT NULL "
+                "GROUP BY origin_dedup_key HAVING COUNT(*) > 1 LIMIT 1"
+            ).fetchone()
+            if duplicate is not None:
+                raise AgentTaskError(
+                    "cannot enforce AgentTask origin uniqueness; duplicate origin exists: "
+                    f"{duplicate['origin_dedup_key']}"
+                )
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS agent_tasks_origin_dedup_key_uq "
+                "ON agent_tasks(origin_dedup_key) WHERE origin_dedup_key IS NOT NULL"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS agent_tasks_origin_session_key_idx "
+                "ON agent_tasks(origin_session_key)"
+            )
+            connection.commit()
 
     def create(self, record: AgentTaskRecord) -> AgentTaskRecord:
+        try:
+            record = AgentTaskRecord.model_validate(record.model_dump(mode="python"))
+        except Exception as exc:
+            raise AgentTaskError(
+                "AgentTask creation violates the authoritative record schema"
+            ) from exc
         with self._lock, self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if record.origin_dedup_key is not None:
+                existing = connection.execute(
+                    "SELECT task_id FROM agent_tasks WHERE origin_dedup_key = ?",
+                    (record.origin_dedup_key,),
+                ).fetchone()
+                if existing is not None:
+                    raise AgentTaskOriginConflictError(
+                        record.origin_dedup_key,
+                        str(existing["task_id"]),
+                    )
             active = connection.execute(
                 "SELECT task_id FROM agent_tasks WHERE status NOT IN (?, ?, ?) LIMIT 1",
                 tuple(item.value for item in TERMINAL_TASK_STATUSES),
@@ -261,17 +479,47 @@ class AgentTaskStore:
         with self._lock, self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             record = self._get(connection, task_id)
+            task_identity = (record.task_id, record.created_at)
+            origin_snapshot = (
+                record.origin_session_key,
+                record.origin_dedup_key,
+                record.origin_approval.model_dump_json()
+                if record.origin_approval is not None
+                else None,
+            )
             mutate(record)
+            try:
+                record = AgentTaskRecord.model_validate(
+                    record.model_dump(mode="python")
+                )
+            except Exception as exc:
+                raise AgentTaskError(
+                    "AgentTask mutation violates the authoritative record schema"
+                ) from exc
+            if (record.task_id, record.created_at) != task_identity:
+                raise AgentTaskError("AgentTask identity is immutable")
+            mutated_origin = (
+                record.origin_session_key,
+                record.origin_dedup_key,
+                record.origin_approval.model_dump_json()
+                if record.origin_approval is not None
+                else None,
+            )
+            if mutated_origin != origin_snapshot:
+                raise AgentTaskError("AgentTask origin is immutable")
             record.updated_at = utc_now()
             if record.terminal and record.terminal_at is None:
                 record.terminal_at = record.updated_at
             connection.execute(
-                "UPDATE agent_tasks SET status = ?, record_json = ?, updated_at = ? "
+                "UPDATE agent_tasks SET status = ?, record_json = ?, updated_at = ?, "
+                "origin_session_key = ?, origin_dedup_key = ? "
                 "WHERE task_id = ?",
                 (
                     record.status.value,
                     record.model_dump_json(),
                     record.updated_at.isoformat(),
+                    record.origin_session_key,
+                    record.origin_dedup_key,
                     task_id,
                 ),
             )
@@ -287,6 +535,28 @@ class AgentTaskStore:
                 tuple(item.value for item in TERMINAL_TASK_STATUSES),
             ).fetchone()
         return None if row is None else AgentTaskRecord.model_validate_json(row["record_json"])
+
+    def find_by_origin_dedup_key(self, origin_dedup_key: str) -> list[AgentTaskRecord]:
+        """Return tasks compiled from one immutable source/declaration identity."""
+
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT record_json FROM agent_tasks WHERE origin_dedup_key = ? "
+                "ORDER BY created_at",
+                (origin_dedup_key,),
+            ).fetchall()
+        return [AgentTaskRecord.model_validate_json(row["record_json"]) for row in rows]
+
+    def find_by_origin_session_key(self, origin_session_key: str) -> list[AgentTaskRecord]:
+        """Return tasks associated with a conversation/session key."""
+
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT record_json FROM agent_tasks WHERE origin_session_key = ? "
+                "ORDER BY created_at",
+                (origin_session_key,),
+            ).fetchall()
+        return [AgentTaskRecord.model_validate_json(row["record_json"]) for row in rows]
 
     def find_invocation(self, invocation_id: str) -> tuple[AgentTaskRecord, ToolExecutionRecord] | None:
         with self._lock, self._connection() as connection:
@@ -317,14 +587,18 @@ class AgentTaskStore:
     @staticmethod
     def _insert(connection: sqlite3.Connection, record: AgentTaskRecord) -> None:
         connection.execute(
-            "INSERT INTO agent_tasks(task_id, status, record_json, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO agent_tasks("
+            "task_id, status, record_json, created_at, updated_at, "
+            "origin_session_key, origin_dedup_key"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 record.task_id,
                 record.status.value,
                 record.model_dump_json(),
                 record.created_at.isoformat(),
                 record.updated_at.isoformat(),
+                record.origin_session_key,
+                record.origin_dedup_key,
             ),
         )
 
@@ -344,10 +618,14 @@ class AgentTaskStore:
         event_type: str,
         payload: dict[str, Any],
     ) -> None:
+        try:
+            payload_json = json.dumps(payload, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise AgentTaskError("AgentTask event payload must contain finite JSON values") from exc
         connection.execute(
             "INSERT INTO agent_task_events(task_id, event_type, created_at, payload_json) "
             "VALUES (?, ?, ?, ?)",
-            (task_id, event_type, utc_now().isoformat(), json.dumps(payload, ensure_ascii=False)),
+            (task_id, event_type, utc_now().isoformat(), payload_json),
         )
 
 
@@ -398,6 +676,10 @@ class AgentTaskCoordinator:
         verification: TaskVerificationContract,
         activation_id: str | None = None,
         origin_session_key: str | None = None,
+        origin_dedup_key: str | None = None,
+        origin_approval: AgentTaskOriginApproval | None = None,
+        parent_task_id: str | None = None,
+        retry_limit: int = 0,
     ) -> AgentTaskRecord | Any:
         """Create synchronously only for an explicitly unbound coordinator.
 
@@ -411,6 +693,10 @@ class AgentTaskCoordinator:
                 verification=verification,
                 activation_id=activation_id,
                 origin_session_key=origin_session_key,
+                origin_dedup_key=origin_dedup_key,
+                origin_approval=origin_approval,
+                parent_task_id=parent_task_id,
+                retry_limit=retry_limit,
             )
         if verification.mode != "off" and self.verifier is None:
             raise AgentTaskError(
@@ -422,9 +708,13 @@ class AgentTaskCoordinator:
             task_id=task_id,
             task_description=task_description.strip(),
             verification=verification,
+            parent_task_id=parent_task_id,
+            retry_limit=retry_limit,
             revisions=[PlanRevision(revision_id=revision_id, number=1, reason="initial plan")],
             active_revision_id=revision_id,
             origin_session_key=origin_session_key,
+            origin_dedup_key=origin_dedup_key,
+            origin_approval=origin_approval,
         )
         self.store.create(task)
         if self.experience is not None and origin_session_key:
@@ -441,6 +731,10 @@ class AgentTaskCoordinator:
         verification: TaskVerificationContract,
         activation_id: str | None = None,
         origin_session_key: str | None = None,
+        origin_dedup_key: str | None = None,
+        origin_approval: AgentTaskOriginApproval | None = None,
+        parent_task_id: str | None = None,
+        retry_limit: int = 0,
     ) -> AgentTaskRecord:
         if verification.mode != "off" and self.verifier is None:
             raise AgentTaskError(
@@ -474,6 +768,8 @@ class AgentTaskCoordinator:
             task_id=task_id,
             task_description=task_description.strip(),
             verification=verification,
+            parent_task_id=parent_task_id,
+            retry_limit=retry_limit,
             revisions=[
                 PlanRevision(
                     revision_id=revision_id,
@@ -488,6 +784,8 @@ class AgentTaskCoordinator:
                 f"runtime:{binding.runtime_instance_id}" if binding is not None else None
             ),
             origin_session_key=origin_session_key,
+            origin_dedup_key=origin_dedup_key,
+            origin_approval=origin_approval,
         )
         if binding is not None and self.runtime_task_binding_ids is not None:
             self.runtime_task_binding_ids.add(binding.binding_id)
@@ -938,7 +1236,7 @@ class AgentTaskCoordinator:
             else "[]"
         )
         try:
-            verdict, _request, attempt = await self.verifier.verify_agent_task(
+            verdict, request, attempt = await self.verifier.verify_agent_task(
                 task,
                 events=self.store.events(task_id),
                 lessons=lessons,
@@ -978,9 +1276,53 @@ class AgentTaskCoordinator:
                 current.status = AgentTaskStatus.FAILED
 
         result = self.store.update(task_id, mutate, event_type="task_verified")
+        result = self._apply_verifier_retention(task_id, request, result)
         if result.terminal:
             self._schedule_experience(result)
         return result
+
+    def _apply_verifier_retention(
+        self,
+        task_id: str,
+        request: Any,
+        result: AgentTaskRecord,
+    ) -> AgentTaskRecord:
+        """Apply Evidence retention only after a terminal semantic outcome."""
+
+        if not result.terminal:
+            return result
+        retention = getattr(self.verifier, "apply_retention", None)
+        if not callable(retention):
+            return result
+        try:
+            summary = retention(request, final_status=result.status.value)
+        except Exception as exc:
+            error_type = type(exc).__name__
+            return self.store.update(
+                task_id,
+                lambda current: current.evidence_errors.append(
+                    "evidence retention failed: " + error_type
+                ),
+                event_type="evidence_retention_failed",
+                payload={"error_type": error_type},
+            )
+        error_count = (
+            len(summary.get("errors", [])) if isinstance(summary, dict) else 0
+        )
+        status = summary.get("status", "unknown") if isinstance(summary, dict) else "unknown"
+
+        def record_retention_summary(current: AgentTaskRecord) -> None:
+            if error_count:
+                current.evidence_errors.append(
+                    f"evidence retention completed: status={status}, errors={error_count}"
+                )
+
+        return self.store.update(
+            task_id,
+            record_retention_summary,
+            event_type="evidence_retention_applied",
+            payload={"status": status, "error_count": error_count},
+        )
 
     def _verification_error(self, task_id: str, message: str) -> AgentTaskRecord:
         task = self.store.get(task_id)
@@ -1279,6 +1621,7 @@ class AgentTaskCoordinator:
         def mutate(current: AgentTaskRecord) -> None:
             current.after_snapshot_ref = after_ref
             current.evidence_bundle_ref = bundle_ref
+            current.evidence_bundle_id = bundle.bundle_id
             current.evidence_errors.extend(errors)
 
         self.store.update(
