@@ -802,3 +802,32 @@ NaN/反转边界；worker 多次请求会造成 scene revision 漂移；scene re
 返回 `unavailable`，左臂 planner 失败、右臂超过 `1.0 rad/s` 策略，scene reset 后恢复 reset completed，
 人工结论 `not_approved_for_readiness_or_motion_wiring`。代码实现验收通过，功能 readiness 明确未通过；
 下一步是安全的 candidate/route generation，不是 Action/Gateway wiring。
+
+## 32. 语义 DAG 与双臂路线选择实现验收（2026-09-05）
+
+本阶段新增功能不是 Hephaestus 代码复用，而是对其成熟边界的设计参考适配。公共契约保持在
+`PhyAgentOS/forge/manipulation.py`，只描述 PAOS 可持久化的语义节点、条件三态、资源锁、预期效果、
+retry lineage、node/dag digest、route failure 和 bounded replan signal；现有 `AgentTaskRecord`/
+`PlanRevision`/SQLite 仍是任务生命周期事实源，新增 replan 类型不直接写库或启动执行。
+
+- **架构集成：通过。** DAG/Intent 属于 PAOS 控制平面；`arm_candidates.py` 属于 RoboTwin adapter；
+  selector 仅调用注入的 no-motion readiness evaluator，不注册 Tool、Gateway、Dora 或 Action route。
+  现有 `AgentTaskCoordinator.begin_revision()` 仍是唯一的 SQLite PlanRevision 写入入口。
+- **失败路径：通过。** DAG 循环、未知依赖、非法条件状态、候选/手臂 identity 漂移、scene revision
+  过期、非法 readiness result 和 all-options rejection 均 fail-closed；逐 route `RouteFailure` 保留
+  owner/phase/code/detail，统一生成带 digest 的 `replan_required`。新模块不生成授权；stale revision、
+  期限和预算继续由现有 `AgentTaskCoordinator.begin_revision()` 拒绝。
+- **权威边界：通过。** selector success 只是 `route-selection/v1` selected projection，不是 readiness pass；
+  evaluator 使用独立的 `route-evaluation/v1`，所有 output 固定 `motion_authorized=false`、
+  `world_change_started=false`，未创建 invocation 或改变任务状态。
+- **配置：通过。** Franka 双臂、planner/workspace/joint-limit refs、最大 option 数和评分权重位于
+  `profiles/robotwin20/manipulation-planning.yaml`；公共模块不包含 RoboTwin/Franka/Curobo 分支，
+  bimanual 在没有同步原子 route provider 时明确拒绝。
+- **可维护性：通过。** Hephaestus 的不可变 digest、evidence/resource binding 和 replan separation
+  被翻译为 PAOS Pydantic schema；option/result 完整绑定 task/revision/node/observation/candidate-set/
+  scene/frame/calibration/profile，非通过结果不能伪装为全检查通过。
+
+实现验收：专项 `16 passed`；组合 PAOS/RoboTwin adapter 套件 `338 passed, 2 skipped`；根仓库套件
+`171 passed`；ruff、compileall 和 `git diff --check` 通过。该验收仍不等于物理 readiness。后续仍需
+独立 RoboTwin probe 的真实 lift 和完整 transport/descent/release/retreat 证据，才能进入已有
+route-evidence verifier 和人工审核，更不能据此进入 Action/Gateway/Dora wiring。

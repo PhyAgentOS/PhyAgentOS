@@ -761,3 +761,49 @@ selection/route generation：在不放宽 Franka 已审批速度、workspace、�
 生成能够通过 planner 的参数化路线，再验证物体真实 lift 与完整 transport/descent/release/retreat。
 只有六个 scope 全部获得真实 available evidence 并人工审核后，才进入 no-motion verifier；不是现在接入
 Action/Gateway/Dora。
+
+## 32. 语义 DAG、双臂候选枚举、完整路线选择与失败重规划（2026-09-05）
+
+本阶段先对设计进行自审，再按 PAOS 拓展原则落地四个 no-motion 功能。Hephaestus 仅作为参考，吸收其
+不可变节点摘要、显式 entity/evidence/resource 绑定、条件三态、retry lineage、settlement/replan 分离
+等设计思想；PAOS 不导入 Hephaestus 包、不复制其 Runtime/Planner 实现，也不改变既有
+`AgentTaskRecord`、`PlanRevision`、SQLite、CapabilityRuntime、Evidence、Verifier 或 Gateway owner。
+
+新增的公共 `PhyAgentOS.forge.manipulation` 只定义 provider-neutral 语义契约：
+`ManipulationDag/ManipulationDagNode` 负责依赖、条件、资源锁、预期效果、retry lineage 与 node/dag digest；
+`ManipulationIntent` 绑定 task/revision/node、entity、observation、scene revision、frame、calibration 和
+candidate set，并固定 `motion_authorized=false`；`RouteFailure` 保存逐候选/逐手臂拒绝原因；
+`ReplanCoordinator` 只生成带失败摘要和 preserved constraints 的 `replan_required` signal。
+
+现有 `AgentTaskCoordinator.begin_revision()` 仍是唯一追加 PAOS `PlanRevision` 的入口。Replan signal 不能
+直接改变任务状态、调用 planner、启动 provider 或创建 invocation；调用方必须按现有任务生命周期先进入
+`awaiting_replan`，再由 SQLite 事务创建新 revision。
+
+RoboTwin adapter 新增 `arm_candidates.py` 与 profile-owned `manipulation-planning.yaml`：
+`enumerate_arm_candidates()` 将 candidate 展开为 `candidate × {left,right}` 的 alternative-arm 选项，或
+严格的 single-arm 资源组；所有 option 保留同一 observation/candidate-set/scene/frame/calibration 绑定，
+并固定 no-motion。`CompleteRouteSelector` 只通过注入的 readiness evaluator 检查完整八阶段路线、六项
+route checks、digest、evidence 和 arm identity，然后按配置的 route length/speed margin 确定性排序。
+所有选项失败时返回 `replan_required`，绝不放宽速度、workspace 或碰撞策略。
+
+第一场景 `blocks_ranking_rgb` 使用 `alternative_arm`，即双臂作为可替代资源，而非伪造同步双臂动作。
+真正的 bimanual 任务必须在未来由一个原子双臂 route bundle、统一时间轴、共享 scene revision、双臂互碰
+检查和单一 evidence bundle 证明；当前公共契约只冻结模式名称，adapter 对其 fail-closed，不宣称已实现。
+
+该设计保持 PAOS 分层：DAG 负责语义目标/依赖/重规划意图，adapter 负责本体 profile 和候选展开，
+readiness 负责 IK/碰撞/速度/完整路线，Evidence/Verifier 负责不可变事实，Gateway/Action 仍未连接。
+因此这四个功能不会把系统逻辑打乱，也不能把 selector 结果升级为 readiness 或 motion authority。
+
+实现后五维审查进一步收紧了边界：每个 option 和 evaluator result 必须完整复述同一
+task/revision/node/node-digest、entity/candidate、observation/candidate-set、scene/frame/calibration
+以及 adapter arm profile；任何漂移均作为该 option 的拒绝原因。逐候选 evaluator 使用独立
+`paos-robotwin20-route-evaluation/v1`，最终选择投影使用
+`paos-robotwin20-route-selection/v1`，避免把 provider evidence 与控制平面选择混为一谈。
+非通过结果至少要有一个非 pass check，重复 evidence、非法数值和未配置的 bimanual provider 均
+fail-closed。Replan signal 只绑定当前 revision，不自行授权；stale revision、期限和预算继续由现有
+`AgentTaskCoordinator.begin_revision()` 校验。
+
+验收结果为专项 `16 passed`、PAOS/RoboTwin adapter 组合套件 `338 passed, 2 skipped`、根仓库
+`171 passed`，ruff、compileall 和 `git diff --check` 通过；五个维度无 Blocker/Major 遗留。
+这只关闭规划契约与 adapter 选择逻辑门禁，不改变上一节真实 simulation probe 的
+`not_approved_for_readiness_or_motion_wiring` 结论。

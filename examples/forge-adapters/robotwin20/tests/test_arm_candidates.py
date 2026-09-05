@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+
+import pytest
+from PhyAgentOS.forge.manipulation import (
+    CoordinationMode,
+    ManipulationIntent,
+)
+from test_route_readiness import _request
+
+from robotwin20_adapter import (
+    ARM_PLANNING_PROFILE_SCHEMA_VERSION,
+    ROUTE_EVALUATION_SCHEMA_VERSION,
+    ArmPlanningError,
+    CompleteRouteSelector,
+    enumerate_arm_candidates,
+    load_arm_planning_profile,
+    validate_arm_planning_profile,
+)
+from robotwin20_adapter.route_readiness import ROUTE_CHECKS, route_geometry_digest
+
+
+def _profile() -> dict:
+    return {
+        "schema_version": ARM_PLANNING_PROFILE_SCHEMA_VERSION,
+        "embodiment_id": "franka-panda",
+        "topology": "dual_independent",
+        "arms": [
+            {"arm_id": "left", "planner_profile_ref": "artifact://planner/left", "workspace_ref": "artifact://workspace/left", "joint_limits_ref": "artifact://limits/left"},
+            {"arm_id": "right", "planner_profile_ref": "artifact://planner/right", "workspace_ref": "artifact://workspace/right", "joint_limits_ref": "artifact://limits/right"},
+        ],
+        "selection_policy": {
+            "max_options": 8,
+            "weights": {"route_length": 1.0, "speed_margin": 0.1},
+            "tie_break": "candidate_ref_then_arm_id",
+        },
+    }
+
+
+def _intent() -> ManipulationIntent:
+    return ManipulationIntent(
+        task_id="task-1",
+        revision_id="revision-1",
+        node_id="pick-red",
+        node_digest="a" * 64,
+        entity_ref="entity://red-block",
+        goal="move red block",
+        success_criteria=("red block is placed",),
+        allowed_arms=("left", "right"),
+        coordination_mode=CoordinationMode.ALTERNATIVE_ARM,
+        observation_ref="observation://blocks_ranking_rgb-0-1/head_camera",
+        scene_revision="blocks_ranking_rgb-0-1",
+        frame_id="head_camera",
+        calibration_ref="artifact://blocks/calibration",
+        candidate_set_ref="candidate-set://blocks_ranking_rgb-0-1/head_camera",
+        constraints=("preserve_scene_revision",),
+    )
+
+
+def _result(request, option, *, status="pass"):
+    return {
+        "schema_version": ROUTE_EVALUATION_SCHEMA_VERSION,
+        "request_id": request["request_id"],
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "node_id": "pick-red",
+        "node_digest": "a" * 64,
+        "candidate_ref": option["candidate_ref"],
+        "entity_ref": option["entity_ref"],
+        "observation_ref": option["observation_ref"],
+        "scene_revision": option["scene_revision"],
+        "frame_id": option["frame_id"],
+        "calibration_ref": option["calibration_ref"],
+        "candidate_set_ref": option["candidate_set_ref"],
+        "arm_ids": option["arm_ids"],
+        "option_id": option["option_id"],
+        "status": status,
+        "checks": {check: "pass" if status == "pass" else "fail" for check in ROUTE_CHECKS},
+        "phase": "none" if status == "pass" else "transport",
+        "code": "ok" if status == "pass" else "collision",
+        "owner": "readiness" if status == "pass" else "collision",
+        "detail": "all checks passed" if status == "pass" else "route collides",
+        "route_geometry_digest": route_geometry_digest(request),
+        "evidence_refs": ["artifact://route/evidence"],
+        "motion_authorized": False,
+        "world_change_started": False,
+        "metrics": {
+            "route_length_m": 0.0,
+            "min_joint_speed_margin_radps": 0.2,
+        },
+    }
+
+
+def test_enumeration_expands_candidates_over_both_arms():
+    request = _request(Path("/tmp"))
+    candidates = [dict(request["candidates"][0])]
+    options = enumerate_arm_candidates(_intent(), candidates, _profile())
+    assert [item["arm_ids"] for item in options] == [["left"], ["right"]]
+    assert all(item["motion_authorized"] is False for item in options)
+
+
+def test_selector_skips_failed_arm_and_selects_passing_arm():
+    request = _request(Path("/tmp"))
+    candidates = [dict(request["candidates"][0])]
+    options = enumerate_arm_candidates(_intent(), candidates, _profile())
+    def evaluate(route_request, option):
+        return _result(route_request, option, status="fail" if option["arm_ids"] == ["left"] else "pass")
+    result = CompleteRouteSelector(evaluate, _profile()).select(_intent(), request, options)
+    assert result["status"] == "selected"
+    assert result["arm_ids"] == ["right"]
+    assert result["motion_authorized"] is False
+    assert len(result["rejected_routes"]) == 1
+
+
+def test_selector_returns_replan_when_all_options_fail():
+    request = _request(Path("/tmp"))
+    options = enumerate_arm_candidates(_intent(), [dict(request["candidates"][0])], _profile())
+    result = CompleteRouteSelector(lambda route_request, option: _result(route_request, option, status="fail"), _profile()).select(_intent(), request, options)
+    assert result.status == "replan_required"
+    assert len(result.failed_routes) == 2
+    assert result.motion_authorized is False
+
+
+def test_enumerator_rejects_stale_scene_and_unimplemented_bimanual():
+    request = _request(Path("/tmp"))
+    stale = dict(request["candidates"][0])
+    stale["scene_revision"] = "stale-scene"
+    with pytest.raises(ArmPlanningError, match="stale"):
+        enumerate_arm_candidates(_intent(), [stale], _profile())
+
+    intent_payload = _intent().model_dump(mode="python")
+    intent_payload["coordination_mode"] = "bimanual"
+    coordinated = _profile()
+    coordinated["topology"] = "dual_coordinated"
+    with pytest.raises(ArmPlanningError, match="synchronized"):
+        enumerate_arm_candidates(ManipulationIntent.model_validate(intent_payload), [request["candidates"][0]], coordinated)
+
+
+def test_selector_converts_provider_error_and_tampered_success_to_replan():
+    request = _request(Path("/tmp"))
+    options = enumerate_arm_candidates(_intent(), [dict(request["candidates"][0])], _profile())
+
+    def evaluate(route_request, option):
+        if option["arm_ids"] == ["left"]:
+            raise RuntimeError("planner unavailable")
+        result = _result(route_request, option)
+        result["motion_authorized"] = True
+        return result
+
+    outcome = CompleteRouteSelector(evaluate, _profile()).select(_intent(), request, options)
+    assert outcome.status == "replan_required"
+    assert {item.code for item in outcome.failed_routes} == {
+        "readiness_provider_error",
+        "invalid_readiness_result",
+    }
+
+
+def test_selector_rejects_tampered_arm_profile_and_inconsistent_failure():
+    request = _request(Path("/tmp"))
+    options = enumerate_arm_candidates(_intent(), [dict(request["candidates"][0])], _profile())
+    tampered = dict(options[0])
+    tampered["arm_profiles"] = [dict(options[1]["arm_profiles"][0])]
+    with pytest.raises(ArmPlanningError, match="arm profile"):
+        CompleteRouteSelector(lambda *_: {}, _profile()).select(_intent(), request, [tampered])
+
+    def inconsistent(route_request, option):
+        result = _result(route_request, option, status="pass")
+        result["status"] = "fail"
+        return result
+
+    outcome = CompleteRouteSelector(inconsistent, _profile()).select(_intent(), request, options)
+    assert outcome.status == "replan_required"
+    assert all(item.code == "invalid_readiness_result" for item in outcome.failed_routes)
+
+
+def test_versioned_franka_profile_loads_and_topology_mismatch_fails_closed():
+    profile_path = (
+        Path(__file__).parents[1]
+        / "profiles"
+        / "robotwin20"
+        / "manipulation-planning.yaml"
+    ).resolve()
+    loaded = load_arm_planning_profile(profile_path)
+    assert loaded["embodiment_id"] == "franka-panda"
+    assert [arm["arm_id"] for arm in loaded["arms"]] == ["left", "right"]
+
+    invalid = _profile()
+    invalid["topology"] = "single_arm"
+    with pytest.raises(ArmPlanningError, match="topology"):
+        validate_arm_planning_profile(invalid)
+
+
+def test_enumeration_and_selection_are_deterministic_and_do_not_mutate_inputs():
+    request = _request(Path("/tmp"))
+    first = deepcopy(request["candidates"][0])
+    second = deepcopy(first)
+    first["candidate_ref"] = "candidate://red-block/2"
+    second["candidate_ref"] = "candidate://red-block/1"
+    candidates = [first, second]
+    profile = _profile()
+    candidates_before = deepcopy(candidates)
+    profile_before = deepcopy(profile)
+    request_before = deepcopy(request)
+
+    options = enumerate_arm_candidates(_intent(), candidates, profile)
+    selected = CompleteRouteSelector(
+        lambda route_request, option: _result(route_request, option), profile
+    ).select(_intent(), request, tuple(reversed(options)))
+
+    assert selected["candidate_ref"] == "candidate://red-block/1"
+    assert selected["arm_ids"] == ["left"]
+    assert candidates == candidates_before
+    assert profile == profile_before
+    assert request == request_before
+
+
+def test_selector_rejects_stale_base_request_without_calling_provider():
+    request = _request(Path("/tmp"))
+    options = enumerate_arm_candidates(
+        _intent(), [dict(request["candidates"][0])], _profile()
+    )
+    request["scene_revision"] = "stale"
+
+    class NoCall:
+        def evaluate(self, *_args):
+            raise AssertionError("provider must not be called")
+
+    with pytest.raises(ArmPlanningError, match="does not match"):
+        CompleteRouteSelector(NoCall(), _profile()).select(_intent(), request, options)

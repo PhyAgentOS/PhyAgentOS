@@ -1,0 +1,18 @@
+schema_version: paos-robotwin20-arm-planning/v1
+embodiment_id: franka-panda
+topology: dual_independent
+arms:
+  - arm_id: left
+    planner_profile_ref: artifact://robotwin/franka/left-planner
+    workspace_ref: artifact://robotwin/franka/left-workspace
+    joint_limits_ref: artifact://robotwin/franka/left-joint-limits
+  - arm_id: right
+    planner_profile_ref: artifact://robotwin/franka/right-planner
+    workspace_ref: artifact://robotwin/franka/right-workspace
+    joint_limits_ref: artifact://robotwin/franka/right-joint-limits
+selection_policy:
+  max_options: 256
+  weights:
+    route_length: 1.0
+    speed_margin: 0.1
+  tie_break: candidate_ref_then_arm_id

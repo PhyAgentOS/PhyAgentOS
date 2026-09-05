@@ -2,6 +2,35 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.0.0] - 2026-09-05
+
+新增 provider-neutral 语义 Manipulation DAG、双臂候选枚举、完整路线选择和失败重规划契约。公共层只
+保存语义依赖、资源/证据绑定、不可变摘要和 no-motion 重规划信号；RoboTwin adapter 保存本体 profile、
+候选×手臂展开和完整路线 evaluator/selector。现有 AgentTaskRecord、PlanRevision、SQLite、Runtime、
+Evidence、Verifier、Gateway、Dora 和 Action 权威边界未改变，Hephaestus 仅作为设计参考。
+
+Added provider-neutral semantic Manipulation DAG, dual-arm candidate enumeration, complete-route selection,
+and failure-replanning contracts. The public layer stores semantic dependencies, resource/evidence bindings,
+immutable digests, and no-motion replan signals; the RoboTwin adapter owns embodiment profiles, candidate×arm
+expansion, and complete-route evaluation/selection. Existing AgentTaskRecord, PlanRevision, SQLite, Runtime,
+Evidence, Verifier, Gateway, Dora, and Action authority boundaries are unchanged; Hephaestus is design reference only.
+
+### 文件变更详情 / Detailed changes
+
+- `PhyAgentOS/forge/manipulation.py`：新增严格 Pydantic DAG/Intent/RouteFailure/Replan contracts；所有运动授权固定为 `false`。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py`：新增 profile-owned candidate×arm enumeration、完整路线 selector、独立 evaluator/selection schema 和 fail-closed validation。
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/manipulation-planning.yaml`：新增 Franka dual-independent profile 与确定性评分策略。
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md`、`docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`、`docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md`：记录 PAOS 扩展边界、Hephaestus clean-room 参考、开发规则和五维审查。
+- `tests/test_manipulation.py`、`examples/forge-adapters/robotwin20/tests/test_arm_candidates.py`：覆盖 DAG、绑定、拓扑、重规划预算、候选枚举、确定性选择和篡改失败。
+
+### 验证 / Validation
+
+- 专项契约：`16 passed`。
+- PAOS/RoboTwin adapter 组合套件：`338 passed, 2 skipped`（跳过缺少 NumPy 的 GraspGen provider collection）。
+- 根仓库套件：`171 passed`。
+- `ruff`、`compileall`、`git diff --check`：通过。
+- 未启动 Gateway、Dora、Action、硬件或 simulation motion；真实 readiness 仍受上一阶段 `not_approved_for_readiness_or_motion_wiring` 门禁约束。
+
 ## [v4.12.2] - 2026-09-05
 
 回写 v4.12.1 独立 RoboTwin simulation-probe 实现提交 `f88778a`。实现、真实负证据、五维验收结论与
