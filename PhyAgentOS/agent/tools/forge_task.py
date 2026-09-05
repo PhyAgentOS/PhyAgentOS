@@ -7,14 +7,19 @@ import json
 from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskRecord
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 
-def _json(value: Any) -> str:
-    if hasattr(value, "model_dump"):
-        value = value.model_dump(mode="json", exclude_none=True)
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+def _task_response(task: AgentTaskRecord) -> str:
+    return json.dumps(
+        {
+            "ok": True,
+            "data": task.model_dump(mode="json", exclude_none=True),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 class ForgeTaskCreateTool(Tool):
@@ -64,7 +69,7 @@ class ForgeTaskCreateTool(Tool):
         )
         if inspect.isawaitable(task):
             task = await task
-        return _json({"ok": True, "data": task})
+        return _task_response(task)
 
 
 class ForgeTaskGetTool(Tool):
@@ -84,7 +89,7 @@ class ForgeTaskGetTool(Tool):
         return _task_id_schema()
 
     async def execute(self, task_id: str) -> str:
-        return _json({"ok": True, "data": self.coordinator.get_task(task_id)})
+        return _task_response(self.coordinator.get_task(task_id))
 
 
 class ForgeTaskBeginRevisionTool(Tool):
@@ -110,12 +115,7 @@ class ForgeTaskBeginRevisionTool(Tool):
         return schema
 
     async def execute(self, task_id: str, reason: str) -> str:
-        return _json(
-            {
-                "ok": True,
-                "data": self.coordinator.begin_revision(task_id, reason=reason),
-            }
-        )
+        return _task_response(self.coordinator.begin_revision(task_id, reason=reason))
 
 
 class ForgeTaskFinalizeTool(Tool):
@@ -138,9 +138,7 @@ class ForgeTaskFinalizeTool(Tool):
         return _task_id_schema()
 
     async def execute(self, task_id: str) -> str:
-        return _json(
-            {"ok": True, "data": await self.coordinator.finalize_task(task_id)}
-        )
+        return _task_response(await self.coordinator.finalize_task(task_id))
 
 
 class ForgeTaskCancelTool(Tool):
@@ -165,12 +163,7 @@ class ForgeTaskCancelTool(Tool):
         return schema
 
     async def execute(self, task_id: str, reason: str = "agent_requested") -> str:
-        return _json(
-            {
-                "ok": True,
-                "data": await self.coordinator.cancel_task(task_id, reason=reason),
-            }
-        )
+        return _task_response(await self.coordinator.cancel_task(task_id, reason=reason))
 
 
 def build_forge_task_tools(coordinator: AgentTaskCoordinator) -> list[Tool]:
