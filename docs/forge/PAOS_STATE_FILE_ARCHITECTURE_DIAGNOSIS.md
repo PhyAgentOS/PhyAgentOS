@@ -1126,3 +1126,11 @@ subdivision: interpolate joint targets between planner samples and scale the
 per-substep velocity, while retaining the immutable measured `0.20 m/s` gate.
 This changes only adapter-side simulation execution sampling; it does not alter
 URDF, joint limits, workspace, stop policy, or production motion authority.
+
+A v10 route implementing this policy was materialized under
+`/home/yanxu/robotwin20-route-inputs-20260906T050000Z/` with request id
+`franka-blocks-green1-candidate1-20260906-v10-subdivided`, route digest
+`29450e78db41de37ad4e2dc570508e2de37069f35ad4cb32ec443ec173e1bc4a`, and
+source manifest digest
+`b476aeacf282ce3091943f4f8ba365e5b744446fa7e46040505a05a18db3f583`.
+It remains pending human simulation-only approval.
