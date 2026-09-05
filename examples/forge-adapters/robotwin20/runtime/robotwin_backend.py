@@ -81,8 +81,23 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
             import yaml as profile_yaml
         except ModuleNotFoundError as exc:
             raise RoboTwinRuntimeError("PyYAML is required to load a runtime profile") from exc
+    class _UniqueKeyLoader(profile_yaml.SafeLoader):
+        pass
+
+    def construct_mapping(loader, node, deep=False):
+        result = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node, deep=deep)
+            if key in result:
+                raise RoboTwinRuntimeError("runtime profile contains duplicate YAML keys")
+            result[key] = loader.construct_object(value_node, deep=deep)
+        return result
+
+    _UniqueKeyLoader.add_constructor(
+        profile_yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping
+    )
     try:
-        value = profile_yaml.safe_load(path.read_text(encoding="utf-8"))
+        value = profile_yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
     except (OSError, UnicodeError, profile_yaml.YAMLError) as exc:
         raise RoboTwinRuntimeError("runtime profile could not be loaded") from exc
     required = {

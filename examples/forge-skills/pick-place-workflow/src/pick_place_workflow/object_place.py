@@ -50,6 +50,8 @@ _INPUT_KEYS = {
     "entity_ref",
     "acquire_invocation_ref",
     "destination_ref",
+    "capability_snapshot_ref",
+    "assignment_ref",
 }
 
 
@@ -171,6 +173,8 @@ def _terminal_result_schema() -> dict[str, Any]:
             "entity_ref",
             "acquire_invocation_ref",
             "destination_ref",
+            "capability_snapshot_ref",
+            "assignment_ref",
             "capability_outcome_summary",
         ],
         "properties": {
@@ -205,6 +209,8 @@ def _terminal_result_schema() -> dict[str, Any]:
                 "pattern": r"^invocation://object-acquire/[^/]+$",
             },
             "destination_ref": {"type": "string", "pattern": r"^destination://[^\s]+$"},
+            "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+            "assignment_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
             "capability_outcome_summary": _summary_schema(),
         },
     }
@@ -237,6 +243,8 @@ PLACE_TOOL_SPEC: dict[str, Any] = {
             "entity_ref",
             "acquire_invocation_ref",
             "destination_ref",
+            "capability_snapshot_ref",
+            "assignment_ref",
         ],
         "properties": {
             "observation_ref": {"type": "string", "pattern": r"^observation://[^/]+/[^/]+$"},
@@ -257,6 +265,8 @@ PLACE_TOOL_SPEC: dict[str, Any] = {
                 "pattern": r"^invocation://object-acquire/[^/]+$",
             },
             "destination_ref": {"type": "string", "pattern": r"^destination://[^\s]+$"},
+            "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+            "assignment_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
         },
     },
     "output_schema": {
@@ -346,6 +356,10 @@ def validate_arguments(arguments: Any) -> str | None:
     destination_ref = arguments.get("destination_ref")
     if not isinstance(destination_ref, str) or _DESTINATION_REF.fullmatch(destination_ref) is None:
         return "invalid_destination_ref"
+    for name in ("capability_snapshot_ref", "assignment_ref"):
+        value = arguments.get(name)
+        if not isinstance(value, str) or _ARTIFACT_REF.fullmatch(value) is None:
+            return f"invalid_{name}"
     if arguments["freshness_ms"] > arguments["max_age_ms"]:
         return "stale_observation"
     return None
@@ -372,6 +386,8 @@ def _error_message(code: str) -> str:
             "acquire_invocation_ref must reference an object.acquire invocation"
         ),
         "invalid_destination_ref": "destination_ref must use destination:// scheme",
+        "invalid_capability_snapshot_ref": "capability_snapshot_ref must use artifact:// scheme",
+        "invalid_assignment_ref": "assignment_ref must use artifact:// scheme",
     }.get(code, "object.place request failed contract validation")
 
 
@@ -480,6 +496,8 @@ def terminal_result(arguments: dict[str, Any], snapshot: PlaceSnapshot) -> dict[
         "entity_ref": arguments["entity_ref"],
         "acquire_invocation_ref": arguments["acquire_invocation_ref"],
         "destination_ref": arguments["destination_ref"],
+        "capability_snapshot_ref": arguments["capability_snapshot_ref"],
+        "assignment_ref": arguments["assignment_ref"],
         "capability_outcome_summary": summary,
     }
 

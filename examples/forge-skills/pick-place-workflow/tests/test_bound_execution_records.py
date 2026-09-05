@@ -143,6 +143,8 @@ async def test_bound_query_and_action_records_retain_binding_and_revision_identi
                 "preparation_ref": "preparation://scene-7/camera_front",
                 "candidate_ref": "candidate://bottle-1/1",
                 "entity_ref": "entity://bottle-1",
+                "capability_snapshot_ref": "artifact://capabilities/scene-7/snapshot",
+                "assignment_ref": "artifact://assignments/task-1/revision-1/acquire",
             },
         )
         invocation_id = action["data"]["invocation_id"]

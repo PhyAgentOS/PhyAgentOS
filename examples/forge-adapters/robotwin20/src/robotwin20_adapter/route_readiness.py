@@ -22,7 +22,7 @@ from .perception_profile import (
 )
 from .process_worker import JsonlProcessWorkerClient
 
-ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v2"
+ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v3"
 SIMULATION_ROUTE_READINESS_SCHEMA_VERSION = "paos-robotwin20-simulation-route-readiness/v2"
 ROUTE_READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-readiness/v1"
 ROUTE_PHASES = (
@@ -241,11 +241,18 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
 
         grasp = candidate["execution_grasp"]
         if not isinstance(grasp, Mapping) or set(grasp) != {
-            "contact_tcp_pose", "ingress_direction", "support_clear_direction",
-            "adaptation_provenance_ref",
+            "contact_center_pose", "robot_target_pose", "robot_target_frame",
+            "robot_target_round_trip_residual_m", "ingress_direction",
+            "support_clear_direction", "adaptation_provenance_ref",
         }:
             raise RouteReadinessError("execution_grasp fields are invalid")
-        _pose(grasp["contact_tcp_pose"], route_frame, "execution_grasp.contact_tcp_pose")
+        if grasp["robot_target_frame"] != "robotwin_gripper":
+            raise RouteReadinessError("execution_grasp.robot_target_frame is unsupported")
+        residual = grasp["robot_target_round_trip_residual_m"]
+        if isinstance(residual, bool) or not isinstance(residual, (int, float)) or not math.isfinite(float(residual)) or float(residual) > 1e-8:
+            raise RouteReadinessError("execution_grasp RoboTwin target round-trip is invalid")
+        _pose(grasp["contact_center_pose"], route_frame, "execution_grasp.contact_center_pose")
+        _pose(grasp["robot_target_pose"], route_frame, "execution_grasp.robot_target_pose")
         _direction(grasp["ingress_direction"], route_frame, "execution_grasp.ingress_direction")
         _direction(
             grasp["support_clear_direction"], route_frame,
@@ -259,7 +266,7 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
         attached = candidate["attached_object"]
         if not isinstance(attached, Mapping) or set(attached) != {
             "geometry_ref", "geometry_sha256", "object_frame_id", "half_extents_m",
-            "object_T_tcp", "transform_provenance_ref",
+            "object_T_robot_target", "transform_provenance_ref",
         }:
             raise RouteReadinessError("attached object fields are invalid")
         _ref(attached["geometry_ref"], "attached_object.geometry_ref", "artifact://")
@@ -270,7 +277,7 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
         )
         if any(value <= 0 for value in half_extents):
             raise RouteReadinessError("attached object half extents must be positive")
-        _transform(attached["object_T_tcp"], "attached_object.object_T_tcp")
+        _transform(attached["object_T_robot_target"], "attached_object.object_T_robot_target")
         _ref(
             attached["transform_provenance_ref"],
             "attached_object.transform_provenance_ref", "artifact://",
@@ -278,20 +285,20 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
 
         placement = candidate["placement_target"]
         if not isinstance(placement, Mapping) or set(placement) != {
-            "target_ref", "target_object_pose", "release_tcp_pose", "provenance_ref",
+            "target_ref", "target_object_pose", "release_robot_target_pose", "provenance_ref",
         }:
             raise RouteReadinessError("placement_target fields are invalid")
         _ref(placement["target_ref"], "placement_target.target_ref", "destination://")
         target_pose = placement["target_object_pose"]
-        release_pose = placement["release_tcp_pose"]
+        release_pose = placement["release_robot_target_pose"]
         _pose(target_pose, route_frame, "placement_target.target_object_pose")
-        _pose(release_pose, route_frame, "placement_target.release_tcp_pose")
+        _pose(release_pose, route_frame, "placement_target.release_robot_target_pose")
         transform = [
-            [float(attached["object_T_tcp"][row * 4 + col]) for col in range(4)]
+            [float(attached["object_T_robot_target"][row * 4 + col]) for col in range(4)]
             for row in range(4)
         ]
         if not _pose_matches_matrix(release_pose, _multiply(_pose_matrix(target_pose), transform)):
-            raise RouteReadinessError("release TCP pose is inconsistent with object_T_tcp")
+            raise RouteReadinessError("release RoboTwin target pose is inconsistent with object_T_robot_target")
         _ref(placement["provenance_ref"], "placement_target.provenance_ref", "artifact://")
 
         route = candidate["route"]
@@ -332,9 +339,9 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
         if not _poses_match(by_phase["lift"]["waypoints"][0], by_phase["transport"]["waypoints"][0]):
             raise RouteReadinessError("lift and transport waypoints are inconsistent")
         if not _poses_match(by_phase["descent"]["waypoints"][-1], release_pose):
-            raise RouteReadinessError("descent does not terminate at release TCP pose")
+            raise RouteReadinessError("descent does not terminate at release RoboTwin target pose")
         if not _poses_match(by_phase["release"]["waypoints"][0], release_pose):
-            raise RouteReadinessError("release waypoint is not bound to release TCP pose")
+            raise RouteReadinessError("release waypoint is not bound to release RoboTwin target pose")
 
 
 def route_geometry_digest(request: Mapping[str, Any]) -> str:

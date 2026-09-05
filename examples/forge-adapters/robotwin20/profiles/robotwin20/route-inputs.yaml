@@ -1,0 +1,61 @@
+schema_version: paos-robotwin20-route-input-profile/v2
+route_frame_id: world
+calibration_revision: robotwin20-head-camera-seed0-v1
+workspace_bounds_m:
+  frame_id: world
+  x_min_m: -0.60
+  x_max_m: 0.60
+  y_min_m: -0.80
+  y_max_m: 0.40
+  z_min_m: 0.55
+  z_max_m: 1.40
+grasp_adaptation:
+  extrinsic_semantics: world_to_camera_cv
+  # GraspGen decodes gripper_base_link at contact - depth * approach. This
+  # transform reconstructs the canonical contact center; it is not a planner TCP.
+  provider_T_contact_center: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.10527314, 0, 0, 0, 1]
+  # RoboTwin Robot.*_plan_path consumes its standard gripper target. Internally
+  # it converts that target to the Curobo panda_hand endlink using these values.
+  robot_target_frame: robotwin_gripper
+  robot_target_reference_distance_m: 0.12
+  robot_gripper_bias_m: 0.08
+  robot_delta_matrix: [[0, 0, 1], [0, -1, 0], [1, 0, 0]]
+  provider_transform_source:
+    provider: graspgen
+    upstream_commit: 2dd8852e1be60f5f9d277fafcc621835cdf59110
+    origin_frame: gripper_base_link
+    target_frame: canonical_contact_center
+    depth_m: 0.10527314
+    evidence_ref: artifact://provider-attestation/graspgen-ptv3-tool-tcp
+  contact_shell_tolerance_m: 0.015
+  support_clear_direction: [0.0, 0.0, 1.0]
+  max_linear_speed_mps: 0.20
+  max_joint_speed_radps: 1.0
+route_policy:
+  approach_clearance_m: 0.08
+  lift_clearance_m: 0.10
+  transport_clearance_m: 0.12
+  descent_clearance_m: 0.04
+  retreat_distance_m: 0.10
+  retreat_direction: [0.0, 0.0, 1.0]
+joint_limit_policy:
+  schema_version: paos-robotwin20-joint-limit-policy/v1
+  planner_profile: curobo
+  joint_count: 7
+  require_runtime_position_limits: true
+  max_joint_speed_radps: 1.0
+  trajectory_retiming:
+    enabled: true
+    method: uniform_time_dilation
+    sampling_dt_s: 0.004
+    safety_margin: 0.95
+    max_samples: 20000
+stop_policy:
+  schema_version: paos-robotwin20-stop-policy/v1
+  max_duration_s: 300
+  stop_file_required: true
+  poll_each_step: true
+  failure_recovery: reset_simulation
+semantic_tolerance:
+  target_position_m: 0.04
+  target_orientation_rad: 0.35

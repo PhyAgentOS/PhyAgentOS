@@ -24,6 +24,8 @@ IDENTITY = {
 }
 CANDIDATE = "candidate://bottle-1/1"
 ENTITY = "entity://bottle-1"
+CAPABILITY_SNAPSHOT = "artifact://capabilities/scene-7/snapshot"
+ASSIGNMENT = "artifact://assignments/task-1/revision-1/acquire"
 WORKER_ID = "robotwin20-readiness-live/v1"
 EMBODIMENT = {
     "robot_identity": "franka-panda",
@@ -101,6 +103,8 @@ def _acquire_request(**overrides):
         "preparation_ref": "preparation://scene-7/camera_front",
         "candidate_ref": CANDIDATE,
         "entity_ref": ENTITY,
+        "capability_snapshot_ref": CAPABILITY_SNAPSHOT,
+        "assignment_ref": ASSIGNMENT,
     }
     value.update(overrides)
     return value

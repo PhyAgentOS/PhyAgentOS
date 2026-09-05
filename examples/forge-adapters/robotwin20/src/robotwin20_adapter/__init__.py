@@ -88,6 +88,18 @@ from .route_generation import (
     generate_route_request,
     validate_route_policy,
 )
+from .route_inputs import (
+    OBJECT_GEOMETRY_SCHEMA_VERSION,
+    OBJECT_ROBOT_TARGET_TRANSFORM_SCHEMA_VERSION,
+    PLACEMENT_TARGET_SCHEMA_VERSION,
+    ROUTE_INPUT_PROFILE_SCHEMA_VERSION,
+    ROUTE_SCENE_FACTS_SCHEMA_VERSION,
+    RouteInputError,
+    canonical_json,
+    derive_bound_route_inputs,
+    sha256_json,
+    validate_scene_facts,
+)
 from .route_readiness import (
     ROUTE_CHECKS,
     ROUTE_PHASES,
@@ -149,9 +161,11 @@ _LAZY_ARM_CANDIDATE_EXPORTS = {
     "ROUTE_EVALUATION_SCHEMA_VERSION",
     "ROUTE_SELECTION_SCHEMA_VERSION",
     "ArmPlanningError",
+    "build_capability_snapshot",
     "CompleteRouteSelector",
     "enumerate_arm_candidates",
     "load_arm_planning_profile",
+    "project_arm_assignment",
     "validate_arm_planning_profile",
 }
 
@@ -265,6 +279,16 @@ __all__ = [
     "validate_route_request",
     "RouteGenerationError",
     "generate_route_request",
+    "OBJECT_GEOMETRY_SCHEMA_VERSION",
+    "OBJECT_ROBOT_TARGET_TRANSFORM_SCHEMA_VERSION",
+    "PLACEMENT_TARGET_SCHEMA_VERSION",
+    "ROUTE_INPUT_PROFILE_SCHEMA_VERSION",
+    "ROUTE_SCENE_FACTS_SCHEMA_VERSION",
+    "RouteInputError",
+    "canonical_json",
+    "derive_bound_route_inputs",
+    "sha256_json",
+    "validate_scene_facts",
     "validate_route_policy",
     "ROUTE_EVIDENCE_PROFILE_SCHEMA_VERSION",
     "ROUTE_EVIDENCE_SCHEMA_VERSION",

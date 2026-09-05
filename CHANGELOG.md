@@ -2,6 +2,101 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.5.1] - 2026-09-05
+
+完成 PAOS 双臂扩展协议收口：`object.acquire/place` 现在强制绑定 capability snapshot 与 arm assignment；新增只读 `manipulation.capabilities` Query、Skill manifest/contract/Fake Gateway 接入和严格失败关闭。组合回归 `669 passed, 1 skipped`；未启动任何动作、仿真运动或硬件。
+
+Completed the PAOS dual-arm extension contract closeout: `object.acquire/place` now require capability-snapshot and arm-assignment bindings; the read-only `manipulation.capabilities` Query is integrated with the Skill manifest, contract, and Fake Gateway with strict fail-closed behavior. Combined regression: `669 passed, 1 skipped`; no action, simulation motion, or hardware was started.
+
+### 文件变更详情 / Detailed changes
+
+- `PhyAgentOS/forge/manipulation.py:L29-L380`：新增冻结的资源需求、能力快照、assignment、协调组和 digest。
+- `PhyAgentOS/forge/capability_runtime/manipulation_capabilities.py:L23-L105`：新增 provider-neutral capability Query。
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py:L191-L225,L440-L473,L552-L610`：DAG action binding 强制 capability/assignment refs。
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_acquire.py:L95-L225,L300-L425`、`object_place.py:L40-L270,L340-L501`：同步 Action schema/校验。
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/fake_gateway.py:L14-L24,L285-L430`、`contracts/manipulation.capabilities.tool.yaml`、`skill.yaml`：完成 discovery/query wiring。
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md`、`docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md`、`changelog/2026-09_part3.md`：更新架构边界和五维审查。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置、可维护性均通过；atomic bimanual executor、真实 readiness/approval 与完整语义闭环仍未实现。
+
+Architecture integration, failure paths, authority boundaries, configuration, and maintainability all pass; an atomic bimanual executor, real readiness/approval, and the complete semantic loop remain unimplemented.
+
+### 验证 / Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src python -m pytest -p pytest_asyncio.plugin -q tests examples/forge-skills/pick-place-workflow/tests examples/forge-adapters/robotwin20/tests` → `669 passed, 1 skipped`
+- Ruff、compileall、`git diff --check`：通过。
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
+## [v5.4.4] - 2026-09-05
+
+完成 RoboTwin/Curobo 250 Hz 轨迹语义修复：route profile 现在显式声明并绑定 uniform time-dilation retiming，保持 1.0 rad/s PAOS 策略、不修改 Franka URDF 限幅，并保留 endpoint/dtype/速度证据。PAOS 环境安装 NumPy 2.5.2；adapter `228 passed, 1 skipped`，根仓库 `168 passed`。新的 v6 package 仍为 `pending_human_review`、`motion_authorized=false`；右臂八阶段 no-motion planner 通过，左臂不可用，未运行仿真动作、Gateway、Dora 或硬件。
+
+Completed the RoboTwin/Curobo 250 Hz trajectory-semantics repair: the route profile now explicitly declares and binds uniform time-dilation retiming, preserving the 1.0 rad/s PAOS policy without changing Franka URDF limits, with endpoint/dtype/speed evidence retained. NumPy 2.5.2 is installed in the PAOS environment; adapter `228 passed, 1 skipped`, root `168 passed`. The new v6 package remains `pending_human_review` and `motion_authorized=false`; all eight right-arm no-motion planner phases pass while the left arm is unavailable, and no simulation motion, Gateway, Dora, or hardware was run.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py:L422-L535,L542-L603,L829-L891`：增加 profile-owned retiming、dtype/endpoint/速度校验，并把 retiming evidence 写入 trajectory。
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml:L40-L51`：声明 250 Hz、0.95 safety margin、20,000 sample 上限。
+- `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py:L11-L340`：增加 retiming 单位、端点、速度、dtype、预算和失败路径测试。
+- `examples/forge-adapters/robotwin20/README.md:L441-L451`、`docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L881-L904`、`changelog/2026-09_part3.md:L186-L235`：更新 v6 evidence、五维审查和 readiness 门禁。
+
+### 关键 Diff / Key Diff
+
+```text
+Before: Curobo samples above the profile-owned 1.0 rad/s policy were rejected, with no route passing continuous preflight.
+After:  bounded profile-owned resampling at RoboTwin's 250 Hz cadence preserves endpoints and verifies retimed speed; v6 right-arm eight-phase planner preflight passes without simulator steps.
+```
+
+### 验证 / Validation
+
+- `/home/yanxu/miniconda3/envs/paos/bin/python -m pytest ...` → adapter `228 passed, 1 skipped`; root `168 passed`; focused `62 passed`。
+- `ruff`、`compileall`、`git diff --check` 通过。
+- v6 preflight：`status=available`、右臂全阶段通过、左臂 `unavailable`、`robot_control_steps=0`、`simulator_steps=0`。
+- 仍需 fresh human approval；未启动 simulation probe、Gateway、Dora、Action 或硬件。
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
+## [v5.4.3] - 2026-09-05
+
+完成 GraspGen depth 到 RoboTwin planner-frame 的 PAOS adapter 修复。`provider_T_contact_center`
+先重建 canonical contact center，再由 Franka profile 派生 `robot_target_pose`；route、probe 和
+approval 改用 `object_T_robot_target`，旧的混合 TCP 契约 fail-closed。新的 v3 package 保持
+`pending_human_review` 与 `motion_authorized=false`。
+
+Completed the PAOS adapter repair for GraspGen depth and the RoboTwin planner frame. The adapter first
+reconstructs the canonical contact center with `provider_T_contact_center`, then derives `robot_target_pose`
+from the Franka profile; route, probe, and approval now use `object_T_robot_target`, while mixed legacy TCP
+contracts fail closed. The new v3 package remains `pending_human_review` with `motion_authorized=false`.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_adaptation.py:L193-L340`：分离 provider depth、canonical contact、RoboTwin standard target 和 planner round-trip。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_generation.py:L194-L359`、`route_readiness.py:L241-L352`、`route_inputs.py:L1-L390`：升级 v3 route 与对象变换契约。
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py:L37-L270,L477-L730`、`scripts/approve_simulation_probe.py:L15-L145`：同步 v3 approval/artifact digest 绑定。
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml`、`graspgen-tool-transform.json`、`README.md`：声明 profile 与使用边界。
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L900-L934`、`changelog/2026-09_part3.md:L125-L205`：记录诊断、证据和人工审批门禁。
+- `tests/test_grasp_adaptation.py`、`test_route_inputs.py`、`test_route_generation.py`、`test_route_readiness.py`、`test_simulation_probe.py`、`test_approve_simulation_probe.py`：增加 frame round-trip、旧契约拒绝和 digest 绑定回归。
+
+### 验证 / Validation
+
+- 专项 `69 passed`；完整 adapter（正确加载 pick-place 与 pytest-asyncio，排除 NumPy provider collection）`212 passed, 2 skipped`。
+- `ruff`、`compileall`、`git diff --check` 通过；RoboTwin20 Python 3.10 no-motion preflight 仅产生 preliminary evidence，`prepared_candidates=[]`、`collision=unavailable`、零 simulator step。
+- 未启动 Gateway、Dora、Action、硬件或 simulation probe；v4 approval 不可复用，当前等待新的人工审批。
+
+### Git 提交 / Git Commit
+
+- Commit: pending
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.2.1] - 2026-09-05
 
 回写 v5.2.0 PAOS-first 操作规划重构实现提交 `514e044`。实现、十一项 Major 修复、五维验收、测试结果与

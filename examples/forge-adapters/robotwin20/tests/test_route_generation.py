@@ -74,9 +74,9 @@ def test_route_generation_produces_complete_deterministic_no_motion_request():
     validate_route_request(first)
 
 
-def test_route_generation_uses_object_to_tcp_transform_for_release_pose():
+def test_route_generation_uses_object_to_robot_target_transform_for_release_pose():
     inputs = list(_inputs())
-    inputs[3]["object_T_tcp"] = [
+    inputs[3]["object_T_robot_target"] = [
         1, 0, 0, 0.01,
         0, 1, 0, -0.02,
         0, 0, 1, 0.03,
@@ -84,7 +84,7 @@ def test_route_generation_uses_object_to_tcp_transform_for_release_pose():
     ]
     generated = generate_route_request(*inputs)["candidates"][0]
     target = generated["placement_target"]["target_object_pose"]["position_m"]
-    release = generated["placement_target"]["release_tcp_pose"]["position_m"]
+    release = generated["placement_target"]["release_robot_target_pose"]["position_m"]
     assert release == pytest.approx(
         [target[0] + 0.01, target[1] - 0.02, target[2] + 0.03]
     )
@@ -96,7 +96,7 @@ def test_route_generation_uses_object_to_tcp_transform_for_release_pose():
         (1, lambda value: value.update(scene_revision="stale"), "not bound"),
         (2, lambda value: value["ingress_direction"].update(vector=[0, 0, 0]), "normalized"),
         (3, lambda value: value.update(half_extents_m=[float("nan"), 0.02, 0.02]), "finite"),
-        (3, lambda value: value.update(object_T_tcp=[0.0] * 16), "homogeneous row"),
+        (3, lambda value: value.update(object_T_robot_target=[0.0] * 16), "homogeneous row"),
         (4, lambda value: value["target_object_pose"].update(frame_id="camera"), "frame"),
         (5, lambda value: value.update(lift_clearance_m=0), "positive"),
     ],

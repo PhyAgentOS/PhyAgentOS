@@ -37,6 +37,8 @@ def request_payload(**overrides):
         "preparation_ref": "preparation://scene-7/camera_front",
         "candidate_ref": "candidate://bottle-1/1",
         "entity_ref": "entity://bottle-1",
+        "capability_snapshot_ref": "artifact://capabilities/scene-7/snapshot",
+        "assignment_ref": "artifact://assignments/task-1/revision-1/acquire",
     }
     value.update(overrides)
     return value
@@ -119,6 +121,7 @@ async def test_action_discovery_context_admission_pending_and_terminal_result():
         terminal = await client.invocation_result(invocation_id)
     assert [item["tool_id"] for item in tools["data"]["tools"]] == [
         "scene.observe",
+        "manipulation.capabilities",
         "scene.understand",
         "grasp.propose",
         "manipulation.prepare",

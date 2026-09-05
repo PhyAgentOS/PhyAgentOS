@@ -276,12 +276,21 @@ def _verify_external_evidence(
         "selected_arm",
         "selected_gripper_value",
         "selected_gripper_open",
+        "target_position_error_m",
+        "target_orientation_error_rad",
+        "semantic_verdict",
     }:
         raise RouteEvidenceError("route observed outcome is invalid")
-    if observed["schema_version"] != "paos-robotwin20-observed-route-outcome/v1":
+    if observed["schema_version"] != "paos-robotwin20-observed-route-outcome/v2":
         raise RouteEvidenceError("route observed outcome schema is unsupported")
     if observed["after_snapshot_ref"] != after_ref:
         raise RouteEvidenceError("route observed outcome snapshot binding is invalid")
+    if observed["semantic_verdict"] != "satisfied":
+        raise RouteEvidenceError("route observed semantic verdict is not satisfied")
+    for field in ("target_position_error_m", "target_orientation_error_rad"):
+        value = observed[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or float(value) < 0:
+            raise RouteEvidenceError("route observed semantic error is invalid")
     try:
         observed_artifact = json.loads(
             _artifact_path(artifact_root, observed_ref).read_text(encoding="utf-8")

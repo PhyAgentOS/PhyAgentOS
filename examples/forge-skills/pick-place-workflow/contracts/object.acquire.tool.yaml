@@ -7,7 +7,7 @@ description: Admit one bounded object acquisition workflow using a prepared gras
 input_schema:
   type: object
   additionalProperties: false
-  required: [observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms, candidate_set_ref, preparation_ref, candidate_ref, entity_ref]
+  required: [observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, capability_snapshot_ref, assignment_ref]
   properties:
     observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
     scene_revision: {type: string, minLength: 1}
@@ -19,6 +19,8 @@ input_schema:
     preparation_ref: {type: string, pattern: '^preparation://[^/]+/.+$'}
     candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
     entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+    capability_snapshot_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
+    assignment_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
 output_schema:
   type: object
   additionalProperties: false
@@ -31,7 +33,7 @@ output_schema:
     result:
       type: object
       additionalProperties: false
-      required: [status, observation_ref, scene_revision, frame, calibration_ref, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, capability_outcome_summary]
+      required: [status, observation_ref, scene_revision, frame, calibration_ref, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, capability_snapshot_ref, assignment_ref, capability_outcome_summary]
       properties:
         status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
         observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
@@ -48,6 +50,8 @@ output_schema:
         preparation_ref: {type: string, pattern: '^preparation://[^/]+/.+$'}
         candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
         entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+        capability_snapshot_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
+        assignment_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
         capability_outcome_summary:
           type: object
           additionalProperties: false

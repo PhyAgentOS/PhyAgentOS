@@ -168,6 +168,7 @@ async def test_grasp_propose_is_discovered_with_the_perception_queries():
         context = await client.get_tool_context(GRASP_TOOL_ID)
     assert [item["tool_id"] for item in tools["data"]["tools"]] == [
         "scene.observe",
+        "manipulation.capabilities",
         "scene.understand",
         "grasp.propose",
         "manipulation.prepare",

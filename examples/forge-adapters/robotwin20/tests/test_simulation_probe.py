@@ -16,8 +16,10 @@ from robotwin_simulation_probe_worker import (
     _joint_limits,
     _label_probe_actors,
     _recover_candidate_failure,
+    _retime_trajectory,
     _validate_approval,
     _validate_request_policies,
+    _validate_route_input_artifacts,
 )
 from test_route_readiness import _request as _route_request
 
@@ -34,6 +36,7 @@ def _profile() -> dict[str, object]:
     return {
         "task_name": "blocks_ranking_rgb",
         "scene_revision": "blocks_ranking_rgb-0-1",
+        "runtime_profile_sha256": "b" * 64,
         "embodiment_binding": {
             "robot_identity": "franka-panda",
             "gripper_identity": "panda-gripper",
@@ -55,6 +58,29 @@ def _approval(root: Path, request: dict[str, object]) -> str:
         ref: _artifact_record(root, ref, payload)["sha256"]
         for ref, payload in inputs.items()
     }
+    transform_ref = request["candidates"][0]["attached_object"]["transform_provenance_ref"]
+    placement_ref = request["candidates"][0]["placement_target"]["provenance_ref"]
+    transform_digest = _artifact_record(
+        root,
+        transform_ref,
+        b'{"object_T_robot_target":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}\n',
+    )["sha256"]
+    placement_digest = _artifact_record(root, placement_ref, b'{"schema_version":"paos-robotwin20-placement-target/v1"}\n')["sha256"]
+    route_digest = route_geometry_digest(request)
+    route_sha256 = hashlib.sha256((json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
+    manifest = {
+        "schema_version": "paos-robotwin20-route-source-manifest/v2",
+        "request_id": request["request_id"],
+        "candidate_ref": request["candidates"][0]["candidate_ref"],
+        "scene_revision": request["scene_revision"],
+        "route_geometry_digest": route_digest,
+        "route_request": {"sha256": route_sha256},
+        "runtime_profile_sha256": "b" * 64,
+        "object_robot_target_transform": {"sha256": transform_digest},
+        "placement_target": {"sha256": placement_digest},
+        "motion_authorized": False,
+    }
+    manifest_record = _artifact_record(root, "artifact://probe/source-manifest.json", (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode())
     value = {
         "schema_version": APPROVAL_SCHEMA_VERSION,
         "decision": "approved_independent_simulation_probe",
@@ -72,6 +98,12 @@ def _approval(root: Path, request: dict[str, object]) -> str:
         "embodiment_binding": _profile()["embodiment_binding"],
         "reviewer_id": "reviewer-1",
         "reviewed_at": "2026-09-05T00:00:00+00:00",
+        "route_request_sha256": route_sha256,
+        "source_manifest_ref": manifest_record["artifact_ref"],
+        "source_manifest_sha256": manifest_record["sha256"],
+        "runtime_profile_sha256": "b" * 64,
+        "object_robot_target_transform_sha256": transform_digest,
+        "placement_target_sha256": placement_digest,
     }
     record = _artifact_record(
         root,
@@ -134,6 +166,46 @@ def test_artifact_writer_is_immutable(tmp_path: Path):
         _artifact_record(tmp_path, "artifact://probe/result", b"different\n")
 
 
+def test_route_input_artifacts_are_content_bound(tmp_path: Path):
+    request = _route_request(tmp_path)
+    candidate = request["candidates"][0]
+    geometry = {
+        "schema_version": "paos-robotwin20-object-geometry/v1",
+        "entity_ref": candidate["entity_ref"],
+        "scene_revision": request["scene_revision"],
+        "frame_id": candidate["attached_object"]["object_frame_id"],
+        "shape": "box",
+        "half_extents_m": candidate["attached_object"]["half_extents_m"],
+    }
+    transform = {
+        "schema_version": "paos-robotwin20-object-robot-target-transform/v1",
+        "entity_ref": candidate["entity_ref"],
+        "scene_revision": request["scene_revision"],
+        "object_T_robot_target": candidate["attached_object"]["object_T_robot_target"],
+    }
+    placement = {
+        "schema_version": "paos-robotwin20-placement-target/v1",
+        "entity_ref": candidate["entity_ref"],
+        "scene_revision": request["scene_revision"],
+        "target_ref": candidate["placement_target"]["target_ref"],
+        "frame_id": request["frame_id"],
+    }
+    for ref, value in (
+        (candidate["attached_object"]["geometry_ref"], geometry),
+        (candidate["attached_object"]["transform_provenance_ref"], transform),
+        (candidate["placement_target"]["provenance_ref"], placement),
+    ):
+        _artifact_record(tmp_path, ref, (json.dumps(value) + "\n").encode())
+    result = _validate_route_input_artifacts(tmp_path, request, candidate)
+    assert result["placement"] == placement
+    transform["object_T_robot_target"] = [0.0] * 16
+    (tmp_path / "blocks" / "object-t-robot-target.json").write_text(
+        json.dumps(transform), encoding="utf-8"
+    )
+    with pytest.raises(SimulationProbeError, match="not bound"):
+        _validate_route_input_artifacts(tmp_path, request, candidate)
+
+
 def test_request_policies_are_materialized_and_strict(tmp_path: Path):
     request = _route_request(tmp_path)
     joint_ref = request["joint_limits_ref"]
@@ -147,6 +219,13 @@ def test_request_policies_are_materialized_and_strict(tmp_path: Path):
             "joint_count": 7,
             "require_runtime_position_limits": True,
             "max_joint_speed_radps": 1.0,
+            "trajectory_retiming": {
+                "enabled": True,
+                "method": "uniform_time_dilation",
+                "sampling_dt_s": 0.004,
+                "safety_margin": 0.95,
+                "max_samples": 20000,
+            },
         }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
     )
     _artifact_record(
@@ -163,18 +242,76 @@ def test_request_policies_are_materialized_and_strict(tmp_path: Path):
     policies = _validate_request_policies(tmp_path, request, max_duration_s=12)
     assert policies["max_joint_speed_radps"] == 1.0
     assert policies["joint_limit_policy"]["artifact_ref"] == joint_ref
+    assert policies["trajectory_retiming"]["sampling_dt_s"] == 0.004
 
     request["candidates"][0]["route"][0]["waypoints"][0]["max_joint_speed_radps"] = 1.1
     with pytest.raises(SimulationProbeError, match="joint-limit policy"):
         _validate_request_policies(tmp_path, request, max_duration_s=12)
 
     request = _route_request(tmp_path)
-    request["candidates"][0]["execution_grasp"]["contact_tcp_pose"][
+    request["candidates"][0]["execution_grasp"]["robot_target_pose"][
         "max_joint_speed_radps"
     ] = 1.1
     with pytest.raises(SimulationProbeError, match="joint-limit policy"):
         _validate_request_policies(tmp_path, request, max_duration_s=12)
 
+
+def test_trajectory_retiming_preserves_endpoints_and_enforces_speed():
+    np = pytest.importorskip("numpy")
+
+    source = {
+        "status": "Success",
+        "position": np.array([[0.0] * 7, [0.02] + [0.0] * 6], dtype=np.float32),
+        "velocity": np.array(
+            [[5.0] + [0.0] * 6, [5.0] + [0.0] * 6], dtype=np.float32
+        ),
+    }
+    retimed = _retime_trajectory(
+        source,
+        enabled=True,
+        method="uniform_time_dilation",
+        max_joint_speed_radps=1.0,
+        sampling_dt_s=0.004,
+        safety_margin=0.95,
+        max_samples=100,
+    )
+    assert np.allclose(retimed["position"][0], source["position"][0])
+    assert np.allclose(retimed["position"][-1], source["position"][-1])
+    assert np.max(np.abs(retimed["velocity"])) <= 0.95 + 1e-5
+    assert retimed["position"].dtype == np.float32
+    assert retimed["velocity"].dtype == np.float32
+    assert retimed["retiming"]["sample_count_after"] > 2
+    assert retimed["retiming"]["dilation_factor"] < 1.0
+
+
+def test_trajectory_retiming_fails_closed_on_budget_or_planner_failure():
+    np = pytest.importorskip("numpy")
+
+    source = {
+        "status": "Success",
+        "position": np.array([[0.0] * 7, [1.0] + [0.0] * 6]),
+        "velocity": np.array([[250.0] + [0.0] * 6] * 2),
+    }
+    with pytest.raises(SimulationProbeError, match="sample limit"):
+        _retime_trajectory(
+            source,
+            enabled=True,
+            method="uniform_time_dilation",
+            max_joint_speed_radps=1.0,
+            sampling_dt_s=0.004,
+            safety_margin=0.95,
+            max_samples=10,
+        )
+    with pytest.raises(SimulationProbeError, match="planner route segment failed"):
+        _retime_trajectory(
+            {"status": "Fail"},
+            enabled=True,
+            method="uniform_time_dilation",
+            max_joint_speed_radps=1.0,
+            sampling_dt_s=0.004,
+            safety_margin=0.95,
+            max_samples=10,
+        )
 
 def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch):
     class MotionGen:
@@ -439,6 +576,14 @@ def test_worker_is_single_use_after_an_authorized_attempt(tmp_path: Path, monkey
         },
     )
     monkeypatch.setattr(probe_worker, "_load_json_artifact", lambda *args: {})
+    monkeypatch.setattr(
+        probe_worker,
+        "_validate_route_input_artifacts",
+        lambda *args: {
+            "world_T_object_target": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            "semantic_tolerance": {"target_position_m": 0.04, "target_orientation_rad": 0.35},
+        },
+    )
     monkeypatch.setattr(probe_worker, "_label_probe_actors", lambda task: None)
     monkeypatch.setattr(
         probe_worker,

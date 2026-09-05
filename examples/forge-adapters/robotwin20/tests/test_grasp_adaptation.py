@@ -51,7 +51,11 @@ def _inputs():
     profile = {
         "schema_version": GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
         "extrinsic_semantics": "world_to_camera_cv",
-        "provider_T_tcp": [1, 0, 0, 0.01, 0, 1, 0, 0.02, 0, 0, 1, 0.03, 0, 0, 0, 1],
+        "provider_T_contact_center": [1, 0, 0, 0.01, 0, 1, 0, 0.02, 0, 0, 1, 0.03, 0, 0, 0, 1],
+        "robot_target_frame": "robotwin_gripper",
+        "robot_target_reference_distance_m": 0.12,
+        "robot_gripper_bias_m": 0.08,
+        "robot_delta_matrix": [[0, 0, 1], [0, -1, 0], [1, 0, 0]],
         "adaptation_provenance_ref": "artifact://profile/provider-to-tcp",
         "support_clear_direction": {
             "frame_id": "world", "vector": [0, 0, 1],
@@ -65,8 +69,14 @@ def _inputs():
 
 def test_adaptation_inverts_world_to_camera_and_applies_tool_transform():
     result = adapt_grasp_candidate(*_inputs())
-    assert result["contact_tcp_pose"]["position_m"] == pytest.approx([1.11, 2.22, 3.33])
-    assert result["contact_tcp_pose"]["orientation_xyzw"] == pytest.approx([0, 0, 0, 1])
+    assert result["contact_center_pose"]["position_m"] == pytest.approx([1.11, 2.22, 3.33])
+    assert result["contact_center_pose"]["orientation_xyzw"] == pytest.approx([0, 0, 0, 1])
+    assert result["robot_target_pose"]["position_m"] == pytest.approx([1.11, 2.22, 3.21])
+    assert result["robot_target_pose"]["orientation_xyzw"] == pytest.approx(
+        [2 ** -0.5, 0, 2 ** -0.5, 0]
+    )
+    assert result["robot_target_frame"] == "robotwin_gripper"
+    assert result["robot_target_round_trip_residual_m"] < 1e-8
     assert result["ingress_direction"]["vector"] == pytest.approx([0, 0, 1])
 
 
@@ -92,7 +102,8 @@ def test_adaptation_is_deterministic_and_does_not_mutate_inputs():
         (2, lambda value: value.update(calibration_sha256="0" * 64), "digest"),
         (2, lambda value: value.update(frame_id="head_camera"), "world route frame"),
         (3, lambda value: value.update(extrinsic_semantics="camera_to_world"), "semantics"),
-        (3, lambda value: value.update(provider_T_tcp=[0] * 16), "homogeneous row"),
+        (3, lambda value: value.update(provider_T_contact_center=[0] * 16), "homogeneous row"),
+        (3, lambda value: value.update(robot_delta_matrix=[[1, 0, 0], [0, 1, 0], [0, 0, 1]]), "bind RoboTwin"),
         (0, lambda value: value["grasp_frame"].update(frame_id="wrist"), "binding"),
         (0, lambda value: value["approach_direction"].update(vector=[0, 0, 0]), "degenerate"),
     ],

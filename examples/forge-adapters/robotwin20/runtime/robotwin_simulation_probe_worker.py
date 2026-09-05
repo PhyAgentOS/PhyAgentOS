@@ -35,7 +35,7 @@ from robotwin20_adapter.route_readiness import (
 )
 
 SCHEMA_VERSION = "paos-robotwin20-simulation-probe/v1"
-APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-probe-approval/v1"
+APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-probe-approval/v3"
 _STATE_FIELDS = ("scene_revision", "observation_ref", "frame_id", "candidate_set_ref")
 _GRIPPER_VALUES = {"open": 1.0, "contact": 1.0, "closed": 0.0, "released": 1.0}
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
@@ -107,6 +107,70 @@ def _load_json_artifact(root: Path, ref: str) -> Mapping[str, Any]:
     return value
 
 
+def _validate_route_input_artifacts(
+    root: Path, request: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    """Re-check adapter materializations before any simulator world change."""
+    attached = candidate["attached_object"]
+    geometry = _load_json_artifact(root, attached["geometry_ref"])
+    if geometry.get("schema_version") != "paos-robotwin20-object-geometry/v1":
+        raise SimulationProbeError("attached geometry artifact schema is unsupported")
+    if geometry.get("entity_ref") != candidate["entity_ref"] or geometry.get("scene_revision") != request["scene_revision"]:
+        raise SimulationProbeError("attached geometry artifact identity is invalid")
+    if geometry.get("frame_id") != attached["object_frame_id"] or geometry.get("shape") != "box":
+        raise SimulationProbeError("attached geometry artifact frame or shape is invalid")
+    try:
+        half_extents = [float(item) for item in geometry["half_extents_m"]]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SimulationProbeError("attached geometry half extents are invalid") from exc
+    if half_extents != [float(item) for item in attached["half_extents_m"]]:
+        raise SimulationProbeError("attached geometry half extents are not bound to request")
+    transform = _load_json_artifact(root, attached["transform_provenance_ref"])
+    if transform.get("schema_version") != "paos-robotwin20-object-robot-target-transform/v1":
+        raise SimulationProbeError("object_T_robot_target provenance schema is unsupported")
+    if transform.get("entity_ref") != candidate["entity_ref"] or transform.get("scene_revision") != request["scene_revision"]:
+        raise SimulationProbeError("object_T_robot_target provenance identity is invalid")
+    if transform.get("object_T_robot_target") != attached["object_T_robot_target"]:
+        raise SimulationProbeError("object_T_robot_target is not bound to provenance artifact")
+    placement = candidate["placement_target"]
+    target = _load_json_artifact(root, placement["provenance_ref"])
+    if target.get("schema_version") != "paos-robotwin20-placement-target/v1":
+        raise SimulationProbeError("placement target artifact schema is unsupported")
+    if target.get("entity_ref") != candidate["entity_ref"] or target.get("scene_revision") != request["scene_revision"]:
+        raise SimulationProbeError("placement target artifact identity is invalid")
+    if target.get("target_ref") != placement["target_ref"] or target.get("frame_id") != request["frame_id"]:
+        raise SimulationProbeError("placement target artifact binding is invalid")
+    return {"geometry": geometry, "transform": transform, "placement": target}
+
+
+def _validate_runtime_route_input_binding(
+    task: Any, candidate: Mapping[str, Any], artifacts: Mapping[str, Any]
+) -> None:
+    import numpy as np
+
+    actor = _actor_for_entity(task, candidate["entity_ref"])
+    actual = np.asarray(actor.get_pose().to_transformation_matrix(), dtype=np.float64)
+    expected_flat = artifacts["transform"].get("world_T_object")
+    if not isinstance(expected_flat, list) or len(expected_flat) != 16:
+        raise SimulationProbeError("object_T_robot_target provenance initial object pose is invalid")
+    expected = np.asarray(expected_flat, dtype=np.float64).reshape(4, 4)
+    if not np.isfinite(actual).all() or not np.isfinite(expected).all() or not np.allclose(actual, expected, atol=1e-5):
+        raise SimulationProbeError("runtime object pose does not match route input evidence")
+
+
+def _orientation_error_rad(before: list[float], after: list[float]) -> float:
+    import numpy as np
+    import transforms3d as t3d
+
+    left = np.asarray(before, dtype=np.float64)
+    right = np.asarray(after, dtype=np.float64)
+    left = left / np.linalg.norm(left)
+    right = right / np.linalg.norm(right)
+    rotation = t3d.quaternions.quat2mat(left) @ t3d.quaternions.quat2mat(right).T
+    cosine = max(-1.0, min(1.0, (float(np.trace(rotation)) - 1.0) / 2.0))
+    return float(math.acos(cosine))
+
+
 def _validate_approval(
     root: Path,
     ref: str,
@@ -123,6 +187,9 @@ def _validate_approval(
         "producer_profile_sha256", "task_name", "scene_revision", "embodiment_binding",
         "request_id", "candidate_ref", "route_geometry_digest", "reviewer_id", "reviewed_at",
         "calibration_sha256", "joint_limits_sha256", "stop_policy_sha256",
+        "route_request_sha256", "source_manifest_ref", "source_manifest_sha256",
+        "runtime_profile_sha256",
+        "object_robot_target_transform_sha256", "placement_target_sha256",
     }
     if set(approval) != required or approval["schema_version"] != APPROVAL_SCHEMA_VERSION:
         raise SimulationProbeError("probe approval record fields are invalid")
@@ -140,6 +207,13 @@ def _validate_approval(
         raise SimulationProbeError("probe approval route binding is invalid")
     if approval["embodiment_binding"] != profile["embodiment_binding"]:
         raise SimulationProbeError("probe approval embodiment binding is invalid")
+    if approval["runtime_profile_sha256"] != profile["runtime_profile_sha256"]:
+        raise SimulationProbeError("probe approval runtime profile binding is invalid")
+    request_digest = _sha_bytes(
+        (json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    )
+    if approval["route_request_sha256"] != request_digest:
+        raise SimulationProbeError("probe approval route request digest binding is invalid")
     for digest_field, ref_field in (
         ("calibration_sha256", "calibration_ref"),
         ("joint_limits_sha256", "joint_limits_ref"),
@@ -154,6 +228,43 @@ def _validate_approval(
             != _sha_bytes(_artifact_path(root, request[ref_field]).read_bytes())
         ):
             raise SimulationProbeError(f"probe approval {ref_field} digest binding is invalid")
+    selected = next(
+        (item for item in request["candidates"] if item["candidate_ref"] == candidate_ref),
+        None,
+    )
+    if selected is None:
+        raise SimulationProbeError("probe approval candidate binding is invalid")
+    for digest_field, ref_value in (
+        (
+            "object_robot_target_transform_sha256",
+            selected["attached_object"]["transform_provenance_ref"],
+        ),
+        ("placement_target_sha256", selected["placement_target"]["provenance_ref"]),
+        ("source_manifest_sha256", approval["source_manifest_ref"]),
+    ):
+        expected_digest = approval[digest_field]
+        if (
+            not isinstance(expected_digest, str)
+            or len(expected_digest) != 64
+            or any(char not in "0123456789abcdef" for char in expected_digest)
+            or expected_digest != _sha_bytes(_artifact_path(root, ref_value).read_bytes())
+        ):
+            raise SimulationProbeError(f"probe approval {digest_field} binding is invalid")
+    manifest = _load_json_artifact(root, approval["source_manifest_ref"])
+    if (
+        manifest.get("schema_version") != "paos-robotwin20-route-source-manifest/v2"
+        or manifest.get("request_id") != request["request_id"]
+        or manifest.get("candidate_ref") != candidate_ref
+        or manifest.get("scene_revision") != request["scene_revision"]
+        or manifest.get("route_geometry_digest") != route_geometry_digest(request)
+        or manifest.get("route_request", {}).get("sha256") != approval["route_request_sha256"]
+        or manifest.get("runtime_profile_sha256") != approval["runtime_profile_sha256"]
+        or manifest.get("object_robot_target_transform", {}).get("sha256")
+        != approval["object_robot_target_transform_sha256"]
+        or manifest.get("placement_target", {}).get("sha256") != approval["placement_target_sha256"]
+        or manifest.get("motion_authorized") is not False
+    ):
+        raise SimulationProbeError("probe approval source manifest binding is invalid")
     if not isinstance(approval["reviewer_id"], str) or not approval["reviewer_id"].strip():
         raise SimulationProbeError("probe approval reviewer is missing")
     if not isinstance(approval["reviewed_at"], str) or not approval["reviewed_at"].strip():
@@ -318,8 +429,14 @@ def _validate_trajectory(
 
     if result.get("status") != "Success":
         raise SimulationProbeError("planner route segment failed")
-    positions = np.asarray(result.get("position"), dtype=np.float64)
-    velocities = np.asarray(result.get("velocity"), dtype=np.float64)
+    source_positions = np.asarray(result.get("position"))
+    source_velocities = np.asarray(result.get("velocity"))
+    if not np.issubdtype(source_positions.dtype, np.floating) or not np.issubdtype(
+        source_velocities.dtype, np.floating
+    ):
+        raise SimulationProbeError("planner trajectory dtype is not floating point")
+    positions = source_positions.astype(np.float64, copy=False)
+    velocities = source_velocities.astype(np.float64, copy=False)
     if positions.ndim != 2 or positions.shape[1] != 7 or velocities.shape != positions.shape:
         raise SimulationProbeError("planner trajectory shape is invalid")
     if not np.isfinite(positions).all() or not np.isfinite(velocities).all():
@@ -329,6 +446,93 @@ def _validate_trajectory(
         raise SimulationProbeError("planner trajectory exceeds joint limits")
     if bool((np.abs(velocities) > float(max_joint_speed_radps) + 1e-5).any()):
         raise SimulationProbeError("planner trajectory exceeds waypoint joint-speed limit")
+
+
+def _retime_trajectory(
+    result: Mapping[str, Any],
+    *,
+    enabled: bool,
+    method: str,
+    max_joint_speed_radps: float,
+    sampling_dt_s: float,
+    safety_margin: float,
+    max_samples: int,
+) -> dict[str, Any]:
+    """Apply profile-declared uniform time dilation without changing endpoints.
+
+    RoboTwin consumes one Curobo sample per 250 Hz scene step.  Curobo's
+    velocity array is therefore in rad/s; stretching the trajectory is done by
+    resampling positions at the same scene cadence and recomputing derivatives,
+    rather than by silently scaling command values while keeping the old timing.
+    """
+    import numpy as np
+
+    if enabled is not True or method != "uniform_time_dilation":
+        raise SimulationProbeError("trajectory retiming is not enabled by policy")
+    if result.get("status") != "Success":
+        raise SimulationProbeError("planner route segment failed")
+    source_positions = np.asarray(result.get("position"))
+    source_velocities = np.asarray(result.get("velocity"))
+    if not np.issubdtype(source_positions.dtype, np.floating) or not np.issubdtype(
+        source_velocities.dtype, np.floating
+    ):
+        raise SimulationProbeError("planner trajectory dtype is not floating point")
+    positions = source_positions.astype(np.float64, copy=False)
+    velocities = source_velocities.astype(np.float64, copy=False)
+    if positions.ndim != 2 or positions.shape[1] != 7 or velocities.shape != positions.shape:
+        raise SimulationProbeError("planner trajectory shape is invalid")
+    if not math.isfinite(sampling_dt_s) or sampling_dt_s <= 0:
+        raise SimulationProbeError("trajectory retiming sampling period is invalid")
+    if (
+        isinstance(safety_margin, bool)
+        or not math.isfinite(float(safety_margin))
+        or not 0 < float(safety_margin) <= 1
+    ):
+        raise SimulationProbeError("trajectory retiming safety margin is invalid")
+    if not isinstance(max_samples, int) or isinstance(max_samples, bool) or max_samples < len(positions):
+        raise SimulationProbeError("trajectory retiming sample limit is invalid")
+    if len(positions) < 2 or not np.isfinite(positions).all() or not np.isfinite(velocities).all():
+        raise SimulationProbeError("planner trajectory contains non-finite or insufficient samples")
+    limit = float(max_joint_speed_radps) * float(safety_margin)
+    if not math.isfinite(limit) or limit <= 0:
+        raise SimulationProbeError("trajectory retiming speed limit is invalid")
+    source_speed = float(np.max(np.abs(velocities)))
+    step_speed = float(np.max(np.abs(np.diff(positions, axis=0))) / sampling_dt_s)
+    required_speed = max(source_speed, step_speed)
+    if not math.isfinite(required_speed):
+        raise SimulationProbeError("planner trajectory speed is invalid")
+    dilation = min(1.0, limit / required_speed) if required_speed else 1.0
+    sample_count = int(math.ceil((len(positions) - 1) / dilation)) + 1
+    if sample_count > max_samples:
+        raise SimulationProbeError("trajectory retiming exceeds sample limit")
+    if dilation < 1.0:
+        old_time = np.arange(len(positions), dtype=np.float64)
+        new_time = np.minimum(
+            np.arange(sample_count, dtype=np.float64) * dilation,
+            float(len(positions) - 1),
+        )
+        retimed_positions = np.column_stack(
+            [np.interp(new_time, old_time, positions[:, joint]) for joint in range(7)]
+        )
+    else:
+        retimed_positions = positions.copy()
+    retimed_velocities = np.gradient(retimed_positions, sampling_dt_s, axis=0, edge_order=1)
+    if np.max(np.abs(retimed_velocities)) > limit + 1e-5:
+        raise SimulationProbeError("retimed trajectory exceeds policy speed limit")
+    output = dict(result)
+    output["position"] = retimed_positions.astype(source_positions.dtype, copy=False)
+    output["velocity"] = retimed_velocities.astype(source_velocities.dtype, copy=False)
+    output["retiming"] = {
+        "method": "uniform_time_dilation",
+        "sampling_dt_s": float(sampling_dt_s),
+        "dilation_factor": float(dilation),
+        "source_max_speed_radps": source_speed,
+        "source_step_speed_radps": step_speed,
+        "retimed_max_speed_radps": float(np.max(np.abs(retimed_velocities))),
+        "sample_count_before": int(len(positions)),
+        "sample_count_after": int(len(retimed_positions)),
+    }
+    return output
 
 
 def _validate_request_policies(
@@ -341,7 +545,7 @@ def _validate_request_policies(
     stop = _load_json_artifact(root, request["stop_policy_ref"])
     if set(joint) != {
         "schema_version", "planner_profile", "joint_count",
-        "require_runtime_position_limits", "max_joint_speed_radps",
+        "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
     } or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v1":
         raise SimulationProbeError("joint-limit policy fields are invalid")
     max_joint_speed = joint["max_joint_speed_radps"]
@@ -355,6 +559,24 @@ def _validate_request_policies(
         or max_joint_speed <= 0
     ):
         raise SimulationProbeError("joint-limit policy is invalid")
+    retiming = joint["trajectory_retiming"]
+    if not isinstance(retiming, Mapping) or set(retiming) != {
+        "enabled", "method", "sampling_dt_s", "safety_margin", "max_samples",
+    } or retiming["enabled"] is not True or retiming["method"] != "uniform_time_dilation":
+        raise SimulationProbeError("trajectory retiming policy is invalid")
+    if (
+        isinstance(retiming["sampling_dt_s"], bool)
+        or not isinstance(retiming["sampling_dt_s"], (int, float))
+        or not math.isfinite(float(retiming["sampling_dt_s"]))
+        or not math.isclose(float(retiming["sampling_dt_s"]), 1 / 250, abs_tol=1e-9)
+        or isinstance(retiming["safety_margin"], bool)
+        or not isinstance(retiming["safety_margin"], (int, float))
+        or not 0 < float(retiming["safety_margin"]) <= 1
+        or isinstance(retiming["max_samples"], bool)
+        or not isinstance(retiming["max_samples"], int)
+        or retiming["max_samples"] < 2
+    ):
+        raise SimulationProbeError("trajectory retiming policy values are invalid")
     if set(stop) != {
         "schema_version", "max_duration_s", "stop_file_required",
         "poll_each_step", "failure_recovery",
@@ -370,7 +592,7 @@ def _validate_request_policies(
     ):
         raise SimulationProbeError("stop policy is invalid")
     for candidate in request["candidates"]:
-        speed_limited_poses = [candidate["execution_grasp"]["contact_tcp_pose"]]
+        speed_limited_poses = [candidate["execution_grasp"]["robot_target_pose"]]
         speed_limited_poses.extend(
             waypoint
             for phase in candidate["route"]
@@ -391,6 +613,7 @@ def _validate_request_policies(
             "sha256": _sha_bytes(_artifact_path(root, request["stop_policy_ref"]).read_bytes()),
         },
         "max_joint_speed_radps": float(max_joint_speed),
+        "trajectory_retiming": dict(retiming),
     }
 
 
@@ -612,15 +835,24 @@ def _run_candidate(
         limits = _joint_limits(planner)
         try:
             pose = _route_pose(
-                candidate["execution_grasp"]["contact_tcp_pose"], request["frame_id"]
+                candidate["execution_grasp"]["robot_target_pose"], request["frame_id"]
             )
             fn = task.robot.left_plan_path if arm == "left" else task.robot.right_plan_path
             result = fn(pose)
+            result = _retime_trajectory(
+                result,
+                max_joint_speed_radps=float(
+                    candidate["execution_grasp"]["robot_target_pose"][
+                        "max_joint_speed_radps"
+                    ]
+                ),
+                **policies["trajectory_retiming"],
+            )
             _validate_trajectory(
                 result,
                 limits,
                 max_joint_speed_radps=float(
-                    candidate["execution_grasp"]["contact_tcp_pose"][
+                    candidate["execution_grasp"]["robot_target_pose"][
                         "max_joint_speed_radps"
                     ]
                 ),
@@ -654,6 +886,11 @@ def _run_candidate(
         planned_segments = []
         for route_waypoint, waypoint in zip(phase["waypoints"], world_waypoints):
             result = fn(waypoint)
+            result = _retime_trajectory(
+                result,
+                max_joint_speed_radps=float(route_waypoint["max_joint_speed_radps"]),
+                **policies["trajectory_retiming"],
+            )
             _validate_trajectory(
                 result,
                 limits,
@@ -877,6 +1114,7 @@ def _finalize_candidate_success(
     contact_dynamics: Mapping[str, Any],
     selected_arm: str,
     policies: Mapping[str, Any],
+    placement_artifact: Mapping[str, Any],
     execution_state: dict[str, Any],
 ) -> dict[str, Any]:
     """Persist a complete success bundle; callers recover if any write fails."""
@@ -917,7 +1155,7 @@ def _finalize_candidate_success(
     )
     selected_gripper = float(after["robot_grippers"][selected_arm])
     observed_outcome = {
-        "schema_version": "paos-robotwin20-observed-route-outcome/v1",
+        "schema_version": "paos-robotwin20-observed-route-outcome/v2",
         "after_snapshot_ref": after_ref["artifact_ref"],
         "target_displacement_m": displacement,
         "target_pose_changed": displacement >= 1e-4,
@@ -925,6 +1163,36 @@ def _finalize_candidate_success(
         "selected_gripper_value": selected_gripper,
         "selected_gripper_open": selected_gripper >= 0.8,
     }
+    tolerance = placement_artifact.get("semantic_tolerance")
+    if not isinstance(tolerance, Mapping) or set(tolerance) != {"target_position_m", "target_orientation_rad"}:
+        raise SimulationProbeError("placement semantic tolerance is unavailable")
+    target_pose = placement_artifact.get("world_T_object_target")
+    if not isinstance(target_pose, list) or len(target_pose) != 16:
+        raise SimulationProbeError("placement target pose is unavailable")
+    target_matrix = [target_pose[index : index + 4] for index in range(0, 16, 4)]
+    actual_position = after["target_pose"]["position_m"]
+    actual_orientation = after["target_pose"]["orientation_wxyz"]
+    target_position = [float(target_matrix[index][3]) for index in range(3)]
+    import numpy as np
+    import transforms3d as t3d
+
+    target_orientation = [
+        float(item)
+        for item in t3d.quaternions.mat2quat(
+            np.asarray([row[:3] for row in target_matrix[:3]], dtype=float)
+        )
+    ]
+    position_error = math.sqrt(sum((float(a) - float(b)) ** 2 for a, b in zip(actual_position, target_position)))
+    orientation_error = _orientation_error_rad(actual_orientation, target_orientation)
+    if position_error > float(tolerance["target_position_m"]) or orientation_error > float(tolerance["target_orientation_rad"]):
+        raise SimulationProbeError("after-state semantic placement verification failed")
+    observed_outcome.update(
+        {
+            "target_position_error_m": position_error,
+            "target_orientation_error_rad": orientation_error,
+            "semantic_verdict": "satisfied",
+        }
+    )
     outcome_ref = _json_artifact(
         artifact_root, prefix + "/observed-outcome", observed_outcome
     )
@@ -1067,6 +1335,9 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
             geometry_path = _artifact_path(artifact_root, geometry_ref)
             if _sha_bytes(geometry_path.read_bytes()) != candidate["attached_object"]["geometry_sha256"]:
                 raise SimulationProbeError("attached geometry artifact digest mismatch")
+            route_input_artifacts = _validate_route_input_artifacts(
+                artifact_root, request, candidate
+            )
             policies = _validate_request_policies(
                 artifact_root,
                 request,
@@ -1131,6 +1402,7 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
             if backend.snapshot().get("scene_revision") != request["scene_revision"]:
                 raise SimulationProbeError("simulation backend revision binding is invalid")
             _label_probe_actors(task)
+            _validate_runtime_route_input_binding(task, candidate, route_input_artifacts)
             start = time.monotonic()
             before = _snapshot(task, request, candidate)
             deadline = start + max_duration_s
@@ -1197,6 +1469,7 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
                 selected_arm=selected_arm,
                 policies=policies,
                 execution_state=execution_state,
+                placement_artifact=route_input_artifacts["placement"],
             )
         except Exception as exc:
             return _recover_candidate_failure(
@@ -1242,6 +1515,7 @@ def main() -> int:
         "worker_id": args.worker_id,
         "runtime_root": str(args.runtime_root.resolve()),
         "runtime_profile": str(args.runtime_profile.resolve()),
+        "runtime_profile_sha256": _sha_bytes(args.runtime_profile.resolve().read_bytes()),
         "task_name": runtime_profile["task_name"],
         "scene_revision": f"{runtime_profile['task_name']}-{runtime_profile['seed']}-1",
         "embodiment_binding": {key: runtime_profile[key] for key in ("robot_identity", "gripper_identity", "embodiment_topology", "planner_profile")},

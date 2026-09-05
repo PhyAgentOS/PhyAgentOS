@@ -71,7 +71,10 @@ def _request(tmp_path: Path) -> dict:
             "entity_ref": "entity://red-block",
             "provenance": ["artifact://blocks/points/red"],
             "execution_grasp": {
-                "contact_tcp_pose": _pose(),
+                "contact_center_pose": _pose(),
+                "robot_target_pose": _pose(),
+                "robot_target_frame": "robotwin_gripper",
+                "robot_target_round_trip_residual_m": 0.0,
                 "ingress_direction": {
                     "frame_id": "world", "vector": [0.0, 0.0, -1.0],
                     "provenance_ref": "artifact://blocks/grasp-adaptation",
@@ -87,13 +90,13 @@ def _request(tmp_path: Path) -> dict:
                 "geometry_sha256": "a" * 64,
                 "object_frame_id": "red-block",
                 "half_extents_m": [0.02, 0.02, 0.02],
-                "object_T_tcp": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-                "transform_provenance_ref": "artifact://blocks/object-t-tcp",
+                "object_T_robot_target": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                "transform_provenance_ref": "artifact://blocks/object-t-robot-target",
             },
             "placement_target": {
                 "target_ref": "destination://blocks/red-slot",
                 "target_object_pose": _pose(0.7),
-                "release_tcp_pose": _pose(0.7),
+                "release_robot_target_pose": _pose(0.7),
                 "provenance_ref": "artifact://blocks/placement-target",
             },
             "route": phases,
@@ -115,7 +118,7 @@ def test_valid_route_request_is_deterministically_bound(tmp_path: Path):
         (lambda r: r["workspace_bounds_m"].update(frame_id="wrist"), "share a frame"),
         (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(position_m=[0, 0, 2]), "workspace"),
         (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(max_linear_speed_mps=0), "positive"),
-        (lambda r: r["candidates"][0]["placement_target"]["release_tcp_pose"].update(position_m=[0.1, 0, 0.7]), "release TCP"),
+        (lambda r: r["candidates"][0]["placement_target"]["release_robot_target_pose"].update(position_m=[0.1, 0, 0.7]), "release RoboTwin target"),
         (lambda r: r["candidates"][0]["route"][6].update(gripper_state="closed"), "gripper state"),
     ],
 )

@@ -70,13 +70,16 @@ def _external(request: dict, root: Path) -> dict:
         }
         snapshots.append(_write_artifact(root, f"snapshot-{index}.json", json.dumps(payload).encode()))
     observed_outcome = {
-        "schema_version": "paos-robotwin20-observed-route-outcome/v1",
+        "schema_version": "paos-robotwin20-observed-route-outcome/v2",
         "after_snapshot_ref": snapshots[1]["artifact_ref"],
         "target_displacement_m": 0.2,
         "target_pose_changed": True,
         "selected_arm": "right",
         "selected_gripper_value": 1.0,
         "selected_gripper_open": True,
+        "target_position_error_m": 0.01,
+        "target_orientation_error_rad": 0.02,
+        "semantic_verdict": "satisfied",
     }
     outcome_record = _write_artifact(
         root,
@@ -151,6 +154,14 @@ def test_external_evidence_fails_closed(tmp_path: Path, mutate, message: str):
     evidence = _external(request, tmp_path)
     mutate(evidence)
     with pytest.raises(RouteEvidenceError, match=message):
+        verify_route_evidence(request, evidence, tmp_path, trusted_producer=TRUSTED)
+
+
+def test_legacy_v1_observed_outcome_is_rejected(tmp_path: Path):
+    request = _request(tmp_path)
+    evidence = _external(request, tmp_path)
+    evidence["observed_outcome"]["schema_version"] = "paos-robotwin20-observed-route-outcome/v1"
+    with pytest.raises(RouteEvidenceError, match="schema is unsupported"):
         verify_route_evidence(request, evidence, tmp_path, trusted_producer=TRUSTED)
 
 

@@ -41,6 +41,8 @@ def request_payload(**overrides):
         "entity_ref": "entity://bottle-1",
         "acquire_invocation_ref": "invocation://object-acquire/placeholder",
         "destination_ref": "destination://bin/primary",
+        "capability_snapshot_ref": "artifact://capabilities/scene-7/snapshot",
+        "assignment_ref": "artifact://assignments/task-1/revision-1/acquire",
     }
     value.update(overrides)
     return value

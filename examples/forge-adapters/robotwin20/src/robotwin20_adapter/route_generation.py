@@ -199,7 +199,7 @@ def generate_route_request(
     placement_target: Mapping[str, Any],
     route_policy: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Generate one v2 route request from explicit adapter-owned projections."""
+    """Generate one v3 route request from explicit adapter-owned projections."""
 
     required_base = {
         "schema_version", "request_id", "observation_ref", "observation_frame_id",
@@ -247,11 +247,25 @@ def generate_route_request(
         raise RouteGenerationError("proposal entity_ref is invalid")
 
     if not isinstance(execution_grasp, Mapping) or set(execution_grasp) != {
-        "contact_tcp_pose", "ingress_direction", "support_clear_direction",
-        "adaptation_provenance_ref",
+        "contact_center_pose", "robot_target_pose", "robot_target_frame",
+        "robot_target_round_trip_residual_m", "ingress_direction",
+        "support_clear_direction", "adaptation_provenance_ref",
     }:
         raise RouteGenerationError("execution_grasp fields are invalid")
-    contact = _pose(execution_grasp["contact_tcp_pose"], route_frame, "contact_tcp_pose")
+    contact_center = _pose(
+        execution_grasp["contact_center_pose"], route_frame, "contact_center_pose"
+    )
+    robot_target = _pose(
+        execution_grasp["robot_target_pose"], route_frame, "robot_target_pose"
+    )
+    if execution_grasp["robot_target_frame"] != "robotwin_gripper":
+        raise RouteGenerationError("execution_grasp robot target frame is unsupported")
+    round_trip_residual = _finite(
+        execution_grasp["robot_target_round_trip_residual_m"],
+        "robot_target_round_trip_residual_m",
+    )
+    if round_trip_residual < 0 or round_trip_residual > 1e-8:
+        raise RouteGenerationError("execution_grasp robot target round-trip is invalid")
     ingress = _direction(execution_grasp["ingress_direction"], route_frame, "ingress_direction")
     support_clear = _direction(
         execution_grasp["support_clear_direction"], route_frame, "support_clear_direction"
@@ -262,10 +276,12 @@ def generate_route_request(
 
     if not isinstance(attached_object, Mapping) or set(attached_object) != {
         "geometry_ref", "geometry_sha256", "object_frame_id", "half_extents_m",
-        "object_T_tcp", "transform_provenance_ref",
+        "object_T_robot_target", "transform_provenance_ref",
     }:
         raise RouteGenerationError("attached_object fields are invalid")
-    object_t_tcp = _matrix(attached_object["object_T_tcp"], "attached_object.object_T_tcp")
+    object_t_robot_target = _matrix(
+        attached_object["object_T_robot_target"], "attached_object.object_T_robot_target"
+    )
     transform_ref = attached_object["transform_provenance_ref"]
     if not isinstance(transform_ref, str) or not transform_ref.startswith("artifact://"):
         raise RouteGenerationError("attached_object transform provenance is invalid")
@@ -288,20 +304,28 @@ def generate_route_request(
     distances = {key: value for key, value in policy.items() if key != "retreat_direction"}
     retreat_direction = policy["retreat_direction"]
 
-    release_tcp = _matrix_pose(_multiply(_pose_matrix(target_object), object_t_tcp), target_object)
-    approach = _offset(contact, -distances["approach_clearance_m"], ingress)
-    lift = _offset(contact, distances["lift_clearance_m"], support_clear)
-    transport = _offset(release_tcp, distances["transport_clearance_m"], support_clear)
-    descent = _offset(release_tcp, distances["descent_clearance_m"], support_clear)
-    retreat = _offset(release_tcp, distances["retreat_distance_m"], retreat_direction)
+    release_robot_target = _matrix_pose(
+        _multiply(_pose_matrix(target_object), object_t_robot_target), target_object
+    )
+    approach = _offset(robot_target, -distances["approach_clearance_m"], ingress)
+    lift = _offset(robot_target, distances["lift_clearance_m"], support_clear)
+    transport = _offset(
+        release_robot_target, distances["transport_clearance_m"], support_clear
+    )
+    descent = _offset(
+        release_robot_target, distances["descent_clearance_m"], support_clear
+    )
+    retreat = _offset(
+        release_robot_target, distances["retreat_distance_m"], retreat_direction
+    )
     route = [
         {"phase": "approach", "waypoints": [approach], "gripper_state": "open"},
-        {"phase": "contact", "waypoints": [contact], "gripper_state": "contact"},
-        {"phase": "close", "waypoints": [contact], "gripper_state": "closed"},
+        {"phase": "contact", "waypoints": [robot_target], "gripper_state": "contact"},
+        {"phase": "close", "waypoints": [robot_target], "gripper_state": "closed"},
         {"phase": "lift", "waypoints": [lift], "gripper_state": "closed"},
         {"phase": "transport", "waypoints": [lift, transport], "gripper_state": "closed"},
-        {"phase": "descent", "waypoints": [descent, release_tcp], "gripper_state": "closed"},
-        {"phase": "release", "waypoints": [release_tcp], "gripper_state": "released"},
+        {"phase": "descent", "waypoints": [descent, release_robot_target], "gripper_state": "closed"},
+        {"phase": "release", "waypoints": [release_robot_target], "gripper_state": "released"},
         {"phase": "retreat", "waypoints": [retreat], "gripper_state": "open"},
     ]
     candidate = {
@@ -309,7 +333,10 @@ def generate_route_request(
         "entity_ref": entity_ref,
         "provenance": deepcopy(provenance),
         "execution_grasp": {
-            "contact_tcp_pose": contact,
+            "contact_center_pose": contact_center,
+            "robot_target_pose": robot_target,
+            "robot_target_frame": "robotwin_gripper",
+            "robot_target_round_trip_residual_m": round_trip_residual,
             "ingress_direction": ingress,
             "support_clear_direction": support_clear,
             "adaptation_provenance_ref": adaptation_ref,
@@ -318,7 +345,7 @@ def generate_route_request(
         "placement_target": {
             "target_ref": target_ref,
             "target_object_pose": target_object,
-            "release_tcp_pose": release_tcp,
+            "release_robot_target_pose": release_robot_target,
             "provenance_ref": target_provenance,
         },
         "route": route,

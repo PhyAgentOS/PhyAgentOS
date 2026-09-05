@@ -89,6 +89,17 @@ planner_profile: curobo
         backend_module.load_runtime_profile(profile_path)
 
 
+def test_runtime_profile_loader_rejects_duplicate_yaml_keys(tmp_path):
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        "schema_version: paos-robotwin20-runtime-profile/v1\n"
+        "schema_version: overwritten\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match="duplicate YAML keys"):
+        backend_module.load_runtime_profile(profile_path)
+
+
 def test_runtime_profile_requires_external_absolute_artifacts(tmp_path):
     profile = backend_module.RoboTwinRuntimeProfile(
         runtime_root=tmp_path,

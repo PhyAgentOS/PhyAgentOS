@@ -253,6 +253,8 @@ def _action_args(acquire_ref=None):
         "preparation_ref": PREPARATION_REF,
         "candidate_ref": CANDIDATE_REF,
         "entity_ref": ENTITY_REF,
+        "capability_snapshot_ref": "artifact://capabilities/scene-7/snapshot",
+        "assignment_ref": "artifact://assignments/task-1/revision-1/acquire",
     }
     if acquire_ref is not None:
         value.update({"acquire_invocation_ref": acquire_ref, "destination_ref": "destination://bin/primary"})

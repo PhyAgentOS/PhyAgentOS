@@ -1,7 +1,9 @@
-"""Calibration-bound conversion from provider grasps to executable TCP poses.
+"""Calibration-bound conversion from provider grasps to RoboTwin targets.
 
-The adapter owns this deterministic frame conversion. It performs no planning,
-simulation, Gateway invocation, or motion authorization.
+The adapter owns two deterministic frame conversions: provider base to the
+GraspGen canonical contact center, then canonical contact center to the
+RoboTwin standard gripper target consumed by ``Robot.*_plan_path``. It performs
+no planning, simulation, Gateway invocation, or motion authorization.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
-GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION = "paos-robotwin20-grasp-adaptation/v1"
+GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION = "paos-robotwin20-grasp-adaptation/v2"
 
 
 class GraspAdaptationError(ValueError):
@@ -67,6 +69,35 @@ def _multiply(left: list[list[float]], right: list[list[float]]) -> list[list[fl
         [sum(left[row][index] * right[index][column] for index in range(4)) for column in range(4)]
         for row in range(4)
     ]
+
+
+def _multiply_rotation(left: list[list[float]], right: list[list[float]]) -> list[list[float]]:
+    return [
+        [sum(left[row][index] * right[index][column] for index in range(3)) for column in range(3)]
+        for row in range(3)
+    ]
+
+
+def _mat_vec(matrix: list[list[float]], vector: list[float]) -> list[float]:
+    return [sum(matrix[row][index] * vector[index] for index in range(3)) for row in range(3)]
+
+
+def _validate_rotation(value: list[list[float]], label: str) -> None:
+    if len(value) != 3 or any(len(row) != 3 for row in value):
+        raise GraspAdaptationError(f"{label} must be a 3x3 rotation")
+    for row in value:
+        if abs(sum(item * item for item in row) - 1.0) > 1e-3:
+            raise GraspAdaptationError(f"{label} rotation is invalid")
+    for left, right in ((value[0], value[1]), (value[0], value[2]), (value[1], value[2])):
+        if abs(sum(a * b for a, b in zip(left, right))) > 1e-3:
+            raise GraspAdaptationError(f"{label} rotation is invalid")
+    determinant = (
+        value[0][0] * (value[1][1] * value[2][2] - value[1][2] * value[2][1])
+        - value[0][1] * (value[1][0] * value[2][2] - value[1][2] * value[2][0])
+        + value[0][2] * (value[1][0] * value[2][1] - value[1][1] * value[2][0])
+    )
+    if determinant <= 0 or abs(determinant - 1.0) > 1e-3:
+        raise GraspAdaptationError(f"{label} rotation is invalid")
 
 
 def _inverse_rigid(value: list[list[float]]) -> list[list[float]]:
@@ -168,9 +199,10 @@ def adapt_grasp_candidate(
     """Convert one bound provider grasp into the route frame without side effects."""
 
     required_profile = {
-        "schema_version", "extrinsic_semantics", "provider_T_tcp",
-        "adaptation_provenance_ref", "support_clear_direction",
-        "max_linear_speed_mps", "max_joint_speed_radps",
+        "schema_version", "extrinsic_semantics", "provider_T_contact_center",
+        "robot_target_frame", "robot_target_reference_distance_m",
+        "robot_gripper_bias_m", "robot_delta_matrix", "adaptation_provenance_ref",
+        "support_clear_direction", "max_linear_speed_mps", "max_joint_speed_radps",
     }
     if not isinstance(profile, Mapping) or set(profile) != required_profile:
         raise GraspAdaptationError("grasp adaptation profile fields are invalid")
@@ -202,8 +234,54 @@ def adapt_grasp_candidate(
     world_from_provider = camera_pose_to_world_matrix(
         grasp_frame, calibration, base_request["observation_frame_id"]
     )
-    provider_to_tcp = _homogeneous(profile["provider_T_tcp"], "provider_T_tcp")
-    world_from_tcp = _multiply(world_from_provider, provider_to_tcp)
+    provider_to_canonical = _homogeneous(
+        profile["provider_T_contact_center"], "provider_T_contact_center"
+    )
+    world_from_canonical = _multiply(world_from_provider, provider_to_canonical)
+
+    robot_target_frame = profile["robot_target_frame"]
+    if robot_target_frame != "robotwin_gripper":
+        raise GraspAdaptationError("robot target frame is unsupported")
+    reference_distance = profile["robot_target_reference_distance_m"]
+    gripper_bias = profile["robot_gripper_bias_m"]
+    for label, value in (
+        ("robot target reference distance", reference_distance),
+        ("robot gripper bias", gripper_bias),
+    ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or float(value) <= 0:
+            raise GraspAdaptationError(f"{label} must be positive")
+    reference_distance = float(reference_distance)
+    gripper_bias = float(gripper_bias)
+    if reference_distance <= gripper_bias:
+        raise GraspAdaptationError("robot target reference distance must exceed gripper bias")
+    robot_delta = _matrix(profile["robot_delta_matrix"], 3, 3, "robot_delta_matrix")
+    _validate_rotation(robot_delta, "robot_delta_matrix")
+    # RoboTwin's _trans_from_gripper_to_endlink maps standard gripper x to
+    # planner/endlink z through this fixed delta.  Reject a different profile
+    # rather than silently using an unverified contact offset.
+    if any(abs(actual - expected) > 1e-6 for actual, expected in zip(
+        [row[0] for row in robot_delta], [0.0, 0.0, 1.0]
+    )):
+        raise GraspAdaptationError("robot_delta_matrix does not bind RoboTwin gripper x to endlink z")
+    canonical_rotation = [row[:3] for row in world_from_canonical[:3]]
+    robot_target_rotation = _multiply_rotation(canonical_rotation, robot_delta)
+    target_offset = _mat_vec(robot_target_rotation, [-reference_distance, 0.0, 0.0])
+    robot_target_position = [
+        world_from_canonical[index][3] + target_offset[index] for index in range(3)
+    ]
+    planner_rotation = _multiply_rotation(robot_target_rotation, [
+        [robot_delta[column][row] for column in range(3)] for row in range(3)
+    ])
+    planner_offset = _mat_vec(robot_target_rotation, [reference_distance - gripper_bias, 0.0, 0.0])
+    planner_position = [robot_target_position[index] + planner_offset[index] for index in range(3)]
+    reconstructed_contact = [
+        planner_position[index] + planner_rotation[index][2] * gripper_bias for index in range(3)
+    ]
+    round_trip_residual = max(
+        abs(reconstructed_contact[index] - world_from_canonical[index][3]) for index in range(3)
+    )
+    if round_trip_residual > 1e-8:
+        raise GraspAdaptationError("RoboTwin target round-trip residual is too large")
 
     approach = proposal["approach_direction"]
     if not isinstance(approach, Mapping) or set(approach) != {"frame_id", "unit", "vector"}:
@@ -236,12 +314,20 @@ def adapt_grasp_candidate(
         speeds[key] = float(value)
 
     return {
-        "contact_tcp_pose": {
+        "contact_center_pose": {
             "frame_id": "world",
-            "position_m": [world_from_tcp[index][3] for index in range(3)],
-            "orientation_xyzw": _rotation_quat([row[:3] for row in world_from_tcp[:3]]),
+            "position_m": [world_from_canonical[index][3] for index in range(3)],
+            "orientation_xyzw": _rotation_quat(canonical_rotation),
             **speeds,
         },
+        "robot_target_pose": {
+            "frame_id": "world",
+            "position_m": robot_target_position,
+            "orientation_xyzw": _rotation_quat(robot_target_rotation),
+            **speeds,
+        },
+        "robot_target_frame": robot_target_frame,
+        "robot_target_round_trip_residual_m": round_trip_residual,
         "ingress_direction": {
             "frame_id": "world",
             "vector": ingress,

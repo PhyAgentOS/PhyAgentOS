@@ -17,6 +17,7 @@ BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 SKILL_NAME = "pick-place-workflow"
 TOOL_IDS = (
     "scene.observe",
+    "manipulation.capabilities",
     "scene.understand",
     "grasp.propose",
     "manipulation.prepare",

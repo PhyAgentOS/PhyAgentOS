@@ -34,12 +34,26 @@ terminal Tool results. `begin_recovery(revision_id)` only rebinds the projection
 after `AgentTaskCoordinator.begin_revision()` has already created the revision.
 This prevents a second task scheduler from competing with PAOS SQLite truth.
 
-The current six nodes form a linear DAG. The schema and tests support multiple
-ready nodes and joins, but the pick-place reducer accepts only the canonical
-version/digest because each semantic node also needs an explicit result-binding
-contract. Actual parallel execution must still be scheduled through PAOS Tool
-records and Gateway concurrency. `depends_on` is not a cross-Tool lease, and the
-reducer is not a Runtime scheduler.
+For multi-resource workflows, a node may declare a symbolic
+`ResourceRequirement` (single, alternative, independent-parallel, or atomic
+group). The Skill planner produces an `ArmAssignment` only after the adapter has
+projected a scene-bound `CapabilitySnapshot` and readiness has evaluated the
+candidate/arm options. The assignment is an auditable no-motion binding; it is
+not a resource lease. Sequential arm switching may use explicit park nodes.
+True simultaneous bimanual work requires one Gateway-owned atomic route bundle
+with one timeline, inter-arm collision scope, cancellation scope, and evidence
+bundle; two independent Action posts must not be treated as synchronized.
+
+The current six nodes form a linear DAG. The action nodes require opaque
+`capability_snapshot_ref` and `assignment_ref` bindings; terminal responses may
+carry them forward, but the reducer never dereferences provider payloads. This
+prevents `object.acquire` or `object.place` from being admitted without an
+adapter-produced, readiness-backed resource assignment. A future atomic
+bimanual node must additionally bind `coordination_group_ref`; until an atomic
+Gateway route provider exists, that mode remains fail-closed. Actual parallel
+execution must still be scheduled through PAOS Tool records and Gateway
+concurrency. `depends_on` is not a cross-Tool lease, and the reducer is not a
+Runtime scheduler.
 
 ## Core Manipulation Projection
 
@@ -52,9 +66,22 @@ reducer is not a Runtime scheduler.
 - `ReplanSignal` is a no-motion recovery hint for the existing PAOS recovery path.
 - `ReplanCoordinator` validates and digests that hint; it never mutates a task.
 
+The core also exposes provider-neutral projections for multi-resource planning:
+`ResourceRequirement` describes symbolic resource semantics, `CapabilitySnapshot`
+binds a profile-owned capability view to one observation/scene revision,
+`ArmAssignment` records a readiness-backed no-motion resource choice, and
+`CoordinationGroup` reserves the identity contract for a future atomic route
+bundle. These objects are projections, not locks, invocations, or motion grants.
+
+The `manipulation.capabilities` Query is the Skill-facing discovery seam. It
+accepts only scene/observation/calibration identity, returns a validated
+`CapabilitySnapshot`, and returns `unavailable` on provider failure or binding
+drift. It has no task, revision, planner, Gateway, or motion side effect.
+
 There is no core `ManipulationDag`, retry lineage, resource lock, route planner, or
 provider branch. Those would duplicate existing PAOS owners or leak embodiment
-policy into the core.
+policy into the core. `ResourceRequirement` is deliberately symbolic; the
+concrete arm is selected by the Skill planner from adapter/readiness evidence.
 
 ## Route Data Model
 
@@ -138,6 +165,14 @@ Use `RouteFailure.owner` to distinguish `input`, `binding`, `planner`, `policy`,
 route digest. All-options failure returns a bounded `ReplanSignal`; stale scenes
 normally request fresh observation and candidate regeneration. Unknown execution
 must be reconciled by its existing invocation ID, never replayed as a new route.
+
+Multi-resource failures additionally use `resource_unavailable`,
+`coordination_conflict`, or `partial_group_failure`. A replan hint preserves the
+current task/revision identity and is consumed by `AgentTaskCoordinator`, which
+alone may append a new `PlanRevision`. Experience may learn assignment ordering,
+candidate ranking, and switching costs from independently verified episodes, but
+may never modify workspace, joint-limit, collision, stop, readiness, or motion
+authority rules.
 
 ## Validation
 

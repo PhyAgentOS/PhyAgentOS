@@ -863,3 +863,96 @@ evidence ref，worker/client 顶层明确拒绝任何 world change。Skill manif
 执行方向没有偏离：下一阶段仍须在新的真实/独立 probe 中取得可审核的物理 lift、完整路线和五项
 readiness evidence，再由人工审核决定是否允许进入 Action/Gateway/Dora wiring。本次 no-motion DAG、
 route contract 和文档测试通过不能替代该证据门禁。
+
+### 32.3 GraspGen depth 到 RoboTwin planner frame 修复（2026-09-05）
+
+v4 preflight 的负证据确认，GraspGen 的 `+0.10527314 m` 是从
+`gripper_base_link` 重建 canonical contact center 的 provider depth，不是可以
+直接加到 RoboTwin `panda_hand` planner pose 的 TCP 偏移。本轮按 PAOS adapter
+边界修复为三层不可混淆的契约：
+
+1. `provider_T_contact_center` 将 GraspGen base 转为 canonical contact center；
+2. profile 声明的 `robot_target_reference_distance_m=0.12`、`robot_gripper_bias_m=0.08`
+   和 RoboTwin `delta_matrix` 将 contact center 转为 `robotwin_gripper` standard target；
+3. route/probe 只使用 `robot_target_pose` 与 `object_T_robot_target`，contact center
+   仅用于 contact-shell 证据和 round-trip 校验。旧的 `contact_tcp_pose`、
+   `object_T_tcp`、`release_tcp_pose` 契约被 v3 route request 拒绝。
+
+专项回归为 `62 passed`；adapter 回归为 `228 passed, 1 skipped`，根仓库回归为
+`168 passed`。PAOS 环境现已安装 NumPy `2.5.2`，Ruff、compileall 和
+`git diff --check` 均通过。
+
+新的不可覆盖 no-motion route/review package 已写入：
+`/home/yanxu/robotwin20-runtime/artifacts/paos-route-inputs-20260905T204500Z/materialized/`。
+它绑定 `blocks_ranking_rgb-0-1`、`candidate://block-green-1/1` 和同一 calibration，
+route schema 为 `paos-robotwin20-route-request/v3`，route digest 为
+`b253fdc0f58a683ca6c73b33853a95f5655af3f0d7af78f8416c03096ed8e85e`，source
+manifest digest 为 `9d4f599d703170fb2a4b24b0b4b7bbb68588d39b8f24c5e0ba2bc4e640fd9b93`。
+review request 仍是 `pending_human_review`、`motion_authorized=false`；v4 digest
+`225151fa...` 和 v4 approval 不可复用。
+
+使用 RoboTwin20 Python 3.10 的连续 no-motion planner preflight 已完成：同一
+scene/calibration/candidate-set 绑定成功，右臂八阶段 planner 全部通过，左臂仍
+`unavailable`；retiming 保持 endpoint，并使速度满足 profile 的 1.0 rad/s 策略，
+robot-control/simulator steps 均为 0。它证明 frame/IK/route/policy seam 可用，不证明
+attached-object collision、真实 lift、完整 transport/descent/release/retreat、接触
+动力学或语义成功。因此当前停止在新的人工审批边界，未运行 simulation probe、Gateway、
+Dora 或硬件。
+
+## 32.4 单 Agent 多执行资源与双臂协同协议自审及实现（2026-09-05）
+
+### 设计自审结论
+
+本轮确认 RoboTwin 的 `x<0 -> left` 只能作为 benchmark 参考策略，不能成为 PAOS
+Agent 的 arm assignment 规则。双臂扩展应建模为“一个认知 Agent、一个 AgentTask、一个
+Skill DAG、多个具身执行资源”，而不是两个独立 AgentTask 或两套生命周期事实。
+
+DAG 只表达语义依赖、可并行分支、join、park 和失败替代关系；它不拥有资源锁、Gateway
+invocation、运动授权或任务 verdict。当前 `blocks_ranking_rgb` 使用
+`alternative_resource`（左右臂可替代），未来真正同步双臂动作才使用
+`atomic_group`，并要求一个 Gateway-owned 原子 route bundle、统一时间轴、双臂互碰检查、
+原子取消和单一 evidence bundle。两次独立 Action POST 不能被视为双臂同步。
+
+### 新增协议边界
+
+- PAOS core 新增 provider-neutral `ResourceRequirement`、`CapabilitySnapshot`、
+  `ArmAssignment`、`CoordinationGroup`；它们是不可变投影，均保持 `motion_authorized=false`，
+  不创建锁、任务、revision 或 invocation。
+- Skill DAG 的 `WorkflowNodeSpec` 可声明符号化资源需求；具体 `arm_id` 只能由 adapter
+  profile 和 readiness-backed route selection 产生。
+- RoboTwin adapter 的 `manipulation-planning.yaml` v2 为每个 arm 声明 base/tool frame、
+  gripper、planner/workspace/joint-limit/park refs 与支持模式；`build_capability_snapshot()`
+  生成绑定 scene/observation/calibration/profile digest 的能力快照。
+- `manipulation.capabilities` 是只读 Query projection；`project_arm_assignment()` 将完整
+  route selection 转换成绑定 capability snapshot、readiness evidence、candidate、route
+  digest 和 rejected alternatives 的 assignment。
+- `ReplanSignal` 增加 `resource_unavailable`、`coordination_conflict` 和
+  `partial_group_failure` 原因；仍由 `AgentTaskCoordinator` 唯一创建新 PlanRevision。
+
+### 自我进化边界
+
+Experience 可以在 Skill/workflow/embodiment 作用域内学习候选排序、arm assignment 偏好、
+切换成本和失败后的重规划策略；只有独立、可归因、经过 semantic verification 的 episode
+才能形成 Lesson 或 Skill candidate。Evolution 不得修改 workspace、joint limits、collision、
+stop、readiness 或 motion authority，也不能把 benchmark 坐标规则写入通用 Skill。
+
+### 协议实现收口
+
+本轮自审发现并修复了一个实际集成缺口：能力快照和 assignment 虽已在 core/adapter
+声明，却没有进入 canonical Skill reducer 与 Action schema 的强绑定。现在：
+
+- `object.acquire` 与 `object.place` 的输入和 terminal result 都严格要求
+  `capability_snapshot_ref`、`assignment_ref`；reducer 会保持它们的 opaque identity，拒绝
+  缺失、非法 scheme 或漂移引用；
+- `manipulation.capabilities` 已进入 pick-place Skill manifest、Tool contract 与 Fake
+  Gateway discovery/query，provider 异常和 snapshot binding drift 均返回 unavailable；
+- Fake Gateway 仅提供确定性的 no-motion replay snapshot，不产生 AgentTask、Gateway
+  invocation 或动作授权；RoboTwin 的真实 assignment 仍必须来自 readiness-backed route
+  selection；
+- `CoordinationGroup` 继续只作为 atomic bimanual 的 fail-closed 协议投影。没有统一时间轴、
+  inter-arm collision、atomic cancel 和单一 evidence bundle 时，不能把两个独立 Action
+  当作同步双臂执行。
+
+专项、Skill 全量和 RoboTwin adapter 全量测试均需在本轮实现后重新运行，再进行架构集成、
+失败路径、权威边界、配置、可维护性五维代码审查；在审查完成前不启动 Gateway、Dora、
+Action、仿真动作或硬件。

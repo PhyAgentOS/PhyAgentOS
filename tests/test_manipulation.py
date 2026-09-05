@@ -3,11 +3,18 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from PhyAgentOS.forge.capability_runtime.manipulation_capabilities import CapabilitySnapshotEndpoint
 from PhyAgentOS.forge.manipulation import (
+    ArmCapability,
+    CapabilitySnapshot,
+    CoordinationGroup,
     CoordinationMode,
     ManipulationIntent,
     ReplanCoordinator,
+    ResourceMode,
+    ResourceRequirement,
     RouteFailure,
+    capability_snapshot_digest,
 )
 
 
@@ -110,3 +117,98 @@ def test_replan_signal_rejects_digest_drift_duplicates_and_empty_actions():
         type(signal).model_validate(
             signal.model_copy(update={"next_actions": ()}).model_dump()
         )
+
+
+def test_resource_requirement_is_symbolic_and_strict():
+    requirement = ResourceRequirement(
+        mode=ResourceMode.ALTERNATIVE_RESOURCE,
+        substitution_allowed=True,
+    )
+    assert requirement.resource_class == "manipulator"
+    with pytest.raises(ValidationError, match="substitution_allowed"):
+        ResourceRequirement(mode=ResourceMode.ALTERNATIVE_RESOURCE)
+    with pytest.raises(ValidationError, match="at least two"):
+        ResourceRequirement(mode=ResourceMode.ATOMIC_GROUP)
+
+
+def _capability_snapshot() -> CapabilitySnapshot:
+    value = {
+        "schema_version": "paos-manipulation-capability-snapshot/v1",
+        "snapshot_ref": "artifact://capabilities/task-1/revision-2",
+        "snapshot_digest": "0" * 64,
+        "scene_revision": "scene-7",
+        "observation_ref": "observation://scene-7/camera_front",
+        "calibration_ref": "artifact://scene-7/calibration",
+        "embodiment_id": "dual-panda",
+        "topology": "dual_independent",
+        "profile_digest": "b" * 64,
+        "captured_at": "2026-09-05T12:00:00+00:00",
+        "arms": (
+            ArmCapability(
+                arm_id="left", base_frame="world", tool_frame="panda_hand",
+                planner_profile_ref="artifact://planner/left",
+                workspace_ref="artifact://workspace/left",
+                joint_limits_ref="artifact://limits/left",
+                gripper_identity="panda-gripper",
+                supported_modes=(ResourceMode.SINGLE_RESOURCE, ResourceMode.ALTERNATIVE_RESOURCE),
+            ),
+            ArmCapability(
+                arm_id="right", base_frame="world", tool_frame="panda_hand",
+                planner_profile_ref="artifact://planner/right",
+                workspace_ref="artifact://workspace/right",
+                joint_limits_ref="artifact://limits/right",
+                gripper_identity="panda-gripper",
+                supported_modes=(ResourceMode.SINGLE_RESOURCE, ResourceMode.ALTERNATIVE_RESOURCE),
+            ),
+        ),
+        "motion_authorized": False,
+    }
+    value["snapshot_digest"] = capability_snapshot_digest(value)
+    return CapabilitySnapshot.model_validate(value)
+
+
+def test_capability_snapshot_binds_scene_and_digest():
+    snapshot = _capability_snapshot()
+    assert snapshot.motion_authorized is False
+    with pytest.raises(ValidationError, match="observation identity"):
+        CapabilitySnapshot.model_validate(
+            snapshot.model_copy(update={"observation_ref": "observation://other/camera"}).model_dump()
+        )
+
+
+def test_coordination_group_requires_atomic_bundle():
+    with pytest.raises(ValidationError, match="timeline and route bundle"):
+        CoordinationGroup(
+            group_ref="artifact://coordination/task-1/group-1",
+            mode=ResourceMode.ATOMIC_GROUP,
+            participant_ids=("left", "right"),
+            scene_revision="scene-7",
+        )
+
+
+def test_capability_snapshot_endpoint_is_query_only_and_fails_closed():
+    snapshot = _capability_snapshot()
+
+    class Provider:
+        def describe(self, request):
+            return snapshot
+
+    endpoint = CapabilitySnapshotEndpoint(Provider())
+    result = endpoint.invoke({
+        "scene_revision": "scene-7",
+        "observation_ref": "observation://scene-7/camera_front",
+        "calibration_ref": "artifact://scene-7/calibration",
+    })
+    assert result["status"] == "available"
+    assert result["motion_authorized"] is False
+    assert endpoint.invoke({"scene_revision": "scene-8"})["status"] == "invalid"
+
+    class Broken:
+        def describe(self, request):
+            raise RuntimeError("unavailable")
+
+    assert CapabilitySnapshotEndpoint(Broken()).invoke({
+        "scene_revision": "scene-7",
+        "observation_ref": "observation://scene-7/camera_front",
+        "calibration_ref": "artifact://scene-7/calibration",
+    })["status"] == "unavailable"

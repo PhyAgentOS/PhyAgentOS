@@ -7,15 +7,22 @@ import math
 import os
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
 from PhyAgentOS.forge.manipulation import (
+    ArmAssignment,
+    ArmCapability,
+    AssignmentAlternative,
+    CapabilitySnapshot,
     CoordinationMode,
     ManipulationIntent,
     ReplanCoordinator,
     ReplanSignal,
     RouteFailure,
+    arm_assignment_digest,
+    capability_snapshot_digest,
 )
 
 from .perception_profile import _read_unique_yaml
@@ -27,7 +34,7 @@ from .route_readiness import (
     validate_route_request,
 )
 
-ARM_PLANNING_PROFILE_SCHEMA_VERSION = "paos-robotwin20-arm-planning/v1"
+ARM_PLANNING_PROFILE_SCHEMA_VERSION = "paos-robotwin20-arm-planning/v2"
 ROUTE_EVALUATION_SCHEMA_VERSION = "paos-robotwin20-route-evaluation/v1"
 ROUTE_SELECTION_SCHEMA_VERSION = "paos-robotwin20-route-selection/v1"
 _OUTCOME_STATUSES = frozenset({"pass", "fail", "unavailable"})
@@ -74,6 +81,50 @@ def load_arm_planning_profile(path: str | os.PathLike[str]) -> dict[str, Any]:
     return dict(profile)
 
 
+def build_capability_snapshot(
+    profile: Mapping[str, Any],
+    *,
+    scene_revision: str,
+    observation_ref: str,
+    calibration_ref: str,
+    profile_digest: str,
+    snapshot_ref: str,
+    captured_at: str | None = None,
+) -> CapabilitySnapshot:
+    """Project an adapter profile into a scene-bound, no-motion capability view."""
+
+    validate_arm_planning_profile(profile)
+    arms = tuple(
+        ArmCapability(
+            arm_id=item["arm_id"],
+            base_frame=item["base_frame"],
+            tool_frame=item["tool_frame"],
+            planner_profile_ref=item["planner_profile_ref"],
+            workspace_ref=item["workspace_ref"],
+            joint_limits_ref=item["joint_limits_ref"],
+            gripper_identity=item["gripper_identity"],
+            supported_modes=tuple(item["supported_modes"]),
+        )
+        for item in profile["arms"]
+    )
+    value: dict[str, Any] = {
+        "schema_version": "paos-manipulation-capability-snapshot/v1",
+        "snapshot_ref": snapshot_ref,
+        "snapshot_digest": "0" * 64,
+        "scene_revision": scene_revision,
+        "observation_ref": observation_ref,
+        "calibration_ref": calibration_ref,
+        "embodiment_id": profile["embodiment_id"],
+        "topology": profile["topology"],
+        "profile_digest": profile_digest,
+        "captured_at": captured_at or datetime.now(timezone.utc).isoformat(),
+        "arms": arms,
+        "motion_authorized": False,
+    }
+    value["snapshot_digest"] = capability_snapshot_digest(value)
+    return CapabilitySnapshot.model_validate(value)
+
+
 def validate_arm_planning_profile(profile: Any) -> None:
     """Validate embodiment-owned arm and deterministic scoring configuration."""
 
@@ -100,16 +151,33 @@ def validate_arm_planning_profile(profile: Any) -> None:
     for arm in arms:
         if not isinstance(arm, Mapping) or set(arm) != {
             "arm_id",
+            "base_frame",
+            "tool_frame",
+            "gripper_identity",
             "planner_profile_ref",
             "workspace_ref",
             "joint_limits_ref",
+            "park_pose_ref",
+            "supported_modes",
         }:
             raise ArmPlanningError("arm planning arm fields are invalid")
         arm_ids.append(_identity(arm["arm_id"], "arm_id"))
-        for field in ("planner_profile_ref", "workspace_ref", "joint_limits_ref"):
+        for field in (
+            "planner_profile_ref", "workspace_ref", "joint_limits_ref", "park_pose_ref"
+        ):
             value = arm[field]
             if not isinstance(value, str) or not value.startswith("artifact://"):
                 raise ArmPlanningError(f"arm planning {field} is invalid")
+        for field in ("base_frame", "tool_frame", "gripper_identity"):
+            _identity(arm[field], f"arm planning {field}")
+        modes = arm["supported_modes"]
+        if (
+            not isinstance(modes, list)
+            or not modes
+            or len(modes) != len(set(modes))
+            or set(modes) - {"single_resource", "alternative_resource", "atomic_group"}
+        ):
+            raise ArmPlanningError("arm planning supported_modes are invalid")
     if len(arm_ids) != len(set(arm_ids)):
         raise ArmPlanningError("arm planning arm identities must be unique")
     expected_arm_count = 1 if profile["topology"] == "single_arm" else 2
@@ -375,6 +443,7 @@ class CompleteRouteSelector:
             "world_change_started": False,
         }
 
+
     @staticmethod
     def _validate_base_request(
         intent: ManipulationIntent,
@@ -570,6 +639,106 @@ class CompleteRouteSelector:
         return normalized
 
 
+def project_arm_assignment(
+    intent: ManipulationIntent,
+    capability_snapshot: CapabilitySnapshot,
+    selection: Mapping[str, Any],
+) -> ArmAssignment:
+    """Convert one readiness-backed selection into an Agent-facing assignment."""
+
+    if not isinstance(intent, ManipulationIntent):
+        raise TypeError("arm assignment requires a ManipulationIntent")
+    if not isinstance(capability_snapshot, CapabilitySnapshot):
+        raise TypeError("arm assignment requires a CapabilitySnapshot")
+    if not isinstance(selection, Mapping) or selection.get("status") != "selected":
+        raise ArmPlanningError("arm assignment requires a selected route")
+    bindings = {
+        "task_id": intent.task_id,
+        "revision_id": intent.revision_id,
+        "node_id": intent.node_id,
+        "node_digest": intent.node_digest,
+        "entity_ref": intent.entity_ref,
+        "observation_ref": intent.observation_ref,
+        "scene_revision": intent.scene_revision,
+        "calibration_ref": intent.calibration_ref,
+        "candidate_set_ref": intent.candidate_set_ref,
+    }
+    if any(selection.get(key) != value for key, value in bindings.items()):
+        raise ArmPlanningError("route selection does not match manipulation intent")
+    if (
+        capability_snapshot.scene_revision != intent.scene_revision
+        or capability_snapshot.observation_ref != intent.observation_ref
+        or capability_snapshot.calibration_ref != intent.calibration_ref
+    ):
+        raise ArmPlanningError("capability snapshot does not match manipulation intent")
+    selected_arm_ids = tuple(selection.get("arm_ids", ()))
+    available = {
+        arm.arm_id
+        for arm in capability_snapshot.arms
+        if arm.availability == "available"
+    }
+    if not selected_arm_ids or not set(selected_arm_ids) <= available:
+        raise ArmPlanningError("selected arms are unavailable in capability snapshot")
+    required_mode = {
+        CoordinationMode.SINGLE_ARM: "single_resource",
+        CoordinationMode.ALTERNATIVE_ARM: "alternative_resource",
+        CoordinationMode.BIMANUAL: "atomic_group",
+    }[intent.coordination_mode]
+    arm_by_id = {arm.arm_id: arm for arm in capability_snapshot.arms}
+    if any(
+        required_mode not in {mode.value for mode in arm_by_id[arm_id].supported_modes}
+        for arm_id in selected_arm_ids
+    ):
+        raise ArmPlanningError("selected arms do not support the intent coordination mode")
+    evidence_refs = selection.get("evidence_refs")
+    if not isinstance(evidence_refs, list) or not evidence_refs:
+        raise ArmPlanningError("route selection has no readiness evidence")
+    rejected = selection.get("rejected_routes")
+    if not isinstance(rejected, list):
+        raise ArmPlanningError("route selection rejected_routes are invalid")
+    alternatives_list: list[AssignmentAlternative] = []
+    for item in rejected:
+        if (
+            not isinstance(item, Mapping)
+            or not isinstance(item.get("arm_ids"), (list, tuple))
+            or not isinstance(item.get("candidate_ref"), str)
+            or not isinstance(item.get("owner"), str)
+            or not isinstance(item.get("code"), str)
+        ):
+            raise ArmPlanningError("route selection rejected route is malformed")
+        alternatives_list.append(
+            AssignmentAlternative(
+                arm_ids=tuple(item["arm_ids"]),
+                candidate_ref=item["candidate_ref"],
+                reason=f"{item['owner']}:{item['code']}",
+            )
+        )
+    alternatives = tuple(alternatives_list)
+    value: dict[str, Any] = {
+        "schema_version": "paos-arm-assignment/v1",
+        "assignment_ref": (
+            f"artifact://assignments/{intent.task_id}/{intent.revision_id}/{intent.node_id}"
+        ),
+        "assignment_digest": "0" * 64,
+        **bindings,
+        "coordination_mode": intent.coordination_mode,
+        "selected_arm_ids": selected_arm_ids,
+        "candidate_ref": selection.get("candidate_ref"),
+        "route_digest": selection.get("route_geometry_digest"),
+        "capability_snapshot_ref": capability_snapshot.snapshot_ref,
+        "readiness_evidence_ref": evidence_refs[0],
+        "decision_basis": (
+            "complete_route_readiness",
+            "workspace_and_joint_limits",
+            "configured_route_score",
+        ),
+        "alternatives": alternatives,
+        "motion_authorized": False,
+    }
+    value["assignment_digest"] = arm_assignment_digest(value)
+    return ArmAssignment.model_validate(value)
+
+
 __all__ = [
     "ARM_PLANNING_PROFILE_SCHEMA_VERSION",
     "ROUTE_EVALUATION_SCHEMA_VERSION",
@@ -577,7 +746,9 @@ __all__ = [
     "ArmPlanningError",
     "CompleteRouteSelector",
     "RouteReadinessProvider",
+    "build_capability_snapshot",
     "enumerate_arm_candidates",
     "load_arm_planning_profile",
+    "project_arm_assignment",
     "validate_arm_planning_profile",
 ]

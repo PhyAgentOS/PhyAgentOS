@@ -20,8 +20,10 @@ from robotwin20_adapter import (
     ProcessWorkerConfig,
     RouteReadinessClient,
     RouteReadinessEvaluationAdapter,
+    build_capability_snapshot,
     enumerate_arm_candidates,
     load_arm_planning_profile,
+    project_arm_assignment,
     validate_arm_planning_profile,
 )
 from robotwin20_adapter.route_readiness import (
@@ -38,8 +40,8 @@ def _profile() -> dict:
         "topology": "dual_independent",
         "route_frame_id": "world",
         "arms": [
-            {"arm_id": "left", "planner_profile_ref": "artifact://planner/left", "workspace_ref": "artifact://workspace/left", "joint_limits_ref": "artifact://limits/left"},
-            {"arm_id": "right", "planner_profile_ref": "artifact://planner/right", "workspace_ref": "artifact://workspace/right", "joint_limits_ref": "artifact://limits/right"},
+            {"arm_id": "left", "base_frame": "world", "tool_frame": "panda_hand", "gripper_identity": "panda-gripper", "planner_profile_ref": "artifact://planner/left", "workspace_ref": "artifact://workspace/left", "joint_limits_ref": "artifact://limits/left", "park_pose_ref": "artifact://park/left", "supported_modes": ["single_resource", "alternative_resource"]},
+            {"arm_id": "right", "base_frame": "world", "tool_frame": "panda_hand", "gripper_identity": "panda-gripper", "planner_profile_ref": "artifact://planner/right", "workspace_ref": "artifact://workspace/right", "joint_limits_ref": "artifact://limits/right", "park_pose_ref": "artifact://park/right", "supported_modes": ["single_resource", "alternative_resource"]},
         ],
         "route_policy": {
             "approach_clearance_m": 0.08,
@@ -337,3 +339,28 @@ def test_selector_rejects_stale_base_request_without_calling_provider():
 
     with pytest.raises(ArmPlanningError, match="does not match"):
         CompleteRouteSelector(NoCall(), _profile()).select(_intent(), request, options)
+
+
+def test_capability_snapshot_and_assignment_bind_selected_route():
+    profile = _profile()
+    snapshot = build_capability_snapshot(
+        profile,
+        scene_revision=_intent().scene_revision,
+        observation_ref=_intent().observation_ref,
+        calibration_ref=_intent().calibration_ref,
+        profile_digest="b" * 64,
+        snapshot_ref="artifact://capabilities/task-1/revision-1",
+        captured_at="2026-09-05T12:00:00+00:00",
+    )
+    request = _request(Path("/tmp"))
+    options = enumerate_arm_candidates(_intent(), [dict(request["candidates"][0])], profile)
+    selected = CompleteRouteSelector(
+        lambda route_request, option: _result(route_request, option), profile
+    ).select(_intent(), request, options)
+    assignment = project_arm_assignment(_intent(), snapshot, selected)
+    assert assignment.selected_arm_ids == ("left",)
+    assert assignment.motion_authorized is False
+    tampered = dict(selected)
+    tampered["scene_revision"] = "stale"
+    with pytest.raises(ArmPlanningError, match="does not match"):
+        project_arm_assignment(_intent(), snapshot, tampered)

@@ -18,6 +18,8 @@ from pick_place_workflow.long_horizon import (
 OBS = "observation://scene-7/camera_front"
 CSET = "candidate-set://scene-7/camera_front"
 PREP = "preparation://scene-7/camera_front"
+CAP = "artifact://capabilities/scene-7/snapshot"
+ASSIGN = "artifact://assignments/task-1/revision-1/acquire"
 
 
 def test_start_exposes_only_declared_next_tool_and_immutable_steps():
@@ -48,6 +50,8 @@ def test_skill_dag_projects_dependencies_without_execution():
     assert WORKFLOW_DAG.nodes[-1].depends_on == ("acquire",)
     assert not hasattr(WORKFLOW_DAG, "execute")
     assert not hasattr(WORKFLOW_DAG, "begin_revision")
+    assert WORKFLOW_DAG.nodes[4].resource_requirement.mode.value == "alternative_resource"
+    assert WORKFLOW_DAG.nodes[4].resource_requirement.substitution_allowed is True
 
 
 def test_dag_schema_projects_parallel_ready_nodes_and_waits_for_join():
@@ -171,6 +175,8 @@ def test_complete_chain_requires_terminal_success_and_preserves_references():
             "observation_ref": OBS,
             "candidate_set_ref": CSET,
             "preparation_ref": PREP,
+            "capability_snapshot_ref": CAP,
+            "assignment_ref": ASSIGN,
             "invocation_ref": "invocation://object-acquire/a1",
         },
     )
@@ -181,6 +187,8 @@ def test_complete_chain_requires_terminal_success_and_preserves_references():
             "observation_ref": OBS,
             "candidate_set_ref": CSET,
             "preparation_ref": PREP,
+            "capability_snapshot_ref": CAP,
+            "assignment_ref": ASSIGN,
             "acquire_invocation_ref": "invocation://object-acquire/a1",
             "invocation_ref": "invocation://object-place/p1",
             "destination_ref": "destination://bin/primary",
@@ -239,17 +247,35 @@ def test_prepare_acquire_and_place_require_their_bound_references():
         workflow.record("acquire", "succeeded", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP})
 
 
+def test_action_steps_require_capability_snapshot_and_assignment_bindings():
+    workflow = LongHorizonWorkflow.start("task-1", "revision-1")
+    workflow.record("observe", "available", {"observation_ref": OBS})
+    workflow.record("understand", "available", {"observation_ref": OBS})
+    workflow.record("propose", "available", {"observation_ref": OBS, "candidate_set_ref": CSET})
+    workflow.record("prepare", "available", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP})
+    with pytest.raises(WorkflowBindingError, match="capability_snapshot_ref"):
+        workflow.record("acquire", "succeeded", {
+            "observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP,
+            "assignment_ref": ASSIGN, "invocation_ref": "invocation://object-acquire/a1",
+        })
+    with pytest.raises(WorkflowBindingError, match="assignment_ref"):
+        workflow.record("acquire", "succeeded", {
+            "observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP,
+            "capability_snapshot_ref": CAP, "invocation_ref": "invocation://object-acquire/a1",
+        })
+
+
 def test_place_requires_the_same_acquire_and_post_release_evidence():
     workflow = LongHorizonWorkflow.start("task-1", "revision-1")
     workflow.record("observe", "available", {"observation_ref": OBS})
     workflow.record("understand", "available", {"observation_ref": OBS})
     workflow.record("propose", "available", {"observation_ref": OBS, "candidate_set_ref": CSET})
     workflow.record("prepare", "available", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP})
-    workflow.record("acquire", "succeeded", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "invocation_ref": "invocation://object-acquire/a1"})
+    workflow.record("acquire", "succeeded", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "capability_snapshot_ref": CAP, "assignment_ref": ASSIGN, "invocation_ref": "invocation://object-acquire/a1"})
     with pytest.raises(WorkflowBindingError, match="differs from acquire"):
-        workflow.record("place", "succeeded", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "acquire_invocation_ref": "invocation://object-acquire/a2", "invocation_ref": "invocation://object-place/p1", "destination_ref": "destination://bin/primary", "post_release_evidence_ref": "artifact://place-7/post-release"})
+        workflow.record("place", "succeeded", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "capability_snapshot_ref": CAP, "assignment_ref": ASSIGN, "acquire_invocation_ref": "invocation://object-acquire/a2", "invocation_ref": "invocation://object-place/p1", "destination_ref": "destination://bin/primary", "post_release_evidence_ref": "artifact://place-7/post-release"})
     with pytest.raises(WorkflowBindingError, match="post_release_evidence_ref"):
-        workflow.record("place", "succeeded", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "acquire_invocation_ref": "invocation://object-acquire/a1", "invocation_ref": "invocation://object-place/p1", "destination_ref": "destination://bin/primary"})
+        workflow.record("place", "succeeded", {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "capability_snapshot_ref": CAP, "assignment_ref": ASSIGN, "acquire_invocation_ref": "invocation://object-acquire/a1", "invocation_ref": "invocation://object-place/p1", "destination_ref": "destination://bin/primary"})
 
 
 def test_terminal_response_adapter_preserves_place_evidence_and_identity():
@@ -258,8 +284,8 @@ def test_terminal_response_adapter_preserves_place_evidence_and_identity():
     workflow.record_terminal_response("understand", {"status": "available", "result": {"observation_ref": OBS}})
     workflow.record_terminal_response("propose", {"status": "available", "result": {"observation_ref": OBS, "candidate_set_ref": CSET}})
     workflow.record_terminal_response("prepare", {"status": "available", "result": {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP}})
-    workflow.record_terminal_response("acquire", {"status": "succeeded", "invocation_id": "invocation://object-acquire/a1", "result": {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP}})
-    state = workflow.record_terminal_response("place", {"status": "succeeded", "invocation_id": "invocation://object-place/p1", "result": {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "acquire_invocation_ref": "invocation://object-acquire/a1", "destination_ref": "destination://bin/primary", "capability_outcome_summary": {"post_release_evidence": {"availability": "complete", "artifact_refs": ["artifact://place-7/post-release"]}}}})
+    workflow.record_terminal_response("acquire", {"status": "succeeded", "invocation_id": "invocation://object-acquire/a1", "result": {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "capability_snapshot_ref": CAP, "assignment_ref": ASSIGN}})
+    state = workflow.record_terminal_response("place", {"status": "succeeded", "invocation_id": "invocation://object-place/p1", "result": {"observation_ref": OBS, "candidate_set_ref": CSET, "preparation_ref": PREP, "capability_snapshot_ref": CAP, "assignment_ref": ASSIGN, "acquire_invocation_ref": "invocation://object-acquire/a1", "destination_ref": "destination://bin/primary", "capability_outcome_summary": {"post_release_evidence": {"availability": "complete", "artifact_refs": ["artifact://place-7/post-release"]}}}})
     assert state.status == "succeeded"
     assert state.steps[-1].references["post_release_evidence_ref"] == "artifact://place-7/post-release"
 

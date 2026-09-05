@@ -10,6 +10,8 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Literal
 
+from PhyAgentOS.forge.manipulation import ResourceMode, ResourceRequirement
+
 WORKFLOW_ID = "pick-and-place"
 WORKFLOW_VERSION = "pick_and_place_workflow_v2"
 WORKFLOW_DAG_VERSION = "pick_and_place_semantic_dag_v1"
@@ -30,6 +32,9 @@ _KNOWN_BINDINGS = {
     "invocation_ref",
     "destination_ref",
     "post_release_evidence_ref",
+    "capability_snapshot_ref",
+    "assignment_ref",
+    "coordination_group_ref",
 }
 
 _QUERY_SUCCESS = {"available"}
@@ -54,6 +59,7 @@ class WorkflowNodeSpec:
     semantics: Literal["query", "action"]
     depends_on: tuple[str, ...] = ()
     required_bindings: tuple[str, ...] = ()
+    resource_requirement: ResourceRequirement | None = None
     node_digest: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -83,6 +89,10 @@ class WorkflowNodeSpec:
             "semantics": self.semantics,
             "depends_on": list(self.depends_on),
             "required_bindings": list(self.required_bindings),
+            "resource_requirement": (
+                self.resource_requirement.model_dump(mode="json")
+                if self.resource_requirement is not None else None
+            ),
         }
         object.__setattr__(
             self,
@@ -183,7 +193,14 @@ WORKFLOW_DAG = WorkflowDag(
             "object.acquire",
             "action",
             ("prepare",),
-            ("observation_ref", "candidate_set_ref", "preparation_ref", "invocation_ref"),
+            (
+                "observation_ref", "candidate_set_ref", "preparation_ref",
+                "capability_snapshot_ref", "assignment_ref", "invocation_ref",
+            ),
+            ResourceRequirement(
+                mode=ResourceMode.ALTERNATIVE_RESOURCE,
+                substitution_allowed=True,
+            ),
         ),
         WorkflowNodeSpec(
             "place",
@@ -198,6 +215,12 @@ WORKFLOW_DAG = WorkflowDag(
                 "invocation_ref",
                 "destination_ref",
                 "post_release_evidence_ref",
+                "capability_snapshot_ref",
+                "assignment_ref",
+            ),
+            ResourceRequirement(
+                mode=ResourceMode.ALTERNATIVE_RESOURCE,
+                substitution_allowed=True,
             ),
         ),
     ),
@@ -263,6 +286,9 @@ def _references_dict(references: Mapping[str, Any]) -> dict[str, str]:
         "invocation_ref",
         "destination_ref",
         "post_release_evidence_ref",
+        "capability_snapshot_ref",
+        "assignment_ref",
+        "coordination_group_ref",
     }
     if set(references) - allowed:
         raise WorkflowBindingError("workflow references contain an unknown field")
@@ -419,7 +445,10 @@ class LongHorizonWorkflow:
         if not isinstance(status, str):
             raise WorkflowBindingError("terminal response status is required")
         refs: dict[str, str] = {}
-        for key in ("observation_ref", "candidate_set_ref", "preparation_ref", "destination_ref"):
+        for key in (
+            "observation_ref", "candidate_set_ref", "preparation_ref", "destination_ref",
+            "capability_snapshot_ref", "assignment_ref", "coordination_group_ref",
+        ):
             value = result.get(key)
             if isinstance(value, str):
                 refs[key] = value
@@ -544,6 +573,10 @@ class LongHorizonWorkflow:
                 raise WorkflowBindingError("candidate_set_ref is not bound to the observation")
             if step_id != "propose" and candidate_set_ref != self._step("propose").references.get("candidate_set_ref"):
                 raise WorkflowBindingError("candidate_set_ref differs from grasp.propose")
+        if step_id in {"acquire", "place"}:
+            capability_ref = refs.get("capability_snapshot_ref")
+            if capability_ref is None or _ARTIFACT_REF.fullmatch(capability_ref) is None:
+                raise WorkflowBindingError("step requires a valid capability_snapshot_ref")
         if step_id in {"prepare", "acquire", "place"}:
             if refs.get("preparation_ref") is None:
                 raise WorkflowBindingError("this step requires a preparation_ref")
@@ -555,17 +588,21 @@ class LongHorizonWorkflow:
             if step_id != "prepare" and preparation_ref != self._step("prepare").references.get("preparation_ref"):
                 raise WorkflowBindingError("preparation_ref differs from manipulation.prepare")
         if step_id == "acquire":
+            if _ARTIFACT_REF.fullmatch(refs.get("assignment_ref", "")) is None:
+                raise WorkflowBindingError("acquire requires a valid assignment_ref")
             acquire_ref = refs.get("invocation_ref")
             if acquire_ref is None or _ACQUIRE_INVOCATION_REF.fullmatch(acquire_ref) is None:
                 raise WorkflowBindingError("acquire requires an object.acquire invocation_ref")
         if step_id == "place":
+            if _ARTIFACT_REF.fullmatch(refs.get("assignment_ref", "")) is None:
+                raise WorkflowBindingError("place requires a valid assignment_ref")
             acquire_ref = refs.get("acquire_invocation_ref")
             place_ref = refs.get("invocation_ref")
             if acquire_ref is None or _ACQUIRE_INVOCATION_REF.fullmatch(acquire_ref) is None:
                 raise WorkflowBindingError("place requires the successful acquire invocation")
             if place_ref is None or _PLACE_INVOCATION_REF.fullmatch(place_ref) is None:
                 raise WorkflowBindingError("place requires an object.place invocation_ref")
-            if acquire_ref != self._state.steps[4].references.get("invocation_ref"):
+            if acquire_ref != self._step("acquire").references.get("invocation_ref"):
                 raise WorkflowBindingError("place acquire_invocation_ref differs from acquire")
             if refs.get("destination_ref") is None or _DESTINATION_REF.fullmatch(refs["destination_ref"]) is None:
                 raise WorkflowBindingError("place requires an opaque destination_ref")

@@ -6,6 +6,7 @@ skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
 required_tools:
   - scene.observe
+  - manipulation.capabilities
   - scene.understand
   - grasp.propose
   - manipulation.prepare

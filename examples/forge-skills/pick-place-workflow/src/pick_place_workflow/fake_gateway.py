@@ -11,6 +11,19 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 import httpx
+from PhyAgentOS.forge.capability_runtime.manipulation_capabilities import (
+    CAPABILITY_ENDPOINT_ID,
+    CAPABILITY_OPERATION,
+    CAPABILITY_TOOL_ID,
+    CAPABILITY_TOOL_SPEC,
+    CapabilitySnapshotEndpoint,
+)
+from PhyAgentOS.forge.manipulation import (
+    ArmCapability,
+    CapabilitySnapshot,
+    ResourceMode,
+    capability_snapshot_digest,
+)
 
 from .grasp_proposal import (
     GRASP_ENDPOINT_ID,
@@ -66,6 +79,50 @@ ENDPOINT_ID = "scene_observation"
 OPERATION = "observe"
 _ARTIFACT_REF = re.compile(r"^artifact://[^/]+/.+$")
 _OBSERVATION_REF = re.compile(r"^observation://[^/]+/[^/]+$")
+
+
+class _StaticCapabilityProvider:
+    """Deterministic no-motion replay provider used by the Fake Gateway."""
+
+    def describe(self, request: dict[str, Any]) -> CapabilitySnapshot:
+        scene = request["scene_revision"]
+        value: dict[str, Any] = {
+            "schema_version": "paos-manipulation-capability-snapshot/v1",
+            "snapshot_ref": f"artifact://capabilities/{scene}/snapshot",
+            "snapshot_digest": "0" * 64,
+            "scene_revision": scene,
+            "observation_ref": request["observation_ref"],
+            "calibration_ref": request["calibration_ref"],
+            "embodiment_id": "fake-dual-manipulator",
+            "topology": "dual_independent",
+            "profile_digest": "0" * 64,
+            "captured_at": "2026-01-01T00:00:00+00:00",
+            "arms": (
+                ArmCapability(
+                    arm_id="left",
+                    base_frame="world",
+                    tool_frame="tool_left",
+                    planner_profile_ref="artifact://profiles/fake/left-planner",
+                    workspace_ref="artifact://profiles/fake/left-workspace",
+                    joint_limits_ref="artifact://profiles/fake/left-limits",
+                    gripper_identity="fake-gripper",
+                    supported_modes=(ResourceMode.ALTERNATIVE_RESOURCE,),
+                ),
+                ArmCapability(
+                    arm_id="right",
+                    base_frame="world",
+                    tool_frame="tool_right",
+                    planner_profile_ref="artifact://profiles/fake/right-planner",
+                    workspace_ref="artifact://profiles/fake/right-workspace",
+                    joint_limits_ref="artifact://profiles/fake/right-limits",
+                    gripper_identity="fake-gripper",
+                    supported_modes=(ResourceMode.ALTERNATIVE_RESOURCE,),
+                ),
+            ),
+            "motion_authorized": False,
+        }
+        value["snapshot_digest"] = capability_snapshot_digest(value)
+        return CapabilitySnapshot.model_validate(value)
 
 
 class ObservationProvider(Protocol):
@@ -271,6 +328,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         preparation_provider: PreparationProvider | None = None,
         acquire_provider: AcquireProvider | None = None,
         place_provider: PlaceProvider | None = None,
+        capability_provider: Any | None = None,
         readiness_gate: ActionReadinessGate | None = None,
         defer_action_execution: bool = False,
         now: datetime | None = None,
@@ -299,6 +357,9 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             if place_provider is not None
             else None
         )
+        self.capability_endpoint = CapabilitySnapshotEndpoint(
+            capability_provider if capability_provider is not None else _StaticCapabilityProvider()
+        )
         if not isinstance(defer_action_execution, bool):
             raise TypeError("defer_action_execution must be boolean")
         self.defer_action_execution = defer_action_execution
@@ -313,6 +374,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                 {
                     "tools": [
                         TOOL_SPEC,
+                        CAPABILITY_TOOL_SPEC,
                         UNDERSTANDING_TOOL_SPEC,
                         GRASP_TOOL_SPEC,
                         MANIPULATION_TOOL_SPEC,
@@ -332,6 +394,15 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                     **TOOL_SPEC["robot_frame_profile"],
                 }
             )
+        if request.method == "GET" and path == f"/tools/{CAPABILITY_TOOL_ID}":
+            return self._ok(CAPABILITY_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{CAPABILITY_TOOL_ID}/context":
+            return self._ok({
+                "ready": True,
+                "binding_error": None,
+                "motion_authorized": False,
+                **CAPABILITY_TOOL_SPEC["robot_frame_profile"],
+            })
         if request.method == "GET" and path == f"/tools/{UNDERSTANDING_TOOL_ID}":
             return self._ok(UNDERSTANDING_TOOL_SPEC)
         if request.method == "GET" and path == f"/tools/{UNDERSTANDING_TOOL_ID}/context":
@@ -419,6 +490,8 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             )
         if request.method == "POST" and path == f"/tools/{ENDPOINT_ID}/{OPERATION}:invoke":
             return self._invoke(request)
+        if request.method == "POST" and path == f"/tools/{CAPABILITY_ENDPOINT_ID}/{CAPABILITY_OPERATION}:invoke":
+            return self._invoke_capability(request)
         if (
             request.method == "POST"
             and path == f"/tools/{UNDERSTANDING_ENDPOINT_ID}/{UNDERSTANDING_OPERATION}:invoke"
@@ -453,6 +526,14 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             return self._fail(400, "invalid_json", "request body must be JSON")
         arguments = payload.get("arguments") if isinstance(payload, dict) else None
         return self._ok(self.endpoint.invoke(arguments))
+
+    def _invoke_capability(self, request: httpx.Request) -> httpx.Response:
+        try:
+            payload = json.loads(request.content or b"{}")
+        except json.JSONDecodeError:
+            return self._fail(400, "invalid_json", "request body must be JSON")
+        arguments = payload.get("arguments") if isinstance(payload, dict) else None
+        return self._ok(self.capability_endpoint.invoke(arguments))
 
     def _invoke_understanding(self, request: httpx.Request) -> httpx.Response:
         try:

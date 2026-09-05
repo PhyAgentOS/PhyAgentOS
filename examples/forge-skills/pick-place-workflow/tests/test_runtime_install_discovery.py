@@ -14,6 +14,7 @@ from PhyAgentOS.skill_runtime.state import RuntimeState, RuntimeStateStore
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_TOOLS = {
     "scene.observe",
+    "manipulation.capabilities",
     "scene.understand",
     "grasp.propose",
     "manipulation.prepare",

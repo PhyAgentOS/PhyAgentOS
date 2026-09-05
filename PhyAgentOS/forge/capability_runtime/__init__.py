@@ -9,6 +9,14 @@ from .grasp_proposal import (
     normalize_snapshot as normalize_grasp_snapshot,
 )
 from .http_transport import CapabilityRuntimeTransport
+from .manipulation_capabilities import (
+    CAPABILITY_ENDPOINT_ID,
+    CAPABILITY_OPERATION,
+    CAPABILITY_TOOL_ID,
+    CAPABILITY_TOOL_SPEC,
+    CapabilitySnapshotEndpoint,
+    CapabilitySnapshotProvider,
+)
 from .manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     ManipulationPreparationEndpoint,
@@ -60,6 +68,12 @@ __all__ = [
     "normalize_grasp_snapshot",
     "GRASP_PROPOSAL_TOOL_SPEC",
     "MANIPULATION_TOOL_SPEC",
+    "CAPABILITY_ENDPOINT_ID",
+    "CAPABILITY_OPERATION",
+    "CAPABILITY_TOOL_ID",
+    "CAPABILITY_TOOL_SPEC",
+    "CapabilitySnapshotEndpoint",
+    "CapabilitySnapshotProvider",
     "ManipulationPreparationEndpoint",
     "ObservationContractError",
     "ObservationEndpoint",

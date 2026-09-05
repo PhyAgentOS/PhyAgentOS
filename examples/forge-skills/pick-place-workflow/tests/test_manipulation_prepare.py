@@ -147,6 +147,7 @@ async def test_prepare_is_discovered_after_the_proposal_query():
         context = await client.get_tool_context(PREPARATION_TOOL_ID)
     assert [item["tool_id"] for item in tools["data"]["tools"]] == [
         "scene.observe",
+        "manipulation.capabilities",
         "scene.understand",
         "grasp.propose",
         "manipulation.prepare",

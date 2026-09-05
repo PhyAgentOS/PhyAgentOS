@@ -105,6 +105,8 @@ _INPUT_KEYS = {
     "preparation_ref",
     "candidate_ref",
     "entity_ref",
+    "capability_snapshot_ref",
+    "assignment_ref",
 }
 
 
@@ -148,6 +150,8 @@ def _terminal_result_schema() -> dict[str, Any]:
             "preparation_ref",
             "candidate_ref",
             "entity_ref",
+            "capability_snapshot_ref",
+            "assignment_ref",
             "capability_outcome_summary",
         ],
         "properties": {
@@ -177,6 +181,8 @@ def _terminal_result_schema() -> dict[str, Any]:
             },
             "candidate_ref": {"type": "string", "pattern": r"^candidate://[^/]+/.+$"},
             "entity_ref": {"type": "string", "pattern": r"^entity://[^/]+$"},
+            "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+            "assignment_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
             "capability_outcome_summary": _summary_schema(),
         },
     }
@@ -206,6 +212,8 @@ ACQUIRE_TOOL_SPEC: dict[str, Any] = {
             "preparation_ref",
             "candidate_ref",
             "entity_ref",
+            "capability_snapshot_ref",
+            "assignment_ref",
         ],
         "properties": {
             "observation_ref": {"type": "string", "pattern": r"^observation://[^/]+/[^/]+$"},
@@ -221,6 +229,8 @@ ACQUIRE_TOOL_SPEC: dict[str, Any] = {
             "preparation_ref": {"type": "string", "pattern": r"^preparation://[^/]+/.+$"},
             "candidate_ref": {"type": "string", "pattern": r"^candidate://[^/]+/.+$"},
             "entity_ref": {"type": "string", "pattern": r"^entity://[^/]+$"},
+            "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+            "assignment_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
         },
     },
     "output_schema": {
@@ -289,6 +299,10 @@ def validate_arguments(arguments: Any) -> str | None:
     candidate_ref = arguments.get("candidate_ref")
     if not isinstance(candidate_ref, str) or _CANDIDATE_REF.fullmatch(candidate_ref) is None:
         return "invalid_candidate_ref"
+    for name in ("capability_snapshot_ref", "assignment_ref"):
+        value = arguments.get(name)
+        if not isinstance(value, str) or _ARTIFACT_REF.fullmatch(value) is None:
+            return f"invalid_{name}"
     entity_ref = arguments.get("entity_ref")
     if not isinstance(entity_ref, str) or _ENTITY_REF.fullmatch(entity_ref) is None:
         return "invalid_entity_ref"
@@ -315,6 +329,8 @@ def _error_message(code: str) -> str:
         "invalid_preparation_ref": "preparation_ref must use preparation:// scheme",
         "invalid_preparation_binding": "preparation_ref must match scene_revision and frame_id",
         "invalid_candidate_ref": "candidate_ref must use candidate:// scheme",
+        "invalid_capability_snapshot_ref": "capability_snapshot_ref must use artifact:// scheme",
+        "invalid_assignment_ref": "assignment_ref must use artifact:// scheme",
         "invalid_entity_ref": "entity_ref must use entity:// scheme",
         "invalid_candidate_entity_binding": "candidate_ref must belong to entity_ref",
     }.get(code, "object.acquire request failed contract validation")
@@ -403,6 +419,8 @@ def terminal_result(arguments: dict[str, Any], snapshot: AcquireSnapshot) -> dic
         "preparation_ref": arguments["preparation_ref"],
         "candidate_ref": arguments["candidate_ref"],
         "entity_ref": arguments["entity_ref"],
+        "capability_snapshot_ref": arguments["capability_snapshot_ref"],
+        "assignment_ref": arguments["assignment_ref"],
         "capability_outcome_summary": summary,
     }
 

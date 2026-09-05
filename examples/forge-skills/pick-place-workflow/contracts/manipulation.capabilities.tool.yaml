@@ -1,0 +1,18 @@
+tool_id: manipulation.capabilities
+implementation_id: manipulation.capabilities
+endpoint_id: manipulation_capabilities
+operation: describe
+semantics: query
+description: Describe profile-bound manipulator capabilities for one immutable scene revision.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [scene_revision, observation_ref, calibration_ref]
+  properties:
+    scene_revision: {type: string, minLength: 1}
+    observation_ref: {type: string, pattern: '^observation://[^/]+/.+$'}
+    calibration_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
+robot_frame_profile:
+  observation_frame: observation
+  unit: m
+unknown_semantics: terminal_for_accounting_only

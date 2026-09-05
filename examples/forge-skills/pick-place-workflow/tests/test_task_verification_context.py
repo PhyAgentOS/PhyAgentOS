@@ -236,6 +236,8 @@ async def test_bound_execution_facts_reach_generic_verifier_without_authorizing_
                 "preparation_ref": "preparation://scene-7/camera_front",
                 "candidate_ref": "candidate://bottle-1/1",
                 "entity_ref": "entity://bottle-1",
+                "capability_snapshot_ref": "artifact://capabilities/scene-7/snapshot",
+                "assignment_ref": "artifact://assignments/task-1/revision-1/acquire",
             },
         )
         invocation_id = admitted["data"]["invocation_id"]

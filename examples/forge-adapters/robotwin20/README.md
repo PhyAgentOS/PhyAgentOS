@@ -427,3 +427,23 @@ It returned `unavailable` before a robot-control step: the left arm could not pl
 exceeded the approved `1.0 rad/s` waypoint limit. Before/after-failure snapshots and reset-completed evidence were
 preserved. This is a valid negative safety result, not route readiness. Generate a policy-compliant candidate route
 and prove real lift plus all remaining phases before invoking the no-motion route-evidence verifier.
+
+### GraspGen/RoboTwin frame contract (v3)
+
+GraspGen's `0.10527314 m` depth is materialized as `provider_T_contact_center` from
+`gripper_base_link` to the canonical contact center. It is not a RoboTwin planner TCP
+offset. The Franka profile then derives a separate `robot_target_pose` using the declared
+RoboTwin gripper axis map, `0.12 m` target reference distance, and `0.08 m` endlink bias.
+Routes and simulation preflight consume `robot_target_pose`/`object_T_robot_target`; the
+canonical contact pose is retained only for contact-shell and round-trip evidence. Mixed
+v2 fields (`contact_tcp_pose`, `object_T_tcp`, `release_tcp_pose`) are rejected.
+
+The repaired v5 package above is superseded for review by the fresh v6 package under
+`/home/yanxu/robotwin20-runtime/artifacts/paos-route-inputs-20260905T204500Z/materialized/`.
+It validates as `paos-robotwin20-route-request/v3` and remains pending human review with
+`motion_authorized=false`. Its no-motion preflight uses the profile-declared 250 Hz
+`uniform_time_dilation` retiming (safety margin `0.95`, bounded to 20,000 samples): the
+right arm passes all eight planner phases, while the left arm remains unavailable. The
+run has zero robot-control and simulator steps and is still only planner/policy evidence;
+attached-object collision, physical lift, contact dynamics, semantic placement, and
+readiness approval remain unproven.
