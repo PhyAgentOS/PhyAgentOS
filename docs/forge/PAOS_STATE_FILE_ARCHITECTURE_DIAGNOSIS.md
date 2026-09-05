@@ -762,6 +762,25 @@ selection/route generation：在不放宽 Franka 已审批速度、workspace、�
 只有五个 readiness scope 全部获得真实 available evidence 并人工审核后，才进入 no-motion verifier；不是现在接入
 Action/Gateway/Dora。
 
+### 32.3 RoboTwin worker frame-boundary correction（2026-09-05）
+
+复核历史 Franka readiness worker 后发现，GraspGen 输出位于 `head_camera` OpenCV frame，而
+SAPIEN `extrinsic_cv` 的语义是 `world_to_camera_cv`。旧 worker 将该矩阵直接当作
+camera-to-world 使用，导致 planner 收到错误的 TCP 世界位姿；因此此前的 50 个 preliminary
+prepared evidence 不能继续作为坐标正确性的依据。新增 adapter-owned
+`grasp_adaptation.py`，要求校准 digest、观察 frame、route frame 和 provider-to-TCP transform
+全部显式绑定，并对刚体变换做有限值、正交性和行列式校验；worker 复用同一逆变换逻辑。
+
+修正后的独立 RoboTwin20/Curobo no-motion 运行目录为
+`/home/yanxu/robotwin20-runtime/artifacts/paos-franka-readiness-fixed-20260905T1435Z`，
+同一 71 个候选中 42 个通过修正后的 IK/workspace preliminary probe。该结果只说明坐标边界
+修正改善了候选输入，仍只产生三项 preliminary checks，不包含 attached-object collision、真实
+lift、完整 transport/descent/release/retreat 或接触动力学证据；因此不能升级为五项 route readiness。
+
+另发现 RoboTwin20 Python 3.10 直接导入 PAOS Core 会触发 Python 3.11-only API。adapter package
+现对 PAOS-coupled `arm_candidates` 使用惰性导出：route worker 可在 Python 3.10 加载纯协议模块，
+PAOS 公共规划导出在 Python 3.12 请求时仍保持兼容。核心包的 Python 3.11+ 声明未被降级。
+
 ## 32. 语义 DAG、双臂候选枚举、完整路线选择与失败重规划（2026-09-05）
 
 ### 32.1 PAOS-first 复审修正（2026-09-05）

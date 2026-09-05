@@ -23,6 +23,11 @@ from typing import Any, Mapping
 import numpy as np
 from worker_protocol import serve
 
+from robotwin20_adapter.grasp_adaptation import (
+    GraspAdaptationError,
+    camera_pose_to_world_matrix,
+)
+
 SCHEMA_VERSION = "paos-robotwin20-readiness-live/v1"
 
 
@@ -133,28 +138,21 @@ def _validate_request(request: Mapping[str, Any], profile: Mapping[str, Any]) ->
 def _camera_pose(candidate: Mapping[str, Any], calibration: Mapping[str, Any]) -> Any:
     import sapien.core as sapien
     import transforms3d as t3d
+
     frame = candidate["grasp_frame"]
-    q_xyzw = np.asarray(frame["orientation_xyzw"], dtype=np.float64)
-    q_norm = float(np.linalg.norm(q_xyzw))
-    if q_norm <= 1e-9 or not math.isfinite(q_norm):
-        raise ReadinessProbeError("candidate orientation is degenerate")
-    q_xyzw = q_xyzw / q_norm
-    rotation = t3d.quaternions.quat2mat([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]])
-    local = np.eye(4, dtype=np.float64)
-    local[:3, :3] = rotation
-    local[:3, 3] = np.asarray(frame["position_m"], dtype=np.float64)
-    # GraspGen consumes the RGB-D/OpenCV camera frame.  RoboTwin also exposes
-    # an OpenGL camera transform, but its handedness/depth convention is not
-    # the one used by the metric point cloud.  Use the calibrated OpenCV
-    # extrinsic and lift it to a homogeneous transform explicitly.
-    extrinsic = np.asarray(calibration.get("extrinsic_cv"), dtype=np.float64)
-    if extrinsic.shape != (3, 4) or not bool(np.isfinite(extrinsic).all()):
-        raise ReadinessProbeError("calibration extrinsic_cv is invalid")
-    camera_to_world = np.eye(4, dtype=np.float64)
-    camera_to_world[:3, :] = extrinsic
-    world = camera_to_world @ local
-    if not np.allclose(world[3], [0, 0, 0, 1], atol=1e-5):
-        raise ReadinessProbeError("candidate world pose is invalid")
+    normalized_frame = {
+        "frame_id": frame.get("frame_id"),
+        "unit": frame.get("unit"),
+        "position_m": frame.get("position_m"),
+        "orientation_xyzw": frame.get("orientation_xyzw"),
+    }
+    try:
+        world = np.asarray(
+            camera_pose_to_world_matrix(normalized_frame, calibration, frame["frame_id"]),
+            dtype=np.float64,
+        )
+    except (GraspAdaptationError, KeyError) as exc:
+        raise ReadinessProbeError(str(exc)) from exc
     quat_wxyz = t3d.quaternions.mat2quat(world[:3, :3])
     return sapien.Pose(world[:3, 3], quat_wxyz)
 

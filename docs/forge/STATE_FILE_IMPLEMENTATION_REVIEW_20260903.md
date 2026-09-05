@@ -884,3 +884,15 @@ DAG/route/evidence 专项 `69 passed`。当前 PAOS
 复审后无代码级 Blocker/Major。剩余功能门禁不变：未取得新的真实 lift、完整
 transport/descent/release/retreat、五项 readiness evidence 或人工批准，不具备任意抓取，也没有进入
 Action/Gateway/Dora wiring。
+
+## 32.3 Frame-boundary correction five-dimension review (2026-09-05)
+
+审查对象为 `grasp_adaptation.py`、`robotwin_readiness_worker.py` 及 Python 3.10 worker 边界。
+
+- 架构集成：通过。坐标转换属于 adapter-owned perception/planning boundary，worker 通过既有 JSONL seam 消费；PAOS Core 仍为 Python 3.11+，未被仿真依赖反向耦合。
+- 失败路径：通过。校准 digest、相机 frame、route frame、刚体矩阵、四元数和 provider-to-TCP 缺失/漂移均 fail-closed；真实运行的无效 profile、pretty-printed JSONL 输入也均安全拒绝，未产生动作。
+- 权威边界：通过。适配器只生成 TCP pose projection；不生成 readiness pass、不创建 Gateway invocation、不调用 simulator stepping。修正后的 42/71 仅是 preliminary IK/workspace 结果。
+- 配置：通过。route frame、extrinsic semantics、速度上限和 provenance 通过 profile/request 注入；没有把 RoboTwin 或模型路径写入 PAOS Core。
+- 可维护性：通过。转换数学集中在 `grasp_adaptation.py`，worker 复用同一函数；公共 planning 导出使用惰性导入，保持 Python 3.10/3.12 边界清晰。
+
+验证：grasp adaptation + route + probe 专项 `54 passed`；root `tests` `168 passed`；ruff、compileall、git diff --check 通过。功能 readiness 仍未通过：缺少真实 attached-object collision、lift、完整路线、接触动力学和语义 after-verifier evidence，故不得进入 Action/Gateway/Dora。

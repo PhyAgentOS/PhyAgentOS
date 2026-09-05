@@ -20,6 +20,12 @@ from .adapter import (
     SensorArtifact,
     SensorCapture,
 )
+from .grasp_adaptation import (
+    GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
+    GraspAdaptationError,
+    adapt_grasp_candidate,
+    camera_pose_to_world_matrix,
+)
 from .grasp_profile import (
     GRASP_PROFILE_SCHEMA_VERSION,
     GraspProfileError,
@@ -203,6 +209,10 @@ __all__ = [
     "FilesystemPointCloudArtifactResolver",
     "PointCloudArtifactResolver",
     "GRASP_PROFILE_SCHEMA_VERSION",
+    "GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION",
+    "GraspAdaptationError",
+    "adapt_grasp_candidate",
+    "camera_pose_to_world_matrix",
     "GraspProfileError",
     "build_grasp_provider",
     "load_grasp_profile",
