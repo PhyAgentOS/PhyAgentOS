@@ -1,0 +1,167 @@
+name: Build release package
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build
+        required: true
+        default: v1.0.0
+        type: string
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  python-test:
+    name: Python ${{ matrix.python-version }} on Ubuntu 20.04
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:20.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Prepare Ubuntu 20.04 container
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git libstdc++6
+          rm -rf /var/lib/apt/lists/*
+          . /etc/os-release
+          test "$VERSION_ID" = "20.04"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.9"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: false
+
+      - name: Install project
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          uv venv --python "$PYTHON_VERSION" .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+
+      - name: Test and lint
+        run: |
+          .venv/bin/python -m pytest
+          .venv/bin/ruff check PhyAgentOS tests
+          .venv/bin/python -m compileall -q PhyAgentOS tests
+
+  bridge-test:
+    name: Node 20 bridge on Ubuntu 20.04
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:20.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Prepare Ubuntu 20.04 container
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git libstdc++6
+          rm -rf /var/lib/apt/lists/*
+          . /etc/os-release
+          test "$VERSION_ID" = "20.04"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Build bridge
+        working-directory: bridge
+        run: |
+          npm ci
+          npm run build
+
+  package:
+    name: Build distributions on Ubuntu 20.04
+    needs: [python-test, bridge-test]
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:20.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Prepare Ubuntu 20.04 container
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git libstdc++6
+          rm -rf /var/lib/apt/lists/*
+          . /etc/os-release
+          test "$VERSION_ID" = "20.04"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.9"
+          python-version: "3.11"
+          enable-cache: false
+
+      - name: Install build environment
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python build twine
+
+      - name: Verify tag matches package version
+        run: |
+          TAG_VERSION="${RELEASE_TAG#v}"
+          PACKAGE_VERSION="$(.venv/bin/python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "$TAG_VERSION" = "$PACKAGE_VERSION"
+
+      - name: Build and validate distributions
+        run: |
+          .venv/bin/python -m build
+          .venv/bin/python -m twine check dist/*
+
+      - name: Smoke-test wheel in a clean environment
+        run: |
+          uv venv --python 3.11 .smoke
+          uv pip install --python .smoke/bin/python dist/*.whl
+          .smoke/bin/paos --version
+          .smoke/bin/paos --help
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum --binary * > SHA256SUMS
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: phyagentos-${{ env.RELEASE_TAG }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
