@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -40,7 +40,7 @@ class StateError(ValueError):
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,8 @@
 """RoboTwin20 EnvironmentAdapter with a sensor-only, provider-neutral seam."""
 
+from importlib import import_module
+from typing import Any
+
 from .action_readiness import (
     ACTION_READINESS_PROFILE_SCHEMA_VERSION,
     ActionReadinessConfigurationError,
@@ -16,16 +19,6 @@ from .adapter import (
     RoboTwinSensorBackend,
     SensorArtifact,
     SensorCapture,
-)
-from .arm_candidates import (
-    ARM_PLANNING_PROFILE_SCHEMA_VERSION,
-    ROUTE_EVALUATION_SCHEMA_VERSION,
-    ROUTE_SELECTION_SCHEMA_VERSION,
-    ArmPlanningError,
-    CompleteRouteSelector,
-    enumerate_arm_candidates,
-    load_arm_planning_profile,
-    validate_arm_planning_profile,
 )
 from .grasp_profile import (
     GRASP_PROFILE_SCHEMA_VERSION,
@@ -144,6 +137,26 @@ from .understanding import (
     RoboTwinUnderstandingSnapshot,
     SceneUnderstandingInference,
 )
+
+_LAZY_ARM_CANDIDATE_EXPORTS = {
+    "ARM_PLANNING_PROFILE_SCHEMA_VERSION",
+    "ROUTE_EVALUATION_SCHEMA_VERSION",
+    "ROUTE_SELECTION_SCHEMA_VERSION",
+    "ArmPlanningError",
+    "CompleteRouteSelector",
+    "enumerate_arm_candidates",
+    "load_arm_planning_profile",
+    "validate_arm_planning_profile",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Load PAOS-coupled planning exports only when callers request them."""
+    if name not in _LAZY_ARM_CANDIDATE_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(f"{__name__}.arm_candidates"), name)
+    globals()[name] = value
+    return value
 
 __all__ = [
     "ARM_PLANNING_PROFILE_SCHEMA_VERSION",
