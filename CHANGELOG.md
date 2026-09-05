@@ -2,6 +2,42 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.2.1] - 2026-09-05
+
+回写 v5.2.0 PAOS-first 操作规划重构实现提交 `514e044`。实现、十一项 Major 修复、五维验收、测试结果与
+后续真实 readiness 门禁均未改变；`.codegraph/`、`.cursor/` 保持未跟踪且未提交。
+
+Recorded v5.2.0 PAOS-first manipulation-planning implementation commit `514e044`. The implementation,
+eleven Major fixes, five-dimension acceptance, test results, and subsequent real-readiness gate are unchanged;
+`.codegraph/` and `.cursor/` remain untracked and uncommitted.
+
+### 文件变更详情 / Detailed changes
+
+- `changelog/2026-09_part2.md:L2996-L3037` 与 `changelog/2026-09_part3.md:L62-L101`：回写 v5.2.0
+  implementation commit `514e044`、校正最终实现行号，并新增 v5.2.1 双语维护记录。
+- `changelog/2026-09_part2.md:L2996-L3037` and `changelog/2026-09_part3.md:L62-L101`: record v5.2.0
+  implementation commit `514e044`, correct final implementation line ranges, and add the bilingual v5.2.1 record.
+- `CHANGELOG.md:L5-L60,L143-L147`：新增本条完整记录、回写 v5.2.0 commit，并滚动 Archive 边界；不修改运行代码。
+- `CHANGELOG.md:L5-L60,L143-L147`: adds this complete record, records the v5.2.0 commit, and rolls the Archive boundary
+  without changing runtime code.
+
+### 关键 Diff / Key Diff
+
+```text
+Before: v5.2.0 implementation and validation were recorded with Commit: pending.
+After:  implementation commit 514e044 and the pushed branch are explicitly recorded; code and evidence are unchanged.
+```
+
+### 验证 / Validation
+
+- `514e044` 已推送到 `origin/feature/long-horizon-workflow`；`git diff --check` 和 UTF-8 日志显示检查通过。
+- 本维护提交只包含日志；`.codegraph/`、`.cursor/` 未暂存。
+
+### Git 提交 / Git Commit
+
+- Implementation commit: `514e044`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.2.0] - 2026-09-05
 
 完成 PAOS-first 操作规划收口与第二轮五维代码审查。Skill reducer 现在以 immutable DAG readiness 驱动；replan hint 绑定 node digest；RoboTwin route-readiness 明确适配到独立 route-evaluation contract，并拒绝 release TCP 变换或 phase gripper 语义不一致。PAOS task/revision/SQLite/Verifier/Gateway 权威边界和 no-motion 门禁保持不变。
@@ -12,7 +48,7 @@ Closed the PAOS-first manipulation-planning refactor and the second five-dimensi
 
 - `PhyAgentOS/forge/manipulation.py:L1-L314`：移除重叠生命周期并增加带 `node_digest` 的自校验 `ReplanSignal`。
 - `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py:L1-L639`：DAG-ready reducer、immutable references 和恢复状态校验。
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py:L95-L579`：route semantic validation、完整 candidate evidence validation 与 `RouteReadinessEvaluationAdapter`。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py:L95-L591`：route semantic validation、完整 candidate evidence validation 与 `RouteReadinessEvaluationAdapter`。
 - `examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py:L1-L583`、`route_generation.py:L1-L335`、`perception_profile.py:L27-L184`：adapter/profile ownership、路线选择和 strict YAML。
 - `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L843-L886`、`docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L829-L842`、`changelog/2026-09_part2.md:L2947-L3037`：记录十一个 Major 修复、五维验收和后续门禁。
 
@@ -21,7 +57,7 @@ Closed the PAOS-first manipulation-planning refactor and the second five-dimensi
 - 组合 core/adapter/Skill（排除缺少 NumPy 的 GraspGen collection）→ `616 passed, 2 skipped`；core/adapter `355 passed, 2 skipped`；Skill `261 passed`；根仓库 `168 passed`；route generation/readiness/selection 专项 `36 passed`；开发者指南完整 DAG/route/evidence 专项 `69 passed`。
 - `ruff check`、`compileall`、`git diff --check` → 通过。
 - 未启动 Gateway、Dora、Action、硬件或仿真运动；真实 readiness、人工批准和抓取放置闭环仍未完成。
-- Commit: pending on `feature/long-horizon-workflow`。
+- Implementation commit: `514e044` on `feature/long-horizon-workflow`。
 
 ## [v5.1.0] - 2026-09-05 (withdrawn)
 
@@ -104,6 +140,12 @@ After:  implementation commit f88778a and pushed branch are explicitly recorded;
 - Implementation commit: `f88778a`
 - Branch: `feature/long-horizon-workflow`
 
+## Archive
+
+- [2026-09 part 3](changelog/2026-09_part3.md)
+- [2026-09 part 2](changelog/2026-09_part2.md)
+- [2026-09](changelog/2026-09.md)
+
 ## [v4.12.1] - 2026-09-05
 
 收紧独立 RoboTwin simulation probe 的真实性门禁：为 block actor 分配唯一身份，首步前保存 before
@@ -158,12 +200,6 @@ After:  approval binds calibration/joint/stop SHA-256; all post-reset failures p
   `164 passed`; ruff, compileall, and diff-check passed.
 - Gateway, Dora, Action executor, and hardware remain disconnected. Commit: `f88778a` on
   `feature/long-horizon-workflow`.
-
-## Archive
-
-- [2026-09 part 3](changelog/2026-09_part3.md)
-- [2026-09 part 2](changelog/2026-09_part2.md)
-- [2026-09](changelog/2026-09.md)
 
 ## [v4.11.0] - 2026-09-04
 
