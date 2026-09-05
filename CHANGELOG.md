@@ -30,6 +30,7 @@ Evidence, Verifier, Gateway, Dora, and Action authority boundaries are unchanged
 - 根仓库套件：`171 passed`。
 - `ruff`、`compileall`、`git diff --check`：通过。
 - 未启动 Gateway、Dora、Action、硬件或 simulation motion；真实 readiness 仍受上一阶段 `not_approved_for_readiness_or_motion_wiring` 门禁约束。
+- Git commit: `d09cca5` on `feature/long-horizon-workflow`.
 
 ## [v4.12.2] - 2026-09-05
 
