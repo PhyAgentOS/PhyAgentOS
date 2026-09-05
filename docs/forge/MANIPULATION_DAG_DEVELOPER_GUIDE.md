@@ -10,23 +10,30 @@ architecture and are not runtime dependencies.
 | Concern | Authoritative owner | Non-owner |
 |:--|:--|:--|
 | User task lifecycle, recovery budget, revisions | `AgentTaskRecord`, `PlanRevision`, SQLite, `AgentTaskCoordinator` | Skill DAG, adapter, worker |
-| Semantic subtask dependencies | Skill-scoped `WorkflowDag` projection | PAOS core manipulation types, RoboTwin adapter |
+| Semantic subtask dependencies | `PhyAgentOS.planning.PlanGraph`, bound to `PlanRevision` | Skill policy/template, adapter, worker |
 | Tool execution and concurrency | ToolSpec, Runtime, Gateway invocation | DAG, selector, readiness worker |
 | Candidate/arm adaptation and route geometry | embodiment/benchmark adapter and versioned profile | Skill, AgentTask store |
 | IK, collision, limits, complete-route feasibility | readiness provider and immutable evidence | selector, Verifier |
 | Measured before/after outcome | sensor/simulation probe evidence | readiness verdict |
 | User-level success or replan verdict | `ForgeTaskVerifier` against `TaskVerificationContract` | probe, adapter, selector |
 
+The standalone [Planning Module Design](PLANNING_MODULE_DESIGN.md) defines the
+new pure protocol boundary. It is a library, not a Planner service: it may
+validate a graph, derive ready nodes, admit a proposed Tool, normalize a
+settlement, and construct a replan delta, but it cannot call Gateway, write
+SQLite, hold a lock, or grant motion authority.
+
 ## Where the DAG Lives
 
-The canonical pick-place DAG is `WORKFLOW_DAG` in
-`examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py`.
-Each `WorkflowNodeSpec` declares a provider-neutral `tool_id`, Tool semantics,
-`depends_on`, and required opaque bindings. `WorkflowDag` validates identity,
-unknown dependencies and cycles, computes immutable node/DAG digests, and returns
-ready nodes from a caller-supplied completed-node set. `LongHorizonWorkflow`
-freezes that DAG identity into its state and uses dependency-derived ready nodes
-as the only successful-result admission rule; it does not advance by tuple index.
+The current Skill workflow in
+`examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py`
+is a deterministic baseline `WorkflowPolicy`/projection. A concrete task's
+semantic DAG is `PhyAgentOS.planning.PlanGraph`, bound to the task's
+`PlanRevision` by graph and policy digests. `WorkflowDag` remains useful for
+backward-compatible replay, but it is not the only legal task graph and does
+not own lifecycle facts. `LongHorizonWorkflow` freezes its baseline projection
+and uses dependency-derived ready nodes; an Agent-composed graph uses the same
+pure planning contracts with dynamic Tool admission.
 
 It deliberately does not persist status, append a revision, create an invocation,
 retry a Tool, or lock a robot. `LongHorizonWorkflow` is a replayable reducer over
@@ -44,7 +51,13 @@ True simultaneous bimanual work requires one Gateway-owned atomic route bundle
 with one timeline, inter-arm collision scope, cancellation scope, and evidence
 bundle; two independent Action posts must not be treated as synchronized.
 
-The current six nodes form a linear DAG. The action nodes require opaque
+The current seven nodes form a baseline dependency DAG, not a fixed execution
+queue and not a universal task decomposition.
+After `observe`, both `manipulation.capabilities` and `scene.understand` may be
+ready; the Agent may call them in either order or in parallel. `grasp.propose`
+is the explicit join and requires both terminal Query results. The
+`manipulation.capabilities` Query discovers the adapter-owned capability
+snapshot; the action nodes require opaque
 `capability_snapshot_ref` and `assignment_ref` bindings; terminal responses may
 carry them forward, but the reducer never dereferences provider payloads. This
 prevents `object.acquire` or `object.place` from being admitted without an
@@ -78,10 +91,12 @@ accepts only scene/observation/calibration identity, returns a validated
 `CapabilitySnapshot`, and returns `unavailable` on provider failure or binding
 drift. It has no task, revision, planner, Gateway, or motion side effect.
 
-There is no core `ManipulationDag`, retry lineage, resource lock, route planner, or
-provider branch. Those would duplicate existing PAOS owners or leak embodiment
-policy into the core. `ResourceRequirement` is deliberately symbolic; the
-concrete arm is selected by the Skill planner from adapter/readiness evidence.
+The planning module now owns only provider-neutral `PlanGraph`/`PlanNode`
+contracts, retry lineage, Tool admission and replan deltas. It still has no
+resource lock, route planner, provider branch, or execution path. Those remain
+outside the module to avoid duplicating PAOS owners or leaking embodiment policy
+into the core. `ResourceRequirement` and planning `ResourceClaim` are symbolic;
+the concrete arm is selected from adapter/readiness evidence.
 
 ## Route Data Model
 
@@ -180,6 +195,7 @@ authority rules.
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src:. \
 python -m pytest -p pytest_asyncio.plugin -q \
+  tests/test_planning_module.py \
   tests/test_manipulation.py \
   examples/forge-skills/pick-place-workflow/tests/test_long_horizon.py \
   examples/forge-adapters/robotwin20/tests/test_route_generation.py \
@@ -191,3 +207,10 @@ python -m pytest -p pytest_asyncio.plugin -q \
 A passing contract suite proves deterministic binding and fail-closed behavior.
 It does not prove a real route, benchmark success, arbitrary grasping, or motion
 authorization.
+
+The planning-module suite additionally covers graph digest/cycle detection,
+ready-set derivation, dynamic admission (evidence, scene, capability and
+resource failures), unknown/stale/cancelled settlement, transitive replan
+invalidation, decision traces, policy candidates, and the `PlanRevision`/
+`ToolExecutionRecord` binding fields. A passing suite still does not authorize
+Gateway or robot motion.

@@ -35,6 +35,19 @@ from PhyAgentOS.forge.manipulation import (
 )
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskOriginApproval
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
+from PhyAgentOS.planning import (
+    AdmissionContext,
+    AdmissionDecision,
+    PlanGraph,
+    PlanNode,
+    ToolCallEnvelope,
+    ToolResultEnvelope,
+    ToolSpecPolicy,
+    WorkflowPolicy,
+    WorkflowPolicyCandidate,
+    admit_tool_call,
+    derive_ready_nodes,
+)
 
 __all__ = [
     "ActionAdmission",
@@ -68,4 +81,15 @@ __all__ = [
     "ObservationSource",
     "ReadinessEvaluator",
     "SceneUnderstandingProvider",
+    "AdmissionContext",
+    "AdmissionDecision",
+    "PlanGraph",
+    "PlanNode",
+    "ToolCallEnvelope",
+    "ToolResultEnvelope",
+    "ToolSpecPolicy",
+    "WorkflowPolicy",
+    "WorkflowPolicyCandidate",
+    "admit_tool_call",
+    "derive_ready_nodes",
 ]

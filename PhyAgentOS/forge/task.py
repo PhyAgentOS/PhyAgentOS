@@ -93,6 +93,11 @@ class ToolExecutionRecord(BaseModel):
     skill_binding_id: str | None = None
     tool_spec_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     caller_id: str
+    node_id: str | None = None
+    node_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    obligation_id: str | None = None
+    input_binding_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    decision_trace_ref: str | None = None
     ownership: Literal["task", "runtime", "shared"] = "task"
     arguments: dict[str, Any] = Field(default_factory=dict)
     status: Literal[
@@ -112,6 +117,22 @@ class ToolExecutionRecord(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="after")
+    def validate_node_binding(self) -> "ToolExecutionRecord":
+        planning_fields = (
+            self.node_id,
+            self.node_digest,
+            self.obligation_id,
+            self.input_binding_digest,
+            self.decision_trace_ref,
+        )
+        if any(value is not None for value in planning_fields):
+            if self.node_id is None or self.node_digest is None or self.obligation_id is None:
+                raise ValueError(
+                    "planning-bound Tool execution records require node_id, node_digest, and obligation_id"
+                )
+        return self
 
     @field_validator("arguments", "response", "error")
     @classmethod
@@ -147,11 +168,33 @@ class PlanRevision(BaseModel):
     number: int = Field(ge=1)
     reason: str = Field(min_length=1)
     skill_binding_id: str | None = None
+    plan_graph_ref: str | None = None
+    plan_graph_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    planner_decision_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    policy_snapshot_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     execution_records: list[ToolExecutionRecord] = Field(default_factory=list)
     verdict: VerificationVerdict | None = None
     verification_attempts: list[VerificationAttempt] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     closed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_plan_binding(self) -> "PlanRevision":
+        planning_fields = (
+            self.plan_graph_ref,
+            self.plan_graph_digest,
+            self.planner_decision_digest,
+            self.policy_snapshot_digest,
+        )
+        if any(value is not None for value in planning_fields) and not all(
+            value is not None for value in planning_fields
+        ):
+            raise ValueError(
+                "PlanRevision planning binding requires graph ref, graph, planner, and policy digests"
+            )
+        if self.plan_graph_ref is not None and not self.plan_graph_ref.startswith("artifact://"):
+            raise ValueError("PlanRevision plan_graph_ref must be an artifact:// reference")
+        return self
 
 
 class AgentTaskOriginApproval(BaseModel):

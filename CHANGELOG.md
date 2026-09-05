@@ -2,6 +2,70 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.5.4] - 2026-09-05
+
+新增 PAOS 纯规划模块 `PhyAgentOS/planning`，引入任务级语义 PlanGraph、动态 Tool admission、节点结算、传递重规划、DecisionTrace 和 review-gated WorkflowPolicyCandidate；不接管 Gateway、SQLite、动作执行或物理真值。PlanRevision/ToolExecutionRecord 增加可选但全量校验的 DAG/node binding。设计基准见 `docs/forge/PLANNING_MODULE_DESIGN.md`，开发者指南同步说明 Skill WorkflowDag 仅为 baseline projection。
+
+Added the pure PAOS planning module `PhyAgentOS/planning` with semantic task PlanGraph, dynamic Tool admission, node settlement, transitive replanning, DecisionTrace, and review-gated WorkflowPolicyCandidate; it owns no Gateway, SQLite, motion execution, or physical truth. PlanRevision/ToolExecutionRecord now support optional but all-or-nothing DAG/node bindings. See `docs/forge/PLANNING_MODULE_DESIGN.md`; the developer guide now treats Skill WorkflowDag as a baseline projection only.
+
+### 文件变更详情 / Detailed changes
+
+- `PhyAgentOS/planning/{contracts,dag,admission,settlement,replan,trace,policy}.py:L1-L316`：纯协议和计算，覆盖 digest、依赖/cycle、ready set、evidence/scene/resource/capability/precondition admission、unknown/stale/cancelled settlement、replan delta、trace 和 policy 校验。
+- `PhyAgentOS/forge/task.py:L83-L197`：PlanRevision 与 ToolExecutionRecord 绑定 artifact graph/node/obligation/trace digest；SQLite 仍为生命周期事实源。
+- `docs/forge/PLANNING_MODULE_DESIGN.md:L1-L118`、`docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L10-L216`：记录所有权、失败语义、演化边界和迁移阶段。
+- `tests/test_planning_module.py:L1-L267`：逐项纯函数、失败路径、生命周期绑定和纯模块边界回归。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置、可维护性均通过；未启动 Gateway、Dora、Action、仿真动作或硬件。规划模块只产生结构准入结果，永不产生 motion authority。
+
+Architecture integration, failure paths, authority boundaries, configuration, and maintainability all pass; no Gateway, Dora, Action, simulation motion, or hardware was started. The planning module produces structural admission results only and never grants motion authority.
+
+### 验证 / Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_planning_module.py` → `8 passed`
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests` → `180 passed`
+- `python -m ruff check PhyAgentOS/planning PhyAgentOS/forge/task.py PhyAgentOS/forge/__init__.py tests/test_planning_module.py`、`compileall`、`git diff --check` → 通过。
+
+### Git 提交 / Git Commit
+
+- Commit: `f95c53d`
+- Branch: `feature/long-horizon-workflow`
+
+## [v5.5.2] - 2026-09-06
+
+完成双臂能力 Query 的 canonical DAG 接入复验：固定七节点
+`observe → capabilities → understand → propose → prepare → acquire → place`，所有后续步骤
+强制复用同一个 capability snapshot；同步升级 DAG/reducer、Skill manifest 与 Python 包版本，并
+修正文档和旧 Runtime fixture。组合回归 `670 passed, 1 skipped`；未启动 Gateway、Dora、Action、
+仿真运动或硬件。
+
+Completed the acceptance re-review for the dual-arm capability Query canonical-DAG integration: the
+seven-node order `observe → capabilities → understand → propose → prepare → acquire → place` is fixed,
+all downstream steps must reuse one capability snapshot, protocol/Skill/package versions are bumped, and
+documentation plus old-Runtime fixtures are synchronized. Combined regression: `670 passed, 1 skipped`;
+no Gateway, Dora, Action, simulation motion, or hardware was started.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/long_horizon.py:L15-L17,L173-L236,L560-L585`：新增 canonical `capabilities` 节点、传播并校验 `capability_snapshot_ref`，升级 DAG/reducer 版本。
+- `examples/forge-skills/pick-place-workflow/tests/test_long_horizon.py:L25-L311`：更新七节点顺序、terminal response、恢复和绑定漂移回归。
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L16`、`pyproject.toml:L1-L6`、`tests/test_binding_freeze.py:L58-L103`、`tests/test_runtime_install_discovery.py:L34-L100`、`tests/test_task_binding_activation.py:L68-L154`、`tests/test_grasp_propose.py:L261-L265`、`tests/test_runtime_controller.py:L73-L76`：统一 Skill `0.10.0` 并验证旧 Runtime fail-closed。
+- `examples/forge-skills/pick-place-workflow/README.md:L3-L58`、`SKILL.md:L26-L50,L113-L120`、`docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L47-L58`、`docs/user_development_guide/README.md:L25-L30`、`README_en.md:L25-L31`：同步七 Tool 顺序和无动作边界。
+- `docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L902-L933`、`docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L939-L959`、`examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L22`：记录五维验收和剩余 readiness/atomic route 门禁。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置、可维护性均通过；atomic bimanual executor、真实 readiness/人工审批、完整 transport/descent/release/retreat 与语义闭环仍未实现。
+
+Architecture integration, failure paths, authority boundaries, configuration, and maintainability all pass; an atomic bimanual executor, real readiness/human approval, complete transport/descent/release/retreat, and the semantic loop remain unimplemented.
+
+### 验证 / Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src python -m pytest -p pytest_asyncio.plugin -q tests examples/forge-skills/pick-place-workflow/tests examples/forge-adapters/robotwin20/tests` → `670 passed, 1 skipped`
+- `python -m ruff check ...`、`python -m compileall -q ...`、`git diff --check` → 通过。
+- 未启动 Gateway、Dora、Action、仿真运动或硬件；`motion_authorized=false` 边界保持不变。
+
 ## [v5.5.1] - 2026-09-05
 
 完成 PAOS 双臂扩展协议收口：`object.acquire/place` 现在强制绑定 capability snapshot 与 arm assignment；新增只读 `manipulation.capabilities` Query、Skill manifest/contract/Fake Gateway 接入和严格失败关闭。组合回归 `669 passed, 1 skipped`；未启动任何动作、仿真运动或硬件。
