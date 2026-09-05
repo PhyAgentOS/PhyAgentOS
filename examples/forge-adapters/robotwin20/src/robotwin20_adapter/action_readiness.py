@@ -25,6 +25,13 @@ _EVIDENCE_SCHEMA = "paos-robotwin20-readiness-evidence/v1"
 _REVIEW_SCHEMA = "paos-robotwin20-readiness-manual-review/v2"
 _REVIEW_DECISION = "approved_readiness_evidence_for_next_no_motion_gate"
 _CHECKS = ("kinematic", "collision", "workspace")
+_ROUTE_CHECKS = (
+    "attached_object_collision",
+    "complete_transport_descent_retreat",
+    "contact_dynamics",
+    "workspace_and_joint_limits",
+    "stop_control",
+)
 ACTION_READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-action-readiness/v1"
 _VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -97,6 +104,7 @@ class ReadinessEvidenceGate:
     artifact_root: Path
     _candidate_evidence: Mapping[str, Mapping[str, Any]]
     _identity: Mapping[str, Any]
+    require_complete_route: bool = False
 
     @classmethod
     def from_files(
@@ -105,6 +113,7 @@ class ReadinessEvidenceGate:
         review_path: str | Path,
         *,
         artifact_root: str | Path | None = None,
+        require_complete_route: bool = False,
     ) -> "ReadinessEvidenceGate":
         manifest_input = Path(manifest_path).expanduser()
         review_input = Path(review_path).expanduser()
@@ -188,8 +197,14 @@ class ReadinessEvidenceGate:
             if evidence.get("embodiment_binding") != manifest_binding:
                 raise ActionReadinessConfigurationError("readiness evidence embodiment mismatch")
             checks = evidence.get("checks")
-            if not isinstance(checks, Mapping) or any(checks.get(key) != "pass" for key in _CHECKS):
-                raise ActionReadinessConfigurationError("readiness evidence checks are not all pass")
+            if not isinstance(checks, Mapping):
+                raise ActionReadinessConfigurationError("readiness evidence checks are invalid")
+            required_checks = _ROUTE_CHECKS if require_complete_route else _CHECKS
+            if set(checks) != set(required_checks) or any(
+                checks.get(key) != "pass" for key in required_checks
+            ):
+                label = "complete-route readiness" if require_complete_route else "readiness"
+                raise ActionReadinessConfigurationError(f"{label} evidence checks are not all pass")
             if not _require_identity(evidence, {key: identity[key] for key in required_identity if key != "candidate_set_ref"}):
                 raise ActionReadinessConfigurationError("readiness evidence identity mismatch")
             if evidence.get("candidate_set_ref") != identity["candidate_set_ref"]:
@@ -199,7 +214,7 @@ class ReadinessEvidenceGate:
             if candidate_ref in candidate_evidence:
                 raise ActionReadinessConfigurationError("duplicate readiness candidate evidence")
             candidate_evidence[candidate_ref] = evidence
-        return cls(manifest_file, review_file, root, candidate_evidence, dict(identity))
+        return cls(manifest_file, review_file, root, candidate_evidence, dict(identity), require_complete_route)
 
     @property
     def candidate_refs(self) -> frozenset[str]:
@@ -259,11 +274,22 @@ def load_action_readiness_profile(
 
 
 def build_action_readiness_gate(
-    profile_path: str | Path, *, environ: Mapping[str, str] | None = None
+    profile_path: str | Path, *, environ: Mapping[str, str] | None = None,
+    require_complete_route: bool = False,
 ) -> ReadinessEvidenceGate:
     profile = load_action_readiness_profile(profile_path, environ=environ)
     return ReadinessEvidenceGate.from_files(
-        profile["manifest"], profile["manual_review"], artifact_root=profile["artifact_root"]
+        profile["manifest"], profile["manual_review"], artifact_root=profile["artifact_root"],
+        require_complete_route=require_complete_route,
+    )
+
+
+def build_complete_route_readiness_gate(
+    profile_path: str | Path, *, environ: Mapping[str, str] | None = None
+) -> ReadinessEvidenceGate:
+    """Build the fail-closed gate required before physical acquire/place admission."""
+    return build_action_readiness_gate(
+        profile_path, environ=environ, require_complete_route=True
     )
 
 
@@ -272,5 +298,6 @@ __all__ = [
     "ActionReadinessConfigurationError",
     "ReadinessEvidenceGate",
     "build_action_readiness_gate",
+    "build_complete_route_readiness_gate",
     "load_action_readiness_profile",
 ]

@@ -5,6 +5,7 @@ from .action_readiness import (
     ActionReadinessConfigurationError,
     ReadinessEvidenceGate,
     build_action_readiness_gate,
+    build_complete_route_readiness_gate,
     load_action_readiness_profile,
 )
 from .adapter import (
@@ -164,6 +165,7 @@ __all__ = [
     "ACTION_READINESS_PROFILE_SCHEMA_VERSION",
     "ReadinessEvidenceGate",
     "build_action_readiness_gate",
+    "build_complete_route_readiness_gate",
     "load_action_readiness_profile",
     "RoboTwinSceneUnderstandingProvider",
     "RoboTwinUnderstandingSnapshot",
