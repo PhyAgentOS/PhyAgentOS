@@ -2,6 +2,42 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v4.12.2] - 2026-09-05
+
+回写 v4.12.1 独立 RoboTwin simulation-probe 实现提交 `f88778a`。实现、真实负证据、五维验收结论与
+后续执行门禁均未改变；`.codegraph/`、`.cursor/` 仍为未跟踪的用户目录，未纳入提交。
+
+Recorded the v4.12.1 independent RoboTwin simulation-probe implementation commit `f88778a`. The
+implementation, real negative evidence, five-dimension acceptance conclusions, and next execution gate are
+unchanged; the user-owned `.codegraph/` and `.cursor/` directories remain untracked and uncommitted.
+
+### 文件变更详情 / Detailed changes
+
+- `changelog/2026-09_part2.md:L310-L403`：新增 v4.12.2 双语维护记录，并将 v4.12.1 的
+  `Commit: pending` 更新为 `f88778a`。
+- `changelog/2026-09_part2.md:L310-L403`: adds the bilingual v4.12.2 maintenance record and replaces the
+  v4.12.1 `Commit: pending` marker with `f88778a`.
+- `CHANGELOG.md:L5-L95`：同步根日志最近记录及 v4.12.1 implementation commit；未修改运行代码。
+- `CHANGELOG.md:L5-L95`: synchronizes the root recent entry and v4.12.1 implementation commit without
+  changing runtime code.
+
+### 关键 Diff / Key Diff
+
+```text
+Before: v4.12.1 implementation and validation were recorded with Commit: pending.
+After:  implementation commit f88778a and pushed branch are explicitly recorded; code and evidence are unchanged.
+```
+
+### 验证 / Validation
+
+- `f88778a` 同时为本地 `HEAD` 和 `origin/feature/long-horizon-workflow`；日志 UTF-8 显示正常。
+- `git diff --check` 通过；仅两份日志进入定向提交，未跟踪用户目录未暂存。
+
+### Git 提交 / Git Commit
+
+- Implementation commit: `f88778a`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v4.12.1] - 2026-09-05
 
 收紧独立 RoboTwin simulation probe 的真实性门禁：为 block actor 分配唯一身份，首步前保存 before
@@ -54,7 +90,7 @@ After:  approval binds calibration/joint/stop SHA-256; all post-reset failures p
   reset was recorded as world change, recovery reset completed, and readiness/motion wiring was not approved.
 - Focused simulation-probe conformance: `21 passed`; adapter subset: `158 passed, 2 skipped`; repository:
   `164 passed`; ruff, compileall, and diff-check passed.
-- Gateway, Dora, Action executor, and hardware remain disconnected. Commit: pending on
+- Gateway, Dora, Action executor, and hardware remain disconnected. Commit: `f88778a` on
   `feature/long-horizon-workflow`.
 
 ## [v4.12.0] - 2026-09-05
