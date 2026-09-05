@@ -1148,7 +1148,10 @@ def _resolve_skill_install_source(name: str) -> str | Path:
 @skill_app.command("install")
 def skill_install(
     name: str = typer.Argument(..., help="Registry Skill name or local .tar.gz bundle"),
-    version: str | None = typer.Option(None, "--version", "-v", help="Exact version"),
+    # Hidden until the Registry serves more than one version per Skill.
+    version: str | None = typer.Option(
+        None, "--version", "-v", help="Exact version", hidden=True
+    ),
     index: str | None = typer.Option(
         None,
         "--index",
@@ -1178,7 +1181,10 @@ def skill_install(
 @skill_app.command("update")
 def skill_update(
     name: str = typer.Argument(..., help="Installed Skill name"),
-    version: str | None = typer.Option(None, "--version", "-v", help="Target version"),
+    # Hidden until the Registry serves more than one version per Skill.
+    version: str | None = typer.Option(
+        None, "--version", "-v", help="Target version", hidden=True
+    ),
     index: str | None = typer.Option(
         None,
         "--index",

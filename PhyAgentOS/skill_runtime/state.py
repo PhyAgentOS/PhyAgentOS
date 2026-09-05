@@ -39,6 +39,10 @@ class StateError(ValueError):
     """Raised when persisted runtime state is malformed."""
 
 
+class StateVersionError(StateError):
+    """Raised when persisted runtime state uses an unsupported schema version."""
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -69,14 +73,17 @@ class RuntimeState:
     def from_dict(cls, value: Any) -> RuntimeState:
         if not isinstance(value, dict):
             raise StateError("runtime state must be a JSON object")
+        if value.get("state_version") != STATE_VERSION:
+            raise StateVersionError(
+                f"state_version must be {STATE_VERSION}, "
+                f"got {value.get('state_version')!r}"
+            )
         unknown = sorted(set(value) - _FIELDS)
         if unknown:
             raise StateError(f"runtime state has unknown field(s): {', '.join(unknown)}")
         missing = sorted(_FIELDS - set(value))
         if missing:
             raise StateError(f"runtime state is missing field(s): {', '.join(missing)}")
-        if value.get("state_version") != STATE_VERSION:
-            raise StateError(f"state_version must be {STATE_VERSION}")
         required = (
             "skill_name",
             "profile",
@@ -192,7 +199,16 @@ class RuntimeStateStore:
             raise StateError("cannot read runtime state") from exc
         except json.JSONDecodeError as exc:
             raise StateError("runtime state is not valid JSON") from exc
-        state = RuntimeState.from_dict(value)
+        try:
+            state = RuntimeState.from_dict(value)
+        except StateVersionError as exc:
+            raise StateError(
+                f"runtime state file {path} was written by an older "
+                f"PhyAgentOS ({exc}) and cannot be read by this version; "
+                "move it aside and retry — a fresh state file is created "
+                "on the next start:\n"
+                f"  mv {path} {path}.bak"
+            ) from exc
         if state.skill_name != skill_name:
             raise StateError("runtime state Skill name does not match its filename")
         return state
