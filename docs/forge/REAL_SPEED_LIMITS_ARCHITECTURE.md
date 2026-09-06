@@ -350,4 +350,8 @@ capability、qualification plan 和人工 approval，旧 approval 不得复用�
 
 q3 通过仅限于其 controller source digest 和双臂 SAPIEN qualification scope。单臂
 调度语义修正后已生成 q4 新 plan，必须重新进行 plan approval 和 qualification；在
-q4 通过前不能将 q3 结论用于当前代码的 route admission。
+q4 已完成隔离 controller qualification 并通过独立 evidence validation。它证明的是
+当前 bounded provider controller 对逐关节 limits、越限拒绝、stop/error/reset、
+dropped-step、contact fixture 以及单臂/双臂 step 语义的执行资格。它仍不代表真实
+Franka SDK 的 hardware qualification，也不会自动改变 PAOS Gateway 或 route admission；
+最终结果必须经过独立人工审批后才能进入下一阶段。

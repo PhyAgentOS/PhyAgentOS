@@ -244,6 +244,35 @@ no_motion_validation_sha256=5aad1ee2c0d041e39a2d2c6deebcb217ad9fe182ed84c3f4b5b6
 
 q4 当前为 `pending_human_review`，没有执行任何 q4 qualification motion。
 
+### q4 qualification 运行结果（2026-09-06）
+
+q4 在获得新 plan 的隔离 simulation-only approval 后，于全新 artifact root 运行完成：
+
+```text
+artifact_root=/home/yanxu/robotwin20-runtime/artifacts/qualification-run-20260906T2245Z/
+qualification_status=passed
+evidence_sha256=e8fd8a72003f1df9a5dc3418c36f666e1b0e179ec7c17e3601836887e03841f8
+validation_status=validated_pass
+validation_sha256=da0a02604e59c92a60abf219b1778f70768ec53e052b6b363710671e428bc5aa
+motion_authorized=false
+```
+
+八项测试全部通过并有独立 trace：nominal position/velocity、over-limit rejection、
+contact fixture、dropped-step、stop、error 和 reset。q4 是当前 controller source
+digest 和单臂 idle-arm semantics 的有效 qualification；q3 evidence 保留为历史记录，
+不覆盖 q4。
+
+### q4 五维验收
+
+- **架构集成：通过。** 单臂 pending-step 语义位于 RoboTwin provider runtime；PAOS task、DAG、Gateway 和 SQLite 所有权不变。
+- **失败路径：通过。** q4 实际验证越限拒绝、contact、dropped-step、stop、error、reset 和双臂共享/单臂独立 step；所有失败仍生成可审计 evidence。
+- **权威边界：通过。** q4 `validated_pass` 只证明隔离 provider controller qualification，仍固定 `motion_authorized=false`，不授权 benchmark 或硬件。
+- **配置与 provenance：通过。** q4 plan、approval、capability、controller source digest、runtime identity 和 trace digest 全部绑定。
+- **可维护性：通过。** 结果审批与计划审批分离；最终 `ControllerQualification` 只能通过独立结果审批 CLI 生成。
+
+当前仍缺少最终结果人工确认。必须对 q4 evidence/validation 审核后，才能生成
+`ControllerQualification(status=approved_pass)`；在该记录生成前不得进入 route 重绑定。
+
 ## 附录 A：大步 A 实际完成记录（2026-09-06）
 
 已完成 provider-owned qualification plan、source manifest、human review request、

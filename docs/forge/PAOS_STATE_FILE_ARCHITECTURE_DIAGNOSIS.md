@@ -1304,5 +1304,5 @@ q3 plan 已在空双 Franka SAPIEN 场景中完成实际 qualification：八项�
 trace，结果为 `passed`，独立 validator 为 `validated_pass`。其中 over-limit 命令
 在 SAPIEN 写入前被 provider controller 拒绝，contact、dropped-step、stop、error
 和 reset 路径均有对应证据。随后为修正单臂/空闲臂调度语义更新了 controller source，
-因此 q3 digest 不再适用于当前代码；新的 q4 capability/plan 必须重新审批后才能
-再次运行。
+因此 q3 digest 不再适用于当前代码；新的 q4 capability/plan 已重新审批并运行通过。
+q4 的独立 validator 输出 `validated_pass`，但最终 `approved_pass` 仍需单独人工结果审批。
