@@ -44,6 +44,11 @@ Implemented the RoboTwin provider-owned `MotionCapability` v2 artifact and bound
 - 未启动 Gateway、Dora、Action、真实仿真动作或硬件；未生成新的 motion approval。
 - No Gateway, Dora, Action, real simulation motion, or hardware was started; no motion approval was generated.
 
+### Git 提交 / Git Commit
+
+- Commit: `992d0de`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.10.3] - 2026-09-06
 
 回写 v5.10.2 速度限制架构变更的 Git 提交信息。Recorded the v5.10.2 real speed-limit architecture commit metadata.
