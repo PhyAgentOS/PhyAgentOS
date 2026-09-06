@@ -101,6 +101,31 @@ evidence 和 verifier，不把 Skill workflow 写成固定执行脚本。
 
 ## 5. 当前状态与下一动作
 
+### v6.7.3 candidate-0 route analysis (2026-09-07)
+
+v6.7.2 的真实 probe 证明 candidate-1 在 attached transport/descent 阶段会接触非目标
+`block-blue-1`，而 release 姿态还会使 `panda_rightfinger` 接触 table。只读检查
+RoboTwin Curobo provider 后确认其 `world_config` 默认只注册 table；场景中的其它方块
+没有进入 Curobo 的规划碰撞世界，因此 planner pass 不能被解释为环境 clearance 证明。
+
+在不改变速度、碰撞阈值或物理模型的前提下，使用同一 scene/calibration/q4
+qualification/capability 绑定重新选择真实 GraspGen `candidate://block-green-1/0`，并
+生成了新的不可覆盖 route package：
+
+```text
+root=/home/yanxu/robotwin20-runtime/artifacts/paos-route-v6.7.3-candidate0-20260907T015812591206071/
+request_id=franka-blocks-green0-qualified-q4-v673-20260907
+route_geometry_digest=8a63ba68a9387e80ef8b3b3b67fbb0b469425139b09b621e6a4a0bccefb8f07a
+source_manifest_sha256=0c70eca501db1a0e2962a5dff3e839fc58b8b1c0dbe0f6cf05d255ad8baee1b8
+```
+
+candidate-0 的 release route 点到静态 blue block 中心的水平距离为约 `0.1189 m`，而
+candidate-1 为约 `0.0565 m`；这只是几何筛选依据，不是成功证明。该 package 当前仍为
+`pending_human_review`、`motion_authorized=false`，v6.7.2 approval 不适用于它。下一步
+只有在新的人工 simulation-only approval 后，才能运行一次 candidate-0 probe；若仍失败，
+应把“场景障碍未纳入 provider planner world”作为适配层修复项，而不是继续调速或放宽
+碰撞规则。
+
 - MotionCapability v2/source validation/route v5：已完成；
 - controller qualification：大步 A 已完成；大步 B worker/validator 已实现；
 - qualification motion：旧 q2 plan 已获得隔离 simulation-only 审批，运行结果为 failed/unavailable；新 bounded-controller q3 plan 尚未审批；

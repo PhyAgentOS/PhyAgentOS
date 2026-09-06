@@ -1352,3 +1352,20 @@ simulator steps 后，descent 阶段发生 `panda_hand ↔ block-blue-1` 非目�
 impulse、before/after snapshot、controller stop 和 reset 状态。该证据表明当前 green
 candidate 的 attached-object/environment clearance 或 arm-route selection 不满足约束，
 不是速度阈值问题；不得通过删除接触、放宽 collision gate 或复用旧 approval 处理。
+
+### 32.23 v6.7.3 candidate-0 route diagnosis (2026-09-07)
+
+对 v6.7.2 失败后的只读审查发现，RoboTwin 的 Curobo provider 在初始化
+`MotionGenConfig` 时仅把 table 写入 `world_config`；其它方块虽存在于 SAPIEN 场景，
+却未作为 planner obstacle 注册。因此 candidate 的 planner 通过只说明关节/末端目标
+可达，不说明 attached object 和其它方块之间的环境 clearance。该适配缺口解释了
+candidate-1 在真实 descent 中首次暴露 `panda_hand ↔ block-blue-1` 接触。
+
+本轮没有修改碰撞规则或速度策略，而是从同一 GraspGen 候选集选择
+`candidate://block-green-1/0` 生成独立 route package。其 release 点到 blue block 的
+水平距离约 `0.1189 m`（candidate-1 约 `0.0565 m`），仅作为候选排序证据。新 package
+的 route digest 为
+`8a63ba68a9387e80ef8b3b3b67fbb0b469425139b09b621e6a4a0bccefb8f07a`，source manifest
+digest 为 `0c70ba501db1a0e2962a5dff3e839fc58b8b1c0dbe0f6cf05d255ad8baee1b8`，当前仍
+`pending_human_review` 且 `motion_authorized=false`。v6.7.2 approval 不得复用；只有新
+审批后才能验证 candidate-0 的真实接触与语义结果。
