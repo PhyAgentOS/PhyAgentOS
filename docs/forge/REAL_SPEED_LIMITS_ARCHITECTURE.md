@@ -338,12 +338,16 @@ plan/validation package and an independent worker produces execution evidence.
 
 大步 B 的隔离 qualification worker 已实现于 RoboTwin adapter，记录每个测试的
 commanded/observed joint state、TCP pose/velocity、contacts、simulator step/time、
-controller status 及 stop/error/reset 信号。当前 provider 环境没有 SAPIEN，实际
-运行生成 `unavailable` evidence，并由独立 validator 产生 `validated_failure`；
-这不是 controller enforcement 证明，也没有产生任何 motion authorization。
+controller status 及 stop/error/reset 信号。原生 drive-target 运行产生了
+`unavailable`/`validated_failure` 负证据；新增 bounded controller 后，q3 隔离运行
+产生 `passed`/`validated_pass`。这两类结果都不产生 PAOS motion authorization。
 
 基于该负证据，RoboTwin adapter 新增 capability-driven provider controller。它在
 SAPIEN drive-target 写入之前执行逐关节 limits、命令长度、finite value、stop/fault
 和 step acknowledgement 检查；限制数值仍只来自 MotionCapability artifact，不在
 PAOS Core 或代码中硬编码。由于 controller source/identity 变化，必须重新生成
 capability、qualification plan 和人工 approval，旧 approval 不得复用。
+
+q3 通过仅限于其 controller source digest 和双臂 SAPIEN qualification scope。单臂
+调度语义修正后已生成 q4 新 plan，必须重新进行 plan approval 和 qualification；在
+q4 通过前不能将 q3 结论用于当前代码的 route admission。

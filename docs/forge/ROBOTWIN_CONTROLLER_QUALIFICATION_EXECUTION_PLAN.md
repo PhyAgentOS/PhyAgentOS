@@ -207,6 +207,43 @@ no_motion_validation_sha256=ff0d24137973149b610627d167370dad510383acc4270415ef48
 必须由人工明确审核该新 plan/source-manifest digest 后，才允许执行隔离 qualification；
 旧 q2 审批不适用于 q3 controller identity。
 
+### q3 qualification 运行结果（2026-09-06）
+
+q3 plan 获得隔离 simulation-only 审批后，实际运行于空双 Franka SAPIEN 场景：
+
+```text
+artifact_root=/home/yanxu/robotwin20-runtime/artifacts/qualification-run-20260906T2015Z/
+qualification_status=passed
+evidence_sha256=deda609a888526a6c2808f6bc0137407fd3a97f9f5d8f983c21bce8c9e93e4fd
+validation_status=validated_pass
+validation_sha256=0f4d9dfdb63d362351bb8eb7091eee0d85c950bef12816bb4363fc50613efac3
+motion_authorized=false
+```
+
+八项测试均产生了 trace：nominal position/velocity、over-limit rejection、contact
+fixture、dropped-step、stop、error 和 reset。该结果证明 q3 provider controller 在
+当前 SAPIEN runtime 下的隔离 command-admission 和状态路径满足 qualification contract，
+但仍不授权 benchmark、route、Gateway、Dora、Action 或硬件。
+
+随后修正了单臂调度语义：空闲 arm 不再被强制要求每个物理 step 都有 pending command，
+而是保持当前 drive target；这改变了 controller source digest，因此 q3 evidence 不
+能覆盖 q4。已生成新的 q4 capability/plan，必须重新审批。
+
+### q4 plan（单臂调度修正版）
+
+```text
+capability_root=/home/yanxu/robotwin20-runtime/artifacts/paos-capability-bounded-controller-20260906T2130Z/
+left_capability_sha256=34ebcdd16028c3f62018e7c934a06a725ae23d7478024fb0b551b1aca723e5f5
+right_capability_sha256=1828e7d5e4beb075bf64bd879f53198921c78df0475ab53a5140b0a9ddd435d9
+plan_root=/home/yanxu/robotwin20-runtime/artifacts/paos-controller-qualification-plan-20260906T2145Z/
+plan_sha256=99233d0ce8c885936277894e4265cc255c3ea561bc6edfec91239234e13dea98
+source_manifest_sha256=e8d69f9d61b5c8d3d75de226c471322560c39c74898a67641eb54f0f7fca5579
+review_request_sha256=92cd83039e41b3e060c24fc2b1dc1a51964e5de372fb1b51c23dd54eae54ca95
+no_motion_validation_sha256=5aad1ee2c0d041e39a2d2c6deebcb217ad9fe182ed84c3f4b5b66a70f54729e0
+```
+
+q4 当前为 `pending_human_review`，没有执行任何 q4 qualification motion。
+
 ## 附录 A：大步 A 实际完成记录（2026-09-06）
 
 已完成 provider-owned qualification plan、source manifest、human review request、

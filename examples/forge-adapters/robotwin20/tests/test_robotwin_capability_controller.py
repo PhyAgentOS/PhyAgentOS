@@ -83,3 +83,11 @@ def test_provider_write_failure_becomes_fault():
     with pytest.raises(ControllerCommandError, match="write failed"):
         controller.command((0.0,), (0.1,))
     assert controller.status == "fault"
+
+
+def test_idle_arm_does_not_require_a_command_for_other_arm_step():
+    left, _ = _controller()
+    right, _ = _controller()
+    left.command((0.0, 0.0), (0.1, 0.1))
+    assert left.has_pending_step is True
+    assert right.has_pending_step is False

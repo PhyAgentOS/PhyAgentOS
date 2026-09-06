@@ -1299,3 +1299,10 @@ capability artifact，形成新的 controller identity；旧 approval 不可复�
 这仍不是 PAOS Core 的全局限速器，也不替代真实硬件 SDK。它只提供一个可独立
 qualification 的 RoboTwin provider controller；只有新 plan 经人工审批、实际
 qualification evidence 经独立 validator 验证后，才可用于后续 route admission。
+
+q3 plan 已在空双 Franka SAPIEN 场景中完成实际 qualification：八项测试全部产生
+trace，结果为 `passed`，独立 validator 为 `validated_pass`。其中 over-limit 命令
+在 SAPIEN 写入前被 provider controller 拒绝，contact、dropped-step、stop、error
+和 reset 路径均有对应证据。随后为修正单臂/空闲臂调度语义更新了 controller source，
+因此 q3 digest 不再适用于当前代码；新的 q4 capability/plan 必须重新审批后才能
+再次运行。

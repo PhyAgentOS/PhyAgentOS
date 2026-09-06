@@ -472,6 +472,49 @@ class ControllerQualificationWorker:
                     controller_status=",".join(sorted(set(statuses))),
                 )
                 return evidence, trace
+            if test_id in {
+                "nominal_position_command",
+                "nominal_velocity_command",
+                "contact_load",
+                "reset_path",
+            }:
+                commands = {
+                    arm: self._command_for(arm, test_id) for arm in ("left", "right")
+                }
+                if test_id == "contact_load":
+                    if not self.runtime.supports("contact_load"):
+                        raise _UnavailableError("provider has no qualification contact/load fixture")
+                    self.runtime.prepare_contact_load()
+                for arm_id, (position, velocity, _) in commands.items():
+                    self.runtime.command(arm_id, position, velocity)
+                self._step()
+                for arm_id, (position, velocity, _) in commands.items():
+                    sample = self._sample(
+                        arm_id, {"position": position, "velocity": velocity}, 0
+                    )
+                    if test_id == "contact_load" and not sample["contacts"]:
+                        raise QualificationWorkerError(
+                            "contact-load fixture produced no contact evidence"
+                        )
+                    trace["arms"][arm_id] = {"samples": [sample]}
+                if test_id == "reset_path":
+                    self.runtime.reset_controller()
+                    trace["events"].append({"event": "reset", "status": "completed"})
+                trace["finished_at"] = _now()
+                trace["outcome"] = "pass"
+                statuses = [self.runtime.controller_status(arm) for arm in ("left", "right")]
+                evidence = QualificationTestEvidence(
+                    test_id=test_id, command_family=command_family, outcome="pass",
+                    evidence_ref=f"artifact://controller-qualification/{self.package.plan.qualification_id}/evidence/{test_id}",
+                    evidence_sha256="0" * 64,
+                    observed_max_joint_velocity_radps=max(
+                        _max_abs(sample["observed_joint_velocity"])
+                        for item in trace["arms"].values()
+                        for sample in item["samples"]
+                    ),
+                    controller_status=",".join(sorted(set(statuses))),
+                )
+                return evidence, trace
             for arm_id in ("left", "right"):
                 position, velocity, expected_limit = self._command_for(arm_id, test_id)
                 if test_id == "contact_load":
@@ -727,16 +770,19 @@ class SapienQualificationRuntime:
     def step(self) -> bool:
         if self._closed:
             raise QualificationWorkerError("SAPIEN runtime is closed")
-        for controller in self._controllers.values():
+        pending = [controller for controller in self._controllers.values() if controller.has_pending_step]
+        if not pending:
+            raise QualificationWorkerError("simulator step lacks any admitted arm command")
+        for controller in pending:
             controller.before_step()
         if self._drop_next:
             self._drop_next = False
-            for controller in self._controllers.values():
+            for controller in pending:
                 controller.dropped_step()
             return False
         self._scene.step()
         self._step_index += 1
-        for controller in self._controllers.values():
+        for controller in pending:
             controller.after_step()
         return True
 

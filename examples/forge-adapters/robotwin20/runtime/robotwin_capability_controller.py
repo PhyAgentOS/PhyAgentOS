@@ -87,6 +87,11 @@ class CapabilityBoundedDriveController:
             "settled_steps": self._settled_steps,
         }
 
+    @property
+    def has_pending_step(self) -> bool:
+        """Whether this arm has an admitted command awaiting simulator ack."""
+        return self._pending_step
+
     def command(self, position: Sequence[float], velocity: Sequence[float]) -> None:
         if self._state in {ControllerState.STOPPED, ControllerState.FAULT}:
             self._reject(f"controller is {self._state.value}", fault=False)
