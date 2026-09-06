@@ -20,6 +20,12 @@ def main() -> int:
     parser.add_argument("--runtime-python", type=Path, required=True)
     parser.add_argument("--verifier-id", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--controller-source", type=Path)
+    parser.add_argument(
+        "--controller-id",
+        choices=("robotwin-sapien-drive-target", "paos-robotwin-capability-bounded-drive-target"),
+        default="robotwin-sapien-drive-target",
+    )
     args = parser.parse_args()
     if not args.capability.is_absolute() or not args.capability.is_file() or args.capability.is_symlink():
         parser.error("--capability must be an absolute regular file")
@@ -34,6 +40,8 @@ def main() -> int:
         args.robotwin_root,
         runtime_python=args.runtime_python,
         verifier_id=args.verifier_id,
+        controller_source_path=args.controller_source,
+        controller_id=args.controller_id,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

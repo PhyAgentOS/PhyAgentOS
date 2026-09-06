@@ -1285,3 +1285,17 @@ SAPIEN worker、不可变 test-trace 和独立 evidence validator。worker 每�
 `validated_failure`；这证明失败路径和证据协议可用，但不证明 RoboTwin controller
 已通过资格。该结果仍保持 `motion_authorized=false`，不得用于 benchmark、route、
 Gateway、Dora、Action 或硬件授权。
+
+### 32.19 capability-bounded provider controller (2026-09-06)
+
+RoboTwin 原生 `set_drive_target`/`set_drive_velocity_target` 的负证据表明，原始
+drive-target 路径不会产生可审计的越限拒绝或 stop/error/step 状态。因此没有继续
+调小速度参数，而是在 RoboTwin adapter 增加
+`CapabilityBoundedDriveController` provider boundary：它从绑定的 MotionCapability
+读取逐关节限制，在写入 SAPIEN 前拒绝越限、NaN/Inf、错误状态和未结算 step，并
+记录 accepted/rejected/settled 计数与状态迁移。该 controller 的源码摘要进入新的
+capability artifact，形成新的 controller identity；旧 approval 不可复用。
+
+这仍不是 PAOS Core 的全局限速器，也不替代真实硬件 SDK。它只提供一个可独立
+qualification 的 RoboTwin provider controller；只有新 plan 经人工审批、实际
+qualification evidence 经独立 validator 验证后，才可用于后续 route admission。

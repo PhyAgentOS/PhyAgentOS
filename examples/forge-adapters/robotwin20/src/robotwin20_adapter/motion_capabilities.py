@@ -73,9 +73,10 @@ class ProviderIdentity(BaseModel):
     simulator_version: str
     planner_id: Literal["curobo"] = "curobo"
     planner_version: str
-    controller_id: Literal["robotwin-sapien-drive-target"] = (
-        "robotwin-sapien-drive-target"
-    )
+    controller_id: Literal[
+        "robotwin-sapien-drive-target",
+        "paos-robotwin-capability-bounded-drive-target",
+    ] = "robotwin-sapien-drive-target"
     controller_version: str
     runtime_python_version: str
 
@@ -351,7 +352,12 @@ def _simulator_dt(path: Path) -> float:
 
 
 def _drive_semantics(path: Path) -> tuple[bool, bool, bool]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    source_text = path.read_text(encoding="utf-8")
+    if "class CapabilityBoundedDriveController" in source_text:
+        # The adapter controller forwards validated position/velocity targets
+        # to SAPIEN; force limiting remains unproven and must not be inferred.
+        return True, True, False
+    tree = ast.parse(source_text)
     function = next(
         (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
          and node.name == "set_arm_joints"),
@@ -431,6 +437,11 @@ def derive_robotwin_motion_capability(
     embodiment_id: str,
     arm_id: Literal["left", "right"],
     runtime_python: str | os.PathLike[str],
+    controller_source_path: str | os.PathLike[str] | None = None,
+    controller_id: Literal[
+        "robotwin-sapien-drive-target",
+        "paos-robotwin-capability-bounded-drive-target",
+    ] = "robotwin-sapien-drive-target",
 ) -> MotionCapabilityDocument:
     """Derive one no-motion capability document from the selected provider."""
 
@@ -452,7 +463,18 @@ def derive_robotwin_motion_capability(
     planner_profile_path = embodiment_root / "curobo.yml"
     planner_source_path = root / "envs" / "robot" / "planner.py"
     simulator_source_path = root / "envs" / "_base_task.py"
-    controller_source_path = root / "envs" / "robot" / "robot.py"
+    native_controller_source_path = root / "envs" / "robot" / "robot.py"
+    selected_controller_source_path = (
+        Path(controller_source_path).resolve()
+        if controller_source_path is not None
+        else native_controller_source_path
+    )
+    if (
+        not selected_controller_source_path.is_absolute()
+        or selected_controller_source_path.is_symlink()
+        or not selected_controller_source_path.is_file()
+    ):
+        raise MotionCapabilityError("controller source is unavailable or unsafe")
     try:
         config = _read_unique_yaml(
             config_path, error_type=MotionCapabilityError, label="embodiment profile"
@@ -518,17 +540,25 @@ def derive_robotwin_motion_capability(
         raise MotionCapabilityError("CuRobo joint order or derivative limits are invalid")
     planner_dt = _planner_dt(planner_source_path)
     simulator_dt = _simulator_dt(simulator_source_path)
-    drive_position, drive_velocity, force_bound = _drive_semantics(controller_source_path)
+    drive_position, drive_velocity, force_bound = _drive_semantics(selected_controller_source_path)
     runtime = _runtime_identity(Path(runtime_python))
     revision = _git_revision(root)
-    controller_digest = hashlib.sha256(controller_source_path.read_bytes()).hexdigest()
+    controller_digest = hashlib.sha256(selected_controller_source_path.read_bytes()).hexdigest()
     sources = (
         _source(root, urdf_path, "robot_description"),
         _source(root, config_path, "embodiment_profile"),
         _source(root, planner_profile_path, "planner_profile"),
         _source(root, planner_source_path, "planner_source"),
         _source(root, simulator_source_path, "simulator_source"),
-        _source(root, controller_source_path, "controller_source"),
+        (
+            _source(root, native_controller_source_path, "controller_source")
+            if selected_controller_source_path == native_controller_source_path
+            else {
+                "role": "controller_source",
+                "relative_path": f"paos_adapter/{selected_controller_source_path.name}",
+                "sha256": controller_digest,
+            }
+        ),
     )
     return MotionCapabilityDocument.model_validate({
         "robot_identity": embodiment_id,
@@ -537,6 +567,7 @@ def derive_robotwin_motion_capability(
             "robotwin_git_revision": revision,
             "simulator_version": runtime["sapien"],
             "planner_version": runtime["curobo"],
+            "controller_id": controller_id,
             "controller_version": f"source-{controller_digest[:16]}",
             "runtime_python_version": runtime["python"],
         },
@@ -576,6 +607,11 @@ def validate_robotwin_motion_capability(
     *,
     runtime_python: str | os.PathLike[str],
     verifier_id: str,
+    controller_source_path: str | os.PathLike[str] | None = None,
+    controller_id: Literal[
+        "robotwin-sapien-drive-target",
+        "paos-robotwin-capability-bounded-drive-target",
+    ] = "robotwin-sapien-drive-target",
 ) -> MotionCapabilityValidation:
     """Re-derive provider facts and emit no-motion source-validation evidence."""
 
@@ -588,6 +624,8 @@ def validate_robotwin_motion_capability(
         embodiment_id=parsed.robot_identity,
         arm_id=parsed.arm_id,
         runtime_python=runtime_python,
+        controller_source_path=controller_source_path,
+        controller_id=controller_id,
     )
     if canonical_motion_capability(parsed) != canonical_motion_capability(expected):
         raise MotionCapabilityError("motion capability does not match provider sources")

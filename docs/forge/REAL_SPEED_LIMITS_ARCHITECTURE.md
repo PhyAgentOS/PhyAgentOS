@@ -341,3 +341,9 @@ commanded/observed joint state、TCP pose/velocity、contacts、simulator step/t
 controller status 及 stop/error/reset 信号。当前 provider 环境没有 SAPIEN，实际
 运行生成 `unavailable` evidence，并由独立 validator 产生 `validated_failure`；
 这不是 controller enforcement 证明，也没有产生任何 motion authorization。
+
+基于该负证据，RoboTwin adapter 新增 capability-driven provider controller。它在
+SAPIEN drive-target 写入之前执行逐关节 limits、命令长度、finite value、stop/fault
+和 step acknowledgement 检查；限制数值仍只来自 MotionCapability artifact，不在
+PAOS Core 或代码中硬编码。由于 controller source/identity 变化，必须重新生成
+capability、qualification plan 和人工 approval，旧 approval 不得复用。

@@ -103,17 +103,24 @@ evidence 和 verifier，不把 Skill workflow 写成固定执行脚本。
 
 - MotionCapability v2/source validation/route v5：已完成；
 - controller qualification：大步 A 已完成；大步 B worker/validator 已实现；
-- qualification motion：已获得隔离 simulation-only 审批，但当前 provider 缺少 SAPIEN，实际结果为 unavailable；
+- qualification motion：旧 q2 plan 已获得隔离 simulation-only 审批，运行结果为 failed/unavailable；新 bounded-controller q3 plan 尚未审批；
 - benchmark motion：未授权、未执行；
 - Gateway/Dora/Action/hardware：未接入本阶段。
 
-当前大步 A 已完成，并已获得审核者对该包的显式
+当前大步 A 已完成，并已获得审核者对旧 q2 包的显式
 `I_REVIEWED_AND_APPROVE_CONTROLLER_QUALIFICATION_SIMULATION_ONLY` 批准。大步 B 的
-worker、独立 evidence validator 和失败产物已实现；但由于当前调用环境没有 SAPIEN，
-真实 provider qualification 没有运行，生成的是 `unavailable` evidence。该结果不能升级
-为 controller qualification，也不能启动 benchmark 或 route motion。
+worker、独立 evidence validator 和失败产物已实现；旧 q2 运行已加载 SAPIEN，但暴露
+原生 drive-target 没有越限拒绝、contact-load、dropped-step 和 error-path 资格能力。
+该负证据不能升级为 controller qualification，也不能启动 benchmark 或 route motion。
 
-## 7. 大步 B 实现与实际结果（2026-09-06）
+当前已根据该负证据新增 provider-owned
+`paos-robotwin-capability-bounded-drive-target` controller。它不修改 SAPIEN 或 URDF
+物理事实，而是在 provider command boundary 使用绑定的 MotionCapability 逐命令检查
+joint order、position/velocity limits、finite values、stop/fault 状态和 simulator-step
+acknowledgement；越限和非法命令在到达 SAPIEN 前拒绝。该 controller 的源码摘要已纳入
+新的 MotionCapability artifact，因此旧 `robotwin-sapien-drive-target` approval 不能复用。
+
+## 6. 大步 B 实现与实际结果（2026-09-06）
 
 新增 `runtime/robotwin_controller_qualification_worker.py`，其边界为：
 
@@ -132,19 +139,19 @@ worker、独立 evidence validator 和失败产物已实现；但由于当前调
   digest、双臂信号、有限值和失败原因，并输出 `validated_failure`/`validated_pass`；输出仍
   固定 `motion_authorized=false`。
 
-本次实际运行：
+旧 q2 实际运行：
 
 ```text
 status=unavailable
-reason=SAPIEN is unavailable in the provider runtime
-evidence=/home/yanxu/robotwin20-runtime/artifacts/qualification-run-20260906T1630Z-v3/controller-qualification/blocks-ranking-rgb-franka-sapien-q2/evidence.json
+reason=over-limit controller rejection and contact/error/drop fixtures unavailable
+evidence=/home/yanxu/robotwin20-runtime/artifacts/qualification-run-20260906T1630Z-v6/controller-qualification/blocks-ranking-rgb-franka-sapien-q2/evidence.json
 validation_status=validated_failure
 motion_authorized=false
 ```
 
-因此目前的真实结论是：worker 和证据协议可运行，当前 provider 环境不具备 SAPIEN，
-qualification motion 尚未取得 passed/failed 的物理执行结论；必须在安装并锁定 RoboTwin
-provider runtime 后重新运行同一审批绑定（若 plan/source digest 改变，必须重新审批）。
+因此目前的真实结论是：worker 和证据协议可运行，SAPIEN scene 可加载，但原生
+drive-target controller qualification 未通过。新的 capability-bounded controller
+已生成 q3 plan；在新人工审批前不得执行 q3 qualification motion。
 
 ### 大步 B 五维验收
 
@@ -163,7 +170,7 @@ provider runtime 后重新运行同一审批绑定（若 plan/source digest 改�
 
 专项测试：`15 passed`（qualification contract + worker）；Ruff、compileall 通过。
 
-## 8. 下一步门禁
+## 7. 下一步门禁
 
 1. 在独立 RoboTwin20 provider 环境安装并锁定 SAPIEN、PyYAML、NumPy 和 RoboTwin checkout，
    记录 runtime/controller identity；
@@ -173,7 +180,34 @@ provider runtime 后重新运行同一审批绑定（若 plan/source digest 改�
 4. 只有 `validated_pass` + 新人工批准，才进入大步 C 的 route 重绑定；当前不能运行
    `blocks_ranking_rgb`、pick-place、Gateway、Dora、Action 或硬件。
 
-## 6. 大步 A 实际完成记录（2026-09-06）
+## 8. Capability-bounded controller milestone（2026-09-06）
+
+新 controller 合约位于 `runtime/robotwin_capability_controller.py`，通过
+`CapabilityBoundedDriveController` 提供：
+
+- 每个命令的 joint-order、position、velocity、长度和 finite-value 检查；
+- accepted → running → ready 的 step acknowledgement；未结算、丢失 step、stop 和
+  fault 状态均阻断后续命令；
+- provider write failure 进入 fault，reset 只能回到 ready；
+- 计数器记录 accepted/rejected/settled steps，便于 qualification trace 审计。
+
+本阶段为该 controller 生成了新的 capability 和 plan：
+
+```text
+capability_root=/home/yanxu/robotwin20-runtime/artifacts/paos-capability-bounded-controller-20260906T1830Z/
+left_capability_sha256=57f0d3c5ee8514e20d23eb7ccdee6b8dd9e60403378b88ea38348cf3efad63ca
+right_capability_sha256=6971961f348286d09efc84b07dfa3deaac95ee5e6f35d48361d12087e55e538a
+plan_root=/home/yanxu/robotwin20-runtime/artifacts/paos-controller-qualification-plan-20260906T1845Z/
+plan_sha256=4f0cf0ddf7e20faad11729edd30220e1421689197bf869a0ef0f541ecaca4c9c
+source_manifest_sha256=61119a20f0484649989167cc3e59d7a5159897874df8cb3a50941ac367b7239b
+no_motion_validation_sha256=ff0d24137973149b610627d167370dad510383acc4270415ef48105e8117fa89
+```
+
+该 plan 当前状态为 `pending_human_review`，尚未创建新的 qualification approval。
+必须由人工明确审核该新 plan/source-manifest digest 后，才允许执行隔离 qualification；
+旧 q2 审批不适用于 q3 controller identity。
+
+## 附录 A：大步 A 实际完成记录（2026-09-06）
 
 已完成 provider-owned qualification plan、source manifest、human review request、
 cross-artifact verifier 和 approval CLI。真实 v2 capability 输入生成了不可覆盖包：

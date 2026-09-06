@@ -72,7 +72,7 @@ class QualificationRuntime(Protocol):
         self, arm_id: str, position: Sequence[float], velocity: Sequence[float]
     ) -> None: ...
 
-    def step(self) -> None: ...
+    def step(self) -> bool: ...
 
     def contacts(self) -> Sequence[Mapping[str, Any]]: ...
 
@@ -184,6 +184,9 @@ def _validate_runtime_state(state: Mapping[str, Any], arm_id: str) -> dict[str, 
         "joint_position": _vector(state["joint_position"], f"{arm_id}.joint_position"),
         "joint_velocity": _vector(state["joint_velocity"], f"{arm_id}.joint_velocity"),
         "tcp_pose": _vector(state["tcp_pose"], f"{arm_id}.tcp_pose"),
+        "tcp_velocity": _vector(
+            state.get("tcp_velocity", [0.0] * 6), f"{arm_id}.tcp_velocity"
+        ),
     }
     if len(result["tcp_pose"]) not in (7, 16):
         raise QualificationWorkerError(f"{arm_id}.tcp_pose must be 7 or 16 values")
@@ -347,10 +350,11 @@ class ControllerQualificationWorker:
             if _file_sha(path, name) != self.package.file_digests[name]:
                 raise QualificationWorkerError(f"qualification input digest drifted: {name}")
 
-    def _step(self) -> None:
+    def _step(self) -> bool:
         self._guard()
-        self.runtime.step()
-        self._world_change_started = True
+        changed = bool(self.runtime.step())
+        self._world_change_started = self._world_change_started or changed
+        return changed
 
     def _sample(self, arm_id: str, command: Mapping[str, Any], index: int) -> dict[str, Any]:
         observed = _validate_runtime_state(self.runtime.state(arm_id), arm_id)
@@ -365,8 +369,7 @@ class ControllerQualificationWorker:
             "observed_joint_velocity": observed["joint_velocity"],
             "observed_tcp_pose": observed["tcp_pose"],
             "derived_tcp_velocity": _vector(
-                self.runtime.state(arm_id).get("tcp_velocity", [0.0] * 6),
-                f"{arm_id}.derived_tcp_velocity",
+                observed["tcp_velocity"], f"{arm_id}.derived_tcp_velocity"
             ),
             "contacts": contacts,
             "controller_status": self.runtime.controller_status(arm_id),
@@ -376,6 +379,30 @@ class ControllerQualificationWorker:
                 "reset": False,
             },
         }
+
+    def _command_for(self, arm_id: str, test_id: str) -> tuple[list[float], list[float], float]:
+        state = _validate_runtime_state(self.runtime.state(arm_id), arm_id)
+        capability = self.package.capabilities[arm_id]
+        q = state["joint_position"]
+        zeros = [0.0] * len(q)
+        upper = list(capability.limits.velocity_upper_radps)
+        if len(upper) != len(q):
+            raise QualificationWorkerError(f"{arm_id} joint limit length mismatches runtime state")
+        expected_limit = max(abs(float(x)) for x in upper)
+        if test_id == "nominal_position_command":
+            position = [
+                min(float(x) + 0.01, float(hi) - 1e-4)
+                for x, hi in zip(q, capability.limits.position_upper_rad)
+            ]
+            velocity = zeros
+        elif test_id == "reset_path":
+            position = q
+            velocity = zeros
+        else:
+            factor = 0.1 if test_id != "over_limit_velocity_command" else 2.0
+            position = q
+            velocity = [float(x) * factor for x in upper]
+        return position, velocity, expected_limit
 
     def _run_test(self, test_id: str, command_family: str) -> tuple[QualificationTestEvidence, dict[str, Any]]:
         started = _now()
@@ -390,25 +417,63 @@ class ControllerQualificationWorker:
         }
         try:
             self.runtime.reset()
-            for arm_id in ("left", "right"):
-                state = _validate_runtime_state(self.runtime.state(arm_id), arm_id)
-                capability = self.package.capabilities[arm_id]
-                q = state["joint_position"]
-                zeros = [0.0] * len(q)
-                upper = list(capability.limits.velocity_upper_radps)
-                if len(upper) != len(q):
-                    raise QualificationWorkerError(f"{arm_id} joint limit length mismatches runtime state")
-                expected_limit = max(abs(float(x)) for x in upper)
-                if test_id == "nominal_position_command":
-                    position = [min(float(x) + 0.01, float(hi) - 1e-4) for x, hi in zip(q, capability.limits.position_upper_rad)]
-                    velocity = zeros
-                elif test_id == "reset_path":
-                    position = q
-                    velocity = zeros
+            if test_id in {"over_limit_velocity_command", "stop_path", "dropped_step"}:
+                commands: dict[str, tuple[list[float], list[float], float]] = {
+                    arm: self._command_for(arm, test_id) for arm in ("left", "right")
+                }
+                if test_id == "over_limit_velocity_command":
+                    for arm_id, (position, velocity, expected_limit) in commands.items():
+                        try:
+                            self.runtime.command(arm_id, position, velocity)
+                        except Exception:
+                            if self.runtime.controller_status(arm_id) not in {"rejected", "fault", "limited"}:
+                                raise
+                            trace["arms"][arm_id] = {"samples": [self._sample(arm_id, {"position": position, "velocity": velocity}, 0)]}
+                            continue
+                        raise QualificationWorkerError("provider accepted over-limit velocity command")
+                    trace["events"].append({"event": "over_limit", "status": "rejected"})
+                elif test_id == "stop_path":
+                    for arm_id, (position, velocity, _) in commands.items():
+                        self.runtime.command(arm_id, position, velocity)
+                    self.runtime.stop()
+                    for arm_id, (position, velocity, _) in commands.items():
+                        try:
+                            self._step()
+                        except Exception:
+                            trace["arms"][arm_id] = {"samples": [self._sample(arm_id, {"position": position, "velocity": velocity}, 0)]}
+                            continue
+                        raise QualificationWorkerError("provider stop path allowed a simulator step")
+                    trace["events"].append({"event": "stop", "status": "blocked"})
                 else:
-                    factor = 0.1 if test_id != "over_limit_velocity_command" else 2.0
-                    position = q
-                    velocity = [float(x) * factor for x in upper]
+                    for arm_id, (position, velocity, _) in commands.items():
+                        self.runtime.command(arm_id, position, velocity)
+                    if not self.runtime.supports("dropped_step"):
+                        raise _UnavailableError("provider cannot instrument a dropped simulator step")
+                    self.runtime.drop_next_step()
+                    changed = self._step()
+                    if changed or any(self.runtime.controller_status(arm) != "fault" for arm in ("left", "right")):
+                        raise QualificationWorkerError("provider dropped-step path was not detected")
+                    for arm_id, (position, velocity, _) in commands.items():
+                        trace["arms"][arm_id] = {"samples": [self._sample(arm_id, {"position": position, "velocity": velocity}, 0)]}
+                    trace["events"].append({"event": "dropped_step", "status": "fault"})
+                for arm in ("left", "right"):
+                    trace["arms"].setdefault(arm, {"samples": []})
+                if test_id in {"stop_path", "dropped_step"}:
+                    self.runtime.reset_controller()
+                    trace["events"].append({"event": "reset", "status": "completed"})
+                trace["finished_at"] = _now()
+                trace["outcome"] = "pass"
+                statuses = [self.runtime.controller_status(arm) for arm in ("left", "right")]
+                evidence = QualificationTestEvidence(
+                    test_id=test_id, command_family=command_family, outcome="pass",
+                    evidence_ref=f"artifact://controller-qualification/{self.package.plan.qualification_id}/evidence/{test_id}",
+                    evidence_sha256="0" * 64,
+                    observed_max_joint_velocity_radps=0.0,
+                    controller_status=",".join(sorted(set(statuses))),
+                )
+                return evidence, trace
+            for arm_id in ("left", "right"):
+                position, velocity, expected_limit = self._command_for(arm_id, test_id)
                 if test_id == "contact_load":
                     if not self.runtime.supports("contact_load"):
                         raise _UnavailableError("provider has no qualification contact/load fixture")
@@ -421,17 +486,30 @@ class ControllerQualificationWorker:
                     if not self.runtime.supports("error_path"):
                         raise _UnavailableError("provider cannot inject controller error state")
                     self.runtime.inject_error()
+                if test_id == "error_path":
+                    try:
+                        self.runtime.command(arm_id, position, velocity)
+                    except Exception:
+                        pass
+                    if self.runtime.controller_status(arm_id) not in {"fault", "rejected"}:
+                        raise QualificationWorkerError("provider error path did not reject command")
+                    trace["arms"][arm_id] = {"samples": [self._sample(arm_id, {"position": position, "velocity": velocity}, 0)]}
+                    trace["events"].append({"event": "error", "status": "rejected"})
+                    continue
                 self.runtime.command(arm_id, position, velocity)
-                if test_id == "stop_path":
-                    self.runtime.stop()
                 self._step()
                 sample = self._sample(arm_id, {"position": position, "velocity": velocity}, 0)
+                if test_id == "contact_load" and not sample["contacts"]:
+                    raise QualificationWorkerError("contact-load fixture produced no contact evidence")
                 sample["qualification_expectation"] = {
                     "velocity_limit_radps": expected_limit,
                     "over_limit_command": test_id == "over_limit_velocity_command",
                     "controller_rejection_required": test_id == "over_limit_velocity_command",
                 }
                 trace["arms"][arm_id] = {"samples": [sample]}
+            if test_id in {"error_path", "stop_path"}:
+                self.runtime.reset_controller()
+                trace["events"].append({"event": "reset", "status": "completed"})
             if test_id == "reset_path":
                 self.runtime.reset_controller()
                 trace["events"].append({"event": "reset", "status": "completed"})
@@ -537,7 +615,7 @@ class _UnavailableError(Exception):
 class SapienQualificationRuntime:
     """Minimal real SAPIEN provider for an empty two-Panda qualification scene."""
 
-    def __init__(self, robotwin_root: Path, *, timestep_s: float = 1 / 250) -> None:
+    def __init__(self, robotwin_root: Path, capabilities: Mapping[str, MotionCapabilityDocument], *, timestep_s: float = 1 / 250) -> None:
         try:
             import sapien.core as sapien
         except ModuleNotFoundError as exc:
@@ -554,6 +632,17 @@ class SapienQualificationRuntime:
         self._scene = self._engine.create_scene()
         self._scene.set_timestep(self.dt_s)
         self._robots: dict[str, Any] = {}
+        if set(capabilities) != {"left", "right"} or any(
+            capability.provider.controller_id != "paos-robotwin-capability-bounded-drive-target"
+            for capability in capabilities.values()
+        ):
+            raise QualificationWorkerError(
+                "qualification runtime requires the capability-bounded provider controller identity"
+            )
+        self._controllers: dict[str, Any] = {}
+        self._contact_fixture: Any | None = None
+        self._drop_next = False
+        self._last_tcp_pose: dict[str, list[float]] = {}
         config_path = robotwin_root / "assets" / "embodiments" / "franka-panda" / "config.yml"
         urdf_path = robotwin_root / "assets" / "embodiments" / "franka-panda" / "panda.urdf"
         if not config_path.is_file() or not urdf_path.is_file():
@@ -570,10 +659,28 @@ class SapienQualificationRuntime:
             for joint in joints:
                 joint.set_drive_property(1000.0, 200.0, 1000.0)
             self._robots[arm] = (robot, joints)
+            from robotwin_capability_controller import (
+                CapabilityBoundedDriveController,
+                ControllerLimits,
+            )
+            capability = capabilities.get(arm)
+            if capability is None or tuple(config["arm_joints_name"][0]) != capability.joint_order:
+                raise QualificationWorkerError(f"{arm} capability joint order does not match Franka runtime")
+            self._controllers[arm] = CapabilityBoundedDriveController(
+                ControllerLimits(
+                    joint_order=capability.joint_order,
+                    position_lower_rad=capability.limits.position_lower_rad,
+                    position_upper_rad=capability.limits.position_upper_rad,
+                    velocity_lower_radps=capability.limits.velocity_lower_radps,
+                    velocity_upper_radps=capability.limits.velocity_upper_radps,
+                ),
+                lambda q, dq, arm_id=arm: self._write_target(arm_id, q, dq),
+            )
         self._step_index = 0
         self._closed = False
 
     def reset(self) -> None:
+        self._drop_next = False
         for robot, _ in self._robots.values():
             # Panda articulation contains seven arm DOFs plus the two finger
             # DOFs.  Keep the gripper joints in a valid, open state while the
@@ -582,6 +689,9 @@ class SapienQualificationRuntime:
             if len(robot.get_qpos()) != len(qpos):
                 raise QualificationWorkerError("Franka articulation DOF count is not the qualified profile")
             robot.set_qpos(qpos)
+        for controller in self._controllers.values():
+            controller.reset()
+        self._last_tcp_pose.clear()
 
     def close(self) -> None:
         self._closed = True
@@ -590,24 +700,45 @@ class SapienQualificationRuntime:
         robot, joints = self._robots[arm_id]
         link = robot.find_link_by_name("panda_hand")
         pose = link.get_pose()
+        pose_values = list(pose.p) + list(pose.q)
+        previous = self._last_tcp_pose.get(arm_id)
+        tcp_velocity = [0.0] * 6
+        if previous is not None:
+            tcp_velocity = [
+                (pose_values[index] - previous[index]) / self.dt_s for index in range(3)
+            ] + [0.0] * 3
+        self._last_tcp_pose[arm_id] = pose_values
         return {
             "joint_position": list(robot.get_qpos()[: len(joints)]),
             "joint_velocity": list(robot.get_qvel()[: len(joints)]),
-            "tcp_pose": list(pose.p) + list(pose.q),
-            "tcp_velocity": [0.0] * 6,
+            "tcp_pose": pose_values,
+            "tcp_velocity": tcp_velocity,
         }
 
     def command(self, arm_id: str, position: Sequence[float], velocity: Sequence[float]) -> None:
+        self._controllers[arm_id].command(position, velocity)
+
+    def _write_target(self, arm_id: str, position: Sequence[float], velocity: Sequence[float]) -> None:
         _, joints = self._robots[arm_id]
         for joint, q, dq in zip(joints, position, velocity):
             joint.set_drive_target(float(q))
             joint.set_drive_velocity_target(float(dq))
 
-    def step(self) -> None:
+    def step(self) -> bool:
         if self._closed:
             raise QualificationWorkerError("SAPIEN runtime is closed")
+        for controller in self._controllers.values():
+            controller.before_step()
+        if self._drop_next:
+            self._drop_next = False
+            for controller in self._controllers.values():
+                controller.dropped_step()
+            return False
         self._scene.step()
         self._step_index += 1
+        for controller in self._controllers.values():
+            controller.after_step()
+        return True
 
     def contacts(self) -> Sequence[Mapping[str, Any]]:
         result = []
@@ -617,27 +748,35 @@ class SapienQualificationRuntime:
         return result
 
     def controller_status(self, arm_id: str) -> str:
-        return "running" if not self._closed else "closed"
+        return self._controllers[arm_id].status if not self._closed else "closed"
 
     def stop(self) -> None:
-        for _, joints in self._robots.values():
-            for joint in joints:
-                joint.set_drive_velocity_target(0.0)
+        for controller in self._controllers.values():
+            controller.stop()
 
     def reset_controller(self) -> None:
-        self.stop()
+        for controller in self._controllers.values():
+            controller.reset()
 
     def supports(self, capability: str) -> bool:
-        return False
+        return capability in {"contact_load", "dropped_step", "error_path"}
 
     def prepare_contact_load(self) -> None:
-        raise _UnavailableError("SAPIEN qualification fixture is not configured")
+        if self._contact_fixture is not None:
+            return
+        hand = self._robots["right"][0].find_link_by_name("panda_hand")
+        pose = hand.get_pose()
+        builder = self._scene.create_actor_builder()
+        builder.add_box_collision(half_size=[0.04, 0.04, 0.04])
+        self._contact_fixture = builder.build_static(name="qualification_contact_fixture")
+        self._contact_fixture.set_pose(pose)
 
     def inject_error(self) -> None:
-        raise _UnavailableError("SAPIEN drive-target backend has no injectable error state")
+        for controller in self._controllers.values():
+            controller.fault("qualification error-path injection")
 
     def drop_next_step(self) -> None:
-        raise _UnavailableError("SAPIEN runtime cannot instrument a dropped step")
+        self._drop_next = True
 
 
 def validate_trace_artifact(trace: Mapping[str, Any], expected: QualificationTestEvidence) -> tuple[str, ...]:

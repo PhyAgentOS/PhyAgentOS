@@ -219,6 +219,34 @@ def test_runtime_python_symlink_is_supported_but_source_symlinks_are_rejected(tm
         _derive(tmp_path, runtime)
 
 
+def test_capability_can_bind_external_provider_controller_source(tmp_path: Path):
+    runtime = _write_provider_tree(tmp_path)
+    controller = tmp_path / "paos_adapter_controller.py"
+    controller.write_text(
+        "class CapabilityBoundedDriveController:\n    pass\n", encoding="utf-8"
+    )
+    capability = derive_robotwin_motion_capability(
+        tmp_path.resolve(),
+        embodiment_id="franka-panda",
+        arm_id="left",
+        runtime_python=runtime.resolve(),
+        controller_source_path=controller.resolve(),
+        controller_id="paos-robotwin-capability-bounded-drive-target",
+    )
+    assert capability.provider.controller_id == "paos-robotwin-capability-bounded-drive-target"
+    assert capability.sources[-1].relative_path == "paos_adapter/paos_adapter_controller.py"
+    assert capability.enforcement.drive_velocity_target is True
+    validation = validate_robotwin_motion_capability(
+        capability,
+        tmp_path.resolve(),
+        runtime_python=runtime.resolve(),
+        verifier_id="paos-source-validator/v1",
+        controller_source_path=controller.resolve(),
+        controller_id="paos-robotwin-capability-bounded-drive-target",
+    )
+    assert validation.status == "validated_planner_constraints"
+
+
 def test_joint_order_timing_and_controller_claims_fail_closed(tmp_path: Path):
     runtime = _write_provider_tree(tmp_path)
     profile_path = tmp_path / "assets" / "embodiments" / "franka-panda" / "curobo.yml"

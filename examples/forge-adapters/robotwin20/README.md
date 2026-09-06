@@ -483,6 +483,13 @@ evidence. Missing SAPIEN, unsupported contact/error fixtures, stale inputs,
 and incomplete traces produce `unavailable`/`validated_failure`; they cannot
 be converted into a controller limit or route approval.
 
+The current native RoboTwin drive-target identity is intentionally not
+qualified. The adapter also provides a separate
+`paos-robotwin-capability-bounded-drive-target` controller boundary. It must be
+materialized and independently validated as a new capability source; its
+qualification plan requires a fresh human approval because controller identity
+and source digest are part of the approval binding.
+
 Materialize and independently revalidate one provider-owned capability without
 loading a scene or executing motion:
 

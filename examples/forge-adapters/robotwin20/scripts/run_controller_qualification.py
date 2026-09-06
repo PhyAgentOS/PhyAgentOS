@@ -81,7 +81,7 @@ def main() -> int:
             print(json.dumps({"status": "validated_qualification_inputs", "qualification_id": package.plan.qualification_id}, sort_keys=True))
             return 0
         try:
-            runtime = SapienQualificationRuntime(args.robotwin_root.resolve())
+            runtime = SapienQualificationRuntime(args.robotwin_root.resolve(), package.capabilities)
         except QualificationWorkerError as exc:
             path = _persist_unavailable(package, args.artifact_root, str(exc))
             print(json.dumps({"status": "unavailable", "qualification_id": package.plan.qualification_id, "evidence": str(path), "evidence_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "motion_authorized": False}, sort_keys=True))

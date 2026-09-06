@@ -20,6 +20,12 @@ def main() -> int:
     parser.add_argument("--embodiment", required=True)
     parser.add_argument("--arm", choices=("left", "right"), required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--controller-source", type=Path)
+    parser.add_argument(
+        "--controller-id",
+        choices=("robotwin-sapien-drive-target", "paos-robotwin-capability-bounded-drive-target"),
+        default="robotwin-sapien-drive-target",
+    )
     args = parser.parse_args()
     if not args.output.is_absolute() or args.output.exists() or args.output.is_symlink():
         parser.error("--output must be a new absolute path")
@@ -28,6 +34,8 @@ def main() -> int:
         embodiment_id=args.embodiment,
         arm_id=args.arm,
         runtime_python=args.runtime_python,
+        controller_source_path=args.controller_source,
+        controller_id=args.controller_id,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(canonical_motion_capability(document))

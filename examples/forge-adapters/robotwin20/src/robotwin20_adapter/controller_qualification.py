@@ -122,7 +122,10 @@ class QualificationIdentity(BaseModel):
     arm_ids: tuple[Literal["left", "right"], ...]
     simulator_id: Literal["sapien"] = "sapien"
     simulator_version: str
-    controller_id: Literal["robotwin-sapien-drive-target"] = "robotwin-sapien-drive-target"
+    controller_id: Literal[
+        "robotwin-sapien-drive-target",
+        "paos-robotwin-capability-bounded-drive-target",
+    ] = "robotwin-sapien-drive-target"
     controller_version: str
     runtime_python_version: str
     robotwin_git_revision: str
