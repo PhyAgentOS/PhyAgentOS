@@ -20,13 +20,6 @@ from .adapter import (
     SensorArtifact,
     SensorCapture,
 )
-from .controller_capabilities import (
-    CONTROLLER_CAPABILITY_SCHEMA_VERSION,
-    ControllerCapabilityDocument,
-    ControllerCapabilityError,
-    controller_capability_digest,
-    load_controller_capability_document,
-)
 from .grasp_adaptation import (
     GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
     GraspAdaptationError,
@@ -45,6 +38,17 @@ from .grasp_proposal import (
     GraspProposalAdapterError,
     GraspWorkerClient,
     PointCloudArtifactResolver,
+)
+from .motion_capabilities import (
+    MOTION_CAPABILITY_SCHEMA_VERSION,
+    MOTION_CAPABILITY_VALIDATION_SCHEMA_VERSION,
+    MotionCapabilityDocument,
+    MotionCapabilityError,
+    MotionCapabilityValidation,
+    canonical_motion_capability,
+    derive_robotwin_motion_capability,
+    motion_capability_digest,
+    validate_robotwin_motion_capability,
 )
 from .openai_scene_understanding import (
     SCENE_UNDERSTANDING_JSON_SCHEMA,
@@ -237,11 +241,15 @@ __all__ = [
     "GraspProfileError",
     "build_grasp_provider",
     "load_grasp_profile",
-    "CONTROLLER_CAPABILITY_SCHEMA_VERSION",
-    "ControllerCapabilityDocument",
-    "ControllerCapabilityError",
-    "controller_capability_digest",
-    "load_controller_capability_document",
+    "MOTION_CAPABILITY_SCHEMA_VERSION",
+    "MOTION_CAPABILITY_VALIDATION_SCHEMA_VERSION",
+    "MotionCapabilityDocument",
+    "MotionCapabilityError",
+    "MotionCapabilityValidation",
+    "canonical_motion_capability",
+    "derive_robotwin_motion_capability",
+    "motion_capability_digest",
+    "validate_robotwin_motion_capability",
     "FilesystemPerceptionArtifactStore",
     "LocalizationRequest",
     "LocalizationResult",

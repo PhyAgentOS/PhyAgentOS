@@ -1206,7 +1206,7 @@ hard-limit qualification.
 
 The implementation reuses the existing `CapabilitySnapshot/ArmCapability`
 contract instead of introducing a parallel core `MotionLimit` model. Each arm
-may bind an adapter-owned `controller_capabilities_ref`; the referenced
+may bind an adapter-owned `motion_capabilities_ref`; the referenced
 artifact owns controller identity, runtime kind, units, source provenance, and
 enforcement semantics. Planning consumes the projection and never imports an
 SDK or mutates a limit.
@@ -1226,3 +1226,26 @@ capabilities, Planning performs no-motion admission, Gateway/Controller owns
 execution, Evidence records measurements, Verifier owns semantic success, and
 Experience may evolve policy but not physical limits. No Gateway, Dora,
 simulation motion, or hardware action is enabled by this change.
+
+## 32.16 MotionCapability v2 superseding decision (2026-09-06)
+
+This section supersedes the current-implementation claims in 32.13--32.15
+about `trajectory_controller.py`, the fixed `0.20 m/s` diagnostic threshold,
+and controller-capabilities/v1; those sections remain historical design
+records. The only current projection is
+`ArmCapability.motion_capabilities_ref` to the adapter-owned
+`paos-robotwin20-motion-capability/v2`. The writable legacy capability model
+and its tests were removed so they cannot act as a second speed-limit source.
+
+The RoboTwin provider projection derives per-joint limits, timing, provider
+identity, and source digests from the real Franka URDF, CuRobo profile,
+planner/simulator/drive-target sources, and selected runtime interpreter. Its
+independent revalidation proves only source and planner-constraint agreement;
+controller period, Cartesian velocity, and effort enforcement remain unknown,
+and every record fixes `motion_authorized=false`.
+
+route-request/v5 and route-source-manifest/v3 bind capability and validation
+digests for both arms. The simulation probe validates those inputs and then
+fails before world change because no separately versioned controller-
+enforcement qualification exists. Provider capability availability and motion
+execution qualification are therefore distinct, non-substitutable gates.

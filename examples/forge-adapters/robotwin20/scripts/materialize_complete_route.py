@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize one reviewable v4 route without authorizing simulation motion."""
+"""Materialize one reviewable v5 route without authorizing simulation motion."""
 
 from __future__ import annotations
 
@@ -14,10 +14,18 @@ from typing import Any, Mapping
 
 import yaml
 
+from robotwin20_adapter.arm_candidates import ArmPlanningError, load_arm_planning_profile
 from robotwin20_adapter.grasp_adaptation import (
     GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
     adapt_grasp_candidate,
 )
+from robotwin20_adapter.motion_capabilities import (
+    MotionCapabilityDocument,
+    MotionCapabilityValidation,
+    canonical_motion_capability,
+    motion_capability_digest,
+)
+from robotwin20_adapter.perception_profile import _read_unique_yaml
 from robotwin20_adapter.route_generation import generate_route_request
 from robotwin20_adapter.route_inputs import (
     ROUTE_INPUT_PROFILE_SCHEMA_VERSION,
@@ -110,6 +118,50 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
     if not isinstance(tolerance, Mapping) or set(tolerance) != {"target_position_m", "target_orientation_rad"}:
         raise MaterializationError("route input semantic tolerance is invalid")
     return value
+
+
+def _load_runtime_identity(path: Path) -> Mapping[str, str]:
+    """Load the benchmark runtime identity used to cross-bind capability artifacts."""
+    if not path.is_absolute() or not path.is_file() or path.is_symlink():
+        raise MaterializationError("runtime profile must be an absolute regular file")
+    value = _read_unique_yaml(
+        path,
+        error_type=MaterializationError,
+        label="runtime profile",
+    )
+    expected = {
+        "schema_version",
+        "task_name",
+        "task_config",
+        "embodiment",
+        "sensor_ref",
+        "seed",
+        "robot_identity",
+        "gripper_identity",
+        "embodiment_topology",
+        "planner_profile",
+    }
+    required_identity = {
+        "task_name",
+        "robot_identity",
+        "gripper_identity",
+        "embodiment_topology",
+        "planner_profile",
+    }
+    if set(value) != expected or any(
+        not isinstance(value[key], str) or not value[key].strip()
+        for key in required_identity
+    ):
+        raise MaterializationError("runtime profile identity fields are invalid")
+    embodiment = value["embodiment"]
+    if (
+        value["schema_version"] != "paos-robotwin20-runtime-profile/v1"
+        or not isinstance(embodiment, list)
+        or len(embodiment) != 3
+        or embodiment[:2] != [value["robot_identity"], value["robot_identity"]]
+    ):
+        raise MaterializationError("runtime profile embodiment binding is invalid")
+    return {key: value[key] for key in required_identity}
 
 
 def _validate_transform_attestation(
@@ -232,6 +284,16 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
 
     facts = validate_scene_facts(_load_json(args.scene_facts, "scene facts"))
     profile = _load_profile(args.route_input_profile)
+    runtime_identity = _load_runtime_identity(args.runtime_profile)
+    try:
+        arm_profile = load_arm_planning_profile(args.arm_planning_profile)
+    except ArmPlanningError as exc:
+        raise MaterializationError("arm planning profile is invalid") from exc
+    if arm_profile["embodiment_id"] != runtime_identity["robot_identity"]:
+        raise MaterializationError("arm planning and runtime embodiment identities differ")
+    arm_profiles = {item["arm_id"]: item for item in arm_profile["arms"]}
+    if set(arm_profiles) != {"left", "right"}:
+        raise MaterializationError("arm planning profile must bind left and right arms")
     transform_attestation = _validate_transform_attestation(
         args.grasp_transform_attestation,
         args.graspgen_source_root,
@@ -266,6 +328,11 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             "provider-transform-attestation",
         )
     }
+    for arm_id, arm in arm_profiles.items():
+        refs[f"{arm_id}-motion-capability"] = arm["motion_capabilities_ref"]
+        refs[f"{arm_id}-motion-capability-validation"] = (
+            f"{arm['motion_capabilities_ref']}-source-validation"
+        )
     facts_digest = _write_json(output_root, refs["scene-facts"], facts)
     calibration_ref = facts["calibration_ref"]
     calibration_digest = _copy_source_artifact(source_root, output_root, calibration_ref, ".json")
@@ -282,6 +349,46 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
     _write_json(output_root, refs["joint-limits"], profile["joint_limit_policy"])
     _write_json(output_root, refs["stop-policy"], profile["stop_policy"])
     _write_json(output_root, refs["semantic-tolerance"], profile["semantic_tolerance"])
+    capability_bindings = []
+    for arm_id in ("left", "right"):
+        capability_path = getattr(args, f"{arm_id}_motion_capability")
+        validation_path = getattr(args, f"{arm_id}_motion_capability_validation")
+        capability_value = _load_json(capability_path, f"{arm_id} motion capability")
+        validation_value = _load_json(
+            validation_path, f"{arm_id} motion capability validation"
+        )
+        try:
+            capability = MotionCapabilityDocument.model_validate(capability_value)
+            validation = MotionCapabilityValidation.model_validate(validation_value)
+        except ValueError as exc:
+            raise MaterializationError(f"{arm_id} motion capability binding is invalid") from exc
+        capability_digest = motion_capability_digest(capability)
+        if (
+            capability.robot_identity != runtime_identity["robot_identity"]
+            or capability.arm_id != arm_id
+            or capability.provider.planner_id != runtime_identity["planner_profile"]
+            or len(capability.joint_order) != profile["joint_limit_policy"]["joint_count"]
+            or validation.capability_sha256 != capability_digest
+            or validation.status != "validated_planner_constraints"
+            or validation.independent_execution_qualification is not False
+            or validation.controller_enforced is not False
+        ):
+            raise MaterializationError(f"{arm_id} motion capability semantics are invalid")
+        capability_ref = refs[f"{arm_id}-motion-capability"]
+        validation_ref = refs[f"{arm_id}-motion-capability-validation"]
+        written_capability_digest = _write_bytes(
+            _artifact_path(output_root, capability_ref), canonical_motion_capability(capability)
+        )
+        written_validation_digest = _write_json(
+            output_root, validation_ref, validation.model_dump(mode="json")
+        )
+        capability_bindings.append({
+            "arm_id": arm_id,
+            "artifact_ref": capability_ref,
+            "sha256": written_capability_digest,
+            "validation_ref": validation_ref,
+            "validation_sha256": written_validation_digest,
+        })
     transform_attestation_digest = _write_json(
         output_root, refs["provider-transform-attestation"], transform_attestation
     )
@@ -300,6 +407,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         "workspace_bounds_m": {**dict(profile["workspace_bounds_m"]), "provenance_ref": refs["workspace"]},
         "joint_limits_ref": refs["joint-limits"],
         "stop_policy_ref": refs["stop-policy"],
+        "motion_capabilities": capability_bindings,
         "candidates": [],
     }
     adaptation_config = {
@@ -397,7 +505,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
     route_sha256 = _write_json(output_root, refs["route-request"], route_request)
     _write_bytes(output_root / "route_request.json", canonical_json(route_request))
     source_manifest = {
-        "schema_version": "paos-robotwin20-route-source-manifest/v2",
+        "schema_version": "paos-robotwin20-route-source-manifest/v3",
         "request_id": args.request_id,
         "scene_revision": facts["scene_revision"],
         "candidate_ref": args.candidate_ref,
@@ -417,6 +525,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             "artifact_ref": refs["provider-transform-attestation"],
             "sha256": transform_attestation_digest,
         },
+        "motion_capabilities": capability_bindings,
         "route_geometry_digest": route_digest,
         "motion_authorized": False,
     }
@@ -462,6 +571,11 @@ def main() -> int:
     parser.add_argument("--graspgen-source-root", type=Path, required=True)
     parser.add_argument("--simulation-probe-profile", type=Path, required=True)
     parser.add_argument("--runtime-profile", type=Path, required=True)
+    parser.add_argument("--arm-planning-profile", type=Path, required=True)
+    parser.add_argument("--left-motion-capability", type=Path, required=True)
+    parser.add_argument("--right-motion-capability", type=Path, required=True)
+    parser.add_argument("--left-motion-capability-validation", type=Path, required=True)
+    parser.add_argument("--right-motion-capability-validation", type=Path, required=True)
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--candidate-ref", required=True)
     parser.add_argument("--entity-ref", required=True)

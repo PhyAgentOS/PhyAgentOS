@@ -64,6 +64,22 @@ def _request(tmp_path: Path) -> dict:
         },
         "joint_limits_ref": "artifact://blocks/joint-limits",
         "stop_policy_ref": "artifact://blocks/stop-policy",
+        "motion_capabilities": [
+            {
+                "arm_id": "left",
+                "artifact_ref": "artifact://blocks/motion-capability-left",
+                "sha256": "1" * 64,
+                "validation_ref": "artifact://blocks/motion-capability-left-validation",
+                "validation_sha256": "2" * 64,
+            },
+            {
+                "arm_id": "right",
+                "artifact_ref": "artifact://blocks/motion-capability-right",
+                "sha256": "3" * 64,
+                "validation_ref": "artifact://blocks/motion-capability-right-validation",
+                "validation_sha256": "4" * 64,
+            },
+        ],
         "candidates": [{
             "candidate_ref": "candidate://red-block/1",
             "entity_ref": "entity://red-block",
@@ -118,6 +134,8 @@ def test_valid_route_request_is_deterministically_bound(tmp_path: Path):
         (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(unknown_speed=0), "fields"),
         (lambda r: r["candidates"][0]["placement_target"]["release_robot_target_pose"].update(position_m=[0.1, 0, 0.7]), "release RoboTwin target"),
         (lambda r: r["candidates"][0]["route"][6].update(gripper_state="closed"), "gripper state"),
+        (lambda r: r["motion_capabilities"].pop(), "both arms"),
+        (lambda r: r["motion_capabilities"][1].update(arm_id="left"), "arm binding"),
     ],
 )
 def test_route_request_fails_closed(tmp_path: Path, mutate, message: str):

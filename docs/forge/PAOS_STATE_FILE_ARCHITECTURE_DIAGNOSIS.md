@@ -1211,7 +1211,7 @@ negative evidence but cannot satisfy this qualification gate.
 
 结合速度诊断和 RoboTwin 依赖核验，本方案最终复用现有
 `CapabilitySnapshot/ArmCapability`，不新增 PAOS Core 的 `MotionLimit` 事实源。
-每个 arm 可携带 adapter-owned `controller_capabilities_ref`；详细限制、来源
+每个 arm 可携带 adapter-owned `motion_capabilities_ref`；详细限制、来源
 和执行语义保存在不可变 controller-capability artifact 中，允许左右臂和不
 同 embodiment 使用各自的 controller profile。
 
@@ -1234,3 +1234,25 @@ Experience 只能学习路线和工具策略。
 本轮实现复用现有能力协议并增加 controller artifact 引用校验，没有新增
 生命周期、锁、Gateway 调用或动作授权；RoboTwin 仍保持
 `motion_authorized=false`。
+
+## 32.16 MotionCapability v2 superseding decision (2026-09-06)
+
+本节取代 32.13--32.15 中已经撤销的 `trajectory_controller.py`、固定
+`0.20 m/s` diagnostic threshold 和 controller-capabilities/v1 作为当前实现的
+描述；这些段落仅保留为设计演进记录。当前唯一有效入口是
+`ArmCapability.motion_capabilities_ref` 指向 adapter-owned
+`paos-robotwin20-motion-capability/v2`。旧 controller-capabilities/v1 模型和
+测试已删除，避免形成第二份可手写的速度事实源。
+
+RoboTwin provider projection 从真实 Franka URDF、CuRobo profile、planner、
+simulator、drive-target source 和独立 runtime interpreter 导出逐关节限制、
+source digest、provider identity 与 timing。独立 source validation 重新导出
+并比较完整 canonical document，但其结论固定为
+`validated_planner_constraints`；controller period、Cartesian velocity 和
+effort enforcement 仍是 unknown，且不授予 motion authority。
+
+route-request/v5 和 route-source-manifest/v3 必须绑定左右臂 capability 与
+validation digest。simulation probe 会先验证这些绑定，然后因缺少单独的
+controller-enforcement qualification 在任何 world change 前 fail closed。
+因此“provider artifact 已完成”与“控制器执行资格未完成”是两个明确且不可
+互相替代的状态。

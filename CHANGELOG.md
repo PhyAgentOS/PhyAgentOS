@@ -2,6 +2,48 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.0.0] - 2026-09-06
+
+Implemented the RoboTwin provider-owned `MotionCapability` v2 artifact and bound both Franka arms into route-request/v5. The artifact is derived from the selected RoboTwin checkout and runtime interpreter, records per-joint URDF limits, CuRobo derivatives, timing, identity, source digests, and explicit enforcement semantics. Independent validation proves source/planner agreement only; it does not create controller qualification or motion authority.
+
+实现 RoboTwin provider-owned `MotionCapability` v2，并将 Franka 左右臂绑定到 route-request/v5。artifact 从选定 RoboTwin checkout 和 runtime interpreter 导出逐关节 URDF 限制、CuRobo 导数限制、时间语义、provider identity、source digest 和执行语义。独立验证只证明来源/planner 一致性，不生成 controller qualification 或动作权威。
+
+### 文件变更详情 / Detailed changes
+
+- 新增 `examples/forge-adapters/robotwin20/src/robotwin20_adapter/motion_capabilities.py`：实现 provider source extraction、canonical digest、runtime identity、joint-order/timing/drive semantics 校验及 no-motion validation record。
+- Added `examples/forge-adapters/robotwin20/src/robotwin20_adapter/motion_capabilities.py`: provider-source extraction, canonical digesting, runtime identity, joint-order/timing/drive-semantics validation, and a no-motion validation record.
+- 新增 `examples/forge-adapters/robotwin20/scripts/materialize_motion_capability.py`、`verify_motion_capability.py`：提供可复现的两阶段 artifact 物化与独立重验证 CLI。
+- Added `examples/forge-adapters/robotwin20/scripts/materialize_motion_capability.py` and `verify_motion_capability.py`: reproducible two-stage materialization and independent revalidation CLIs.
+- 修改 `PhyAgentOS/forge/manipulation.py`、`arm_candidates.py`、`manipulation-planning.yaml`：将 arm capability opaque reference 命名为 `motion_capabilities_ref`，不新增 PAOS Core 速度事实源。
+- Modified `PhyAgentOS/forge/manipulation.py`, `arm_candidates.py`, and `manipulation-planning.yaml`: renamed the arm capability opaque reference to `motion_capabilities_ref` without adding a PAOS Core speed fact source.
+- 修改 `route_readiness.py`、`route_generation.py`、`materialize_complete_route.py`、`robotwin_simulation_probe_worker.py`：route-request/v5 和 source-manifest/v3 绑定左右 capability/validation digest；worker 在 world change 前拒绝缺少独立 controller qualification 的路线。
+- Modified `route_readiness.py`, `route_generation.py`, `materialize_complete_route.py`, and `robotwin_simulation_probe_worker.py`: route-request/v5 and source-manifest/v3 bind both capability/validation digests; the worker rejects before world change when independent controller qualification is absent.
+- 删除旧的 `controller_capabilities.py` 及其测试，避免形成与 MotionCapability 并行的第二份速度配置/事实源；同步 PAOS 诊断、规划、开发者和 adapter 文档。
+- Removed the legacy `controller_capabilities.py` and its tests to avoid a parallel speed configuration/fact source; synchronized PAOS diagnosis, planning, developer, and adapter documentation.
+
+### 五维验收 / Five-Dimension Review
+
+- 架构集成：通过；artifact 属于 RoboTwin adapter，Planning 只消费 opaque reference，Gateway/Action/SQLite 生命周期未改变。
+- Architecture integration: pass; the artifact belongs to the RoboTwin adapter, Planning consumes only an opaque reference, and Gateway/Action/SQLite lifecycle is unchanged.
+- 失败路径：通过；来源篡改、joint order/timing 歧义、digest 漂移、错误本体和缺少资格均 fail-closed。
+- Failure paths: pass; source tampering, joint-order/timing ambiguity, digest drift, wrong embodiment, and missing qualification fail closed.
+- 权威边界：通过；当前 SAPIEN 结论是 `planner_constrained`，Cartesian/effort enforcement unknown，validation 和 artifact 都固定 `motion_authorized=false`。
+- Authority boundaries: pass; current SAPIEN results are `planner_constrained`, Cartesian/effort enforcement is unknown, and both validation and capability artifacts fix `motion_authorized=false`.
+- 配置与 provenance：通过；两臂 artifact/validation digest、RoboTwin git revision、runtime versions 和 source paths 均绑定；旧 approval 不复用。
+- Configuration and provenance: pass; both arm artifact/validation digests, RoboTwin git revision, runtime versions, and source paths are bound; old approvals are not reused.
+- 可维护性：通过；解析、验证、物化、route gate 分层，未来硬件 controller 只能通过独立 provider qualification 接入。
+- Maintainability: pass; extraction, validation, materialization, and route gating are layered, and future hardware controllers require independent provider qualification.
+
+### 验证 / Validation
+
+- Adapter/core/Skill combined regression: `718 passed, 1 skipped`。
+- Ruff、compileall、`git diff --check`：通过。
+- Real RoboTwin Franka source validation (no scene/no motion): left/right both `validated_planner_constraints`; planner/simulator default timestep `0.004 s`; controller period `null`。
+- New route package (no motion): route schema `paos-robotwin20-route-request/v5`, manifest `v3`, route digest `bf52b56e3d258789cb58f7cfc2fa7b7ec382771dedf3665a0762f0aba017ecae`, source manifest digest `5d62573d7d70649020ff6bcb8421b572d6d5a080c42787ff909942a23d45888a`。
+- Simulation worker gate: `controller-enforced motion capability qualification is unavailable`; rejected before world change, `motion_authorized=false`。
+- 未启动 Gateway、Dora、Action、真实仿真动作或硬件；未生成新的 motion approval。
+- No Gateway, Dora, Action, real simulation motion, or hardware was started; no motion approval was generated.
+
 ## [v5.10.3] - 2026-09-06
 
 回写 v5.10.2 速度限制架构变更的 Git 提交信息。Recorded the v5.10.2 real speed-limit architecture commit metadata.

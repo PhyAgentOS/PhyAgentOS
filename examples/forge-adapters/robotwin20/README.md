@@ -449,7 +449,34 @@ still only planner/policy evidence;
 attached-object collision, physical lift, contact dynamics, semantic placement, and
 readiness approval remain unproven.
 
-The current `paos-robotwin20-route-request/v4` removes the unbacked waypoint
+The current `paos-robotwin20-route-request/v5` binds provider-owned motion
+capability artifacts for both arms and removes the unbacked waypoint
 speed fields and fails closed before simulation world change until a
-provider-owned motion-capability artifact is implemented and bound. Human
-simulation approval alone does not bypass this gate.
+separately qualified controller-enforcement artifact is implemented and bound.
+Human simulation approval alone does not bypass this gate.
+
+Materialize and independently revalidate one provider-owned capability without
+loading a scene or executing motion:
+
+```bash
+PYTHONPATH=examples/forge-adapters/robotwin20/src \
+python examples/forge-adapters/robotwin20/scripts/materialize_motion_capability.py \
+  --robotwin-root /absolute/path/to/RoboTwin \
+  --runtime-python /absolute/path/to/robotwin/python \
+  --embodiment franka-panda --arm left \
+  --output /new/absolute/artifact-root/left-motion-capability.json
+
+PYTHONPATH=examples/forge-adapters/robotwin20/src \
+python examples/forge-adapters/robotwin20/scripts/verify_motion_capability.py \
+  --capability /new/absolute/artifact-root/left-motion-capability.json \
+  --robotwin-root /absolute/path/to/RoboTwin \
+  --runtime-python /absolute/path/to/robotwin/python \
+  --verifier-id paos-source-validator-v1 \
+  --output /new/absolute/artifact-root/left-motion-capability-validation.json
+```
+
+Repeat for `--arm right` and pass all four files to
+`materialize_complete_route.py`. Validation/v1 reports
+`validated_planner_constraints`; it intentionally keeps
+`independent_execution_qualification=false`, `controller_enforced=false`, and
+`motion_authorized=false`.

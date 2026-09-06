@@ -41,12 +41,12 @@ providers, or Skill Runtime state.
 ## Robot/controller capability boundary
 
 `CapabilitySnapshot` and `ArmCapability` are the sole PAOS capability
-projection. Robot-specific controller limits are not a second core model: each
-arm may carry an opaque `controller_capabilities_ref` to an adapter-owned,
-immutable capability artifact. The artifact records controller/simulator
-identity, units, provenance, and whether a limit is actually enforced by the
-controller. Planning consumes this projection for admission and arm
-assignment; it never imports an SDK or changes a limit.
+projection. Robot-specific motion limits are not a second core model: each
+arm may carry an opaque `motion_capabilities_ref` to an adapter-owned,
+immutable provider artifact. The artifact records per-joint limits,
+controller/simulator identity, units, timing, provenance, and whether a limit is
+actually enforced by the controller. Planning consumes this projection for
+admission and arm assignment; it never imports an SDK or changes a limit.
 
 The RoboTwin20 Franka path is simulation-only. Its local requirements include
 SAPIEN, MPlib, and CuRobo but no `libfranka`/`frankx`; the simulation loads

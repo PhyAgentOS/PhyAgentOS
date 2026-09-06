@@ -98,7 +98,7 @@ class ArmCapability(BaseModel):
     planner_profile_ref: str
     workspace_ref: str
     joint_limits_ref: str
-    controller_capabilities_ref: str | None = None
+    motion_capabilities_ref: str | None = None
     gripper_identity: str
     supported_modes: tuple[ResourceMode, ...]
     availability: Literal["available", "unavailable"] = "available"
@@ -113,12 +113,12 @@ class ArmCapability(BaseModel):
     def validate_artifact_refs(cls, value: str) -> str:
         return _ref(value, "artifact://", "arm capability reference")
 
-    @field_validator("controller_capabilities_ref")
+    @field_validator("motion_capabilities_ref")
     @classmethod
-    def validate_controller_capabilities_ref(cls, value: str | None) -> str | None:
+    def validate_motion_capabilities_ref(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return _ref(value, "artifact://", "arm controller capability reference")
+        return _ref(value, "artifact://", "arm motion capability reference")
 
     @field_validator("supported_modes")
     @classmethod

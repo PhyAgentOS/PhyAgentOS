@@ -102,7 +102,7 @@ def build_capability_snapshot(
             planner_profile_ref=item["planner_profile_ref"],
             workspace_ref=item["workspace_ref"],
             joint_limits_ref=item["joint_limits_ref"],
-            controller_capabilities_ref=item["controller_capabilities_ref"],
+            motion_capabilities_ref=item["motion_capabilities_ref"],
             gripper_identity=item["gripper_identity"],
             supported_modes=tuple(item["supported_modes"]),
         )
@@ -158,7 +158,7 @@ def validate_arm_planning_profile(profile: Any) -> None:
             "planner_profile_ref",
             "workspace_ref",
             "joint_limits_ref",
-            "controller_capabilities_ref",
+            "motion_capabilities_ref",
             "park_pose_ref",
             "supported_modes",
         }:
@@ -166,7 +166,7 @@ def validate_arm_planning_profile(profile: Any) -> None:
         arm_ids.append(_identity(arm["arm_id"], "arm_id"))
         for field in (
             "planner_profile_ref", "workspace_ref", "joint_limits_ref",
-            "controller_capabilities_ref", "park_pose_ref"
+            "motion_capabilities_ref", "park_pose_ref"
         ):
             value = arm[field]
             if not isinstance(value, str) or not value.startswith("artifact://"):

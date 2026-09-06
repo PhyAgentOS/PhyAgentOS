@@ -26,10 +26,14 @@ from test_route_readiness import _request as _route_request
 
 from robotwin20_adapter import (
     SIMULATION_PROBE_PROFILE_SCHEMA_VERSION,
+    MotionCapabilityDocument,
+    MotionCapabilityValidation,
     SimulationProbeClient,
     SimulationProbeProfileError,
     build_simulation_probe_client,
+    canonical_motion_capability,
     load_simulation_probe_profile,
+    motion_capability_digest,
 )
 
 
@@ -45,6 +49,103 @@ def _profile() -> dict[str, object]:
             "planner_profile": "curobo",
         },
     }
+
+
+def _materialize_motion_capabilities(root: Path, request: dict[str, object]) -> None:
+    checks = (
+        "source_digests",
+        "runtime_identity",
+        "joint_order",
+        "per_joint_limits",
+        "planner_timing",
+        "simulator_timing",
+        "drive_semantics",
+        "no_controller_enforcement_claim",
+    )
+    source_roles = (
+        "robot_description",
+        "embodiment_profile",
+        "planner_profile",
+        "planner_source",
+        "simulator_source",
+        "controller_source",
+    )
+    for binding in request["motion_capabilities"]:
+        arm_id = binding["arm_id"]
+        capability = MotionCapabilityDocument.model_validate(
+            {
+                "robot_identity": "franka-panda",
+                "arm_id": arm_id,
+                "provider": {
+                    "robotwin_git_revision": "a" * 40,
+                    "simulator_version": "3.0.0b1",
+                    "planner_version": "0.7.8",
+                    "controller_version": "source-0123456789abcdef",
+                    "runtime_python_version": "3.10.0",
+                },
+                "joint_order": [f"panda_joint{index}" for index in range(1, 8)],
+                "limits": {
+                    "position_lower_rad": [-2.0] * 7,
+                    "position_upper_rad": [2.0] * 7,
+                    "velocity_lower_radps": [-2.175] * 7,
+                    "velocity_upper_radps": [2.175] * 7,
+                    "acceleration_radps2": [15.0] * 7,
+                    "jerk_radps3": [500.0] * 7,
+                    "effort_nm": [12.0] * 7,
+                },
+                "enforcement": {
+                    "joint_position": "planner_constrained",
+                    "joint_velocity": "planner_constrained",
+                    "joint_acceleration": "planner_constrained",
+                    "joint_jerk": "planner_constrained",
+                    "cartesian_velocity": "unknown",
+                    "joint_effort": "unknown",
+                    "drive_position_target": True,
+                    "drive_velocity_target": True,
+                    "drive_force_limit_bound": False,
+                },
+                "timing": {
+                    "planner_dt_s": 0.004,
+                    "simulator_default_dt_s": 0.004,
+                    "controller_dt_s": None,
+                },
+                "sources": [
+                    {
+                        "role": role,
+                        "relative_path": f"provider/{role}",
+                        "sha256": f"{index + 5:x}" * 64,
+                    }
+                    for index, role in enumerate(source_roles)
+                ],
+            }
+        )
+        capability_sha256 = motion_capability_digest(capability)
+        capability_record = _artifact_record(
+            root,
+            binding["artifact_ref"],
+            canonical_motion_capability(capability),
+        )
+        validation = MotionCapabilityValidation(
+            capability_sha256=capability_sha256,
+            verifier_id="paos-source-validator/v1",
+            verified_at="2026-09-06T08:00:00+00:00",
+            status="validated_planner_constraints",
+            checks=checks,
+        )
+        validation_record = _artifact_record(
+            root,
+            binding["validation_ref"],
+            (
+                json.dumps(
+                    validation.model_dump(mode="json"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            ).encode(),
+        )
+        binding["sha256"] = capability_record["sha256"]
+        binding["validation_sha256"] = validation_record["sha256"]
 
 
 def _approval(root: Path, request: dict[str, object]) -> str:
@@ -70,7 +171,7 @@ def _approval(root: Path, request: dict[str, object]) -> str:
     route_digest = route_geometry_digest(request)
     route_sha256 = hashlib.sha256((json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
     manifest = {
-        "schema_version": "paos-robotwin20-route-source-manifest/v2",
+        "schema_version": "paos-robotwin20-route-source-manifest/v3",
         "request_id": request["request_id"],
         "candidate_ref": request["candidates"][0]["candidate_ref"],
         "scene_revision": request["scene_revision"],
@@ -79,6 +180,7 @@ def _approval(root: Path, request: dict[str, object]) -> str:
         "runtime_profile_sha256": "b" * 64,
         "object_robot_target_transform": {"sha256": transform_digest},
         "placement_target": {"sha256": placement_digest},
+        "motion_capabilities": request["motion_capabilities"],
         "motion_authorized": False,
     }
     manifest_record = _artifact_record(root, "artifact://probe/source-manifest.json", (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode())
@@ -207,7 +309,9 @@ def test_route_input_artifacts_are_content_bound(tmp_path: Path):
         _validate_route_input_artifacts(tmp_path, request, candidate)
 
 
-def test_request_policies_fail_closed_without_provider_speed_capability(tmp_path: Path):
+def test_request_policies_validate_provider_capability_then_require_controller_qualification(
+    tmp_path: Path,
+):
     request = _route_request(tmp_path)
     joint_ref = request["joint_limits_ref"]
     stop_ref = request["stop_policy_ref"]
@@ -232,8 +336,66 @@ def test_request_policies_fail_closed_without_provider_speed_capability(tmp_path
             "failure_recovery": "reset_simulation",
         }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
     )
-    with pytest.raises(SimulationProbeError, match="provider-owned motion speed capability"):
-        _validate_request_policies(tmp_path, request, max_duration_s=12)
+    _materialize_motion_capabilities(tmp_path, request)
+    with pytest.raises(
+        SimulationProbeError,
+        match="controller-enforced motion capability qualification is unavailable",
+    ):
+        _validate_request_policies(
+            tmp_path,
+            request,
+            max_duration_s=12,
+            robot_identity="franka-panda",
+        )
+
+
+def test_request_policies_reject_tampered_or_wrong_robot_capability(tmp_path: Path):
+    request = _route_request(tmp_path)
+    for ref, payload in (
+        (
+            request["joint_limits_ref"],
+            {
+                "schema_version": "paos-robotwin20-joint-limit-policy/v2",
+                "planner_profile": "curobo",
+                "joint_count": 7,
+                "require_runtime_position_limits": True,
+            },
+        ),
+        (
+            request["stop_policy_ref"],
+            {
+                "schema_version": "paos-robotwin20-stop-policy/v1",
+                "max_duration_s": 12,
+                "stop_file_required": True,
+                "poll_each_step": True,
+                "failure_recovery": "reset_simulation",
+            },
+        ),
+    ):
+        _artifact_record(
+            tmp_path,
+            ref,
+            (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+        )
+    _materialize_motion_capabilities(tmp_path, request)
+
+    with pytest.raises(SimulationProbeError, match="binding is invalid"):
+        _validate_request_policies(
+            tmp_path,
+            request,
+            max_duration_s=12,
+            robot_identity="other-robot",
+        )
+
+    capability_path = tmp_path / "blocks" / "motion-capability-left.json"
+    capability_path.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(SimulationProbeError, match="artifact is invalid"):
+        _validate_request_policies(
+            tmp_path,
+            request,
+            max_duration_s=12,
+            robot_identity="franka-panda",
+        )
 
 def test_execute_segment_passes_planner_velocity_to_robot_command():
     np = pytest.importorskip("numpy")

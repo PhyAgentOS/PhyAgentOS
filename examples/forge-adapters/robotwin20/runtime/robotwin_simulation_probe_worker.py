@@ -28,6 +28,11 @@ from typing import Any, Mapping
 
 from worker_protocol import serve
 
+from robotwin20_adapter.motion_capabilities import (
+    MotionCapabilityDocument,
+    MotionCapabilityValidation,
+    motion_capability_digest,
+)
 from robotwin20_adapter.route_readiness import (
     ROUTE_PHASES,
     route_geometry_digest,
@@ -252,7 +257,7 @@ def _validate_approval(
             raise SimulationProbeError(f"probe approval {digest_field} binding is invalid")
     manifest = _load_json_artifact(root, approval["source_manifest_ref"])
     if (
-        manifest.get("schema_version") != "paos-robotwin20-route-source-manifest/v2"
+        manifest.get("schema_version") != "paos-robotwin20-route-source-manifest/v3"
         or manifest.get("request_id") != request["request_id"]
         or manifest.get("candidate_ref") != candidate_ref
         or manifest.get("scene_revision") != request["scene_revision"]
@@ -262,6 +267,7 @@ def _validate_approval(
         or manifest.get("object_robot_target_transform", {}).get("sha256")
         != approval["object_robot_target_transform_sha256"]
         or manifest.get("placement_target", {}).get("sha256") != approval["placement_target_sha256"]
+        or manifest.get("motion_capabilities") != request["motion_capabilities"]
         or manifest.get("motion_authorized") is not False
     ):
         raise SimulationProbeError("probe approval source manifest binding is invalid")
@@ -449,6 +455,7 @@ def _validate_request_policies(
     request: Mapping[str, Any],
     *,
     max_duration_s: float,
+    robot_identity: str,
 ) -> dict[str, Any]:
     joint = _load_json_artifact(root, request["joint_limits_ref"])
     stop = _load_json_artifact(root, request["stop_policy_ref"])
@@ -477,8 +484,35 @@ def _validate_request_policies(
         or stop["failure_recovery"] != "reset_simulation"
     ):
         raise SimulationProbeError("stop policy is invalid")
+    validated_arms: set[str] = set()
+    for binding in request["motion_capabilities"]:
+        capability_payload = _load_json_artifact(root, binding["artifact_ref"])
+        validation_payload = _load_json_artifact(root, binding["validation_ref"])
+        try:
+            capability = MotionCapabilityDocument.model_validate(capability_payload)
+            validation = MotionCapabilityValidation.model_validate(validation_payload)
+        except ValueError as exc:
+            raise SimulationProbeError("motion capability artifact is invalid") from exc
+        capability_path = _artifact_path(root, binding["artifact_ref"])
+        validation_path = _artifact_path(root, binding["validation_ref"])
+        if (
+            capability.robot_identity != robot_identity
+            or capability.arm_id != binding["arm_id"]
+            or _sha_bytes(capability_path.read_bytes()) != binding["sha256"]
+            or motion_capability_digest(capability) != binding["sha256"]
+            or _sha_bytes(validation_path.read_bytes()) != binding["validation_sha256"]
+            or validation.capability_sha256 != binding["sha256"]
+        ):
+            raise SimulationProbeError("motion capability binding is invalid")
+        validated_arms.add(capability.arm_id)
+    if validated_arms != {"left", "right"}:
+        raise SimulationProbeError("motion capability arm coverage is invalid")
+
+    # Validation/v1 deliberately attests source and planner constraints only.
+    # A future, separately versioned execution qualification must be checked
+    # here before this function may return policies to the motion path.
     raise SimulationProbeError(
-        "provider-owned motion speed capability is unavailable for route-request/v4"
+        "controller-enforced motion capability qualification is unavailable"
     )
 
 
@@ -1182,6 +1216,7 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
                 artifact_root,
                 request,
                 max_duration_s=max_duration_s,
+                robot_identity=profile["embodiment_binding"]["robot_identity"],
             )
         except Exception as exc:
             return {

@@ -22,7 +22,7 @@ from .perception_profile import (
 )
 from .process_worker import JsonlProcessWorkerClient
 
-ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v4"
+ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v5"
 SIMULATION_ROUTE_READINESS_SCHEMA_VERSION = "paos-robotwin20-simulation-route-readiness/v2"
 ROUTE_READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-readiness/v1"
 ROUTE_PHASES = (
@@ -189,7 +189,7 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
         "schema_version", "request_id", "observation_ref", "observation_frame_id",
         "scene_revision", "frame_id", "calibration_ref", "calibration_sha256",
         "calibration_revision", "candidate_set_ref", "candidates", "workspace_bounds_m",
-        "joint_limits_ref", "stop_policy_ref",
+        "joint_limits_ref", "stop_policy_ref", "motion_capabilities",
     }
     if not isinstance(request, Mapping) or set(request) != required:
         raise RouteReadinessError("route readiness request fields are invalid")
@@ -208,6 +208,33 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
     _ref(request["calibration_revision"], "calibration_revision")
     _ref(request["joint_limits_ref"], "joint_limits_ref", "artifact://")
     _ref(request["stop_policy_ref"], "stop_policy_ref", "artifact://")
+    capabilities = request["motion_capabilities"]
+    if not isinstance(capabilities, list) or len(capabilities) != 2:
+        raise RouteReadinessError("route motion capabilities must bind both arms")
+    seen_arms: set[str] = set()
+    seen_refs: set[str] = set()
+    for capability in capabilities:
+        if not isinstance(capability, Mapping) or set(capability) != {
+            "arm_id", "artifact_ref", "sha256", "validation_ref", "validation_sha256",
+        }:
+            raise RouteReadinessError("route motion capability binding fields are invalid")
+        arm_id = capability["arm_id"]
+        if arm_id not in {"left", "right"} or arm_id in seen_arms:
+            raise RouteReadinessError("route motion capability arm binding is invalid")
+        artifact_ref = _ref(
+            capability["artifact_ref"], "motion capability artifact_ref", "artifact://"
+        )
+        validation_ref = _ref(
+            capability["validation_ref"], "motion capability validation_ref", "artifact://"
+        )
+        if artifact_ref in seen_refs or validation_ref in seen_refs or artifact_ref == validation_ref:
+            raise RouteReadinessError("route motion capability references are duplicated")
+        _sha(capability["sha256"], "motion capability sha256")
+        _sha(capability["validation_sha256"], "motion capability validation sha256")
+        seen_arms.add(arm_id)
+        seen_refs.update((artifact_ref, validation_ref))
+    if seen_arms != {"left", "right"}:
+        raise RouteReadinessError("route motion capabilities must bind both arms")
     bounds = _workspace(request["workspace_bounds_m"], route_frame)
 
     candidates = request["candidates"]

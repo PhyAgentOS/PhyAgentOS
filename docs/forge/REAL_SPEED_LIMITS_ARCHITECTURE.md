@@ -144,8 +144,8 @@ frankx/libfranka 调用路径和版本，并证明 `Robot::control(..., limit_ra
 
 ### 5.1 推荐 MotionCapability artifact
 
-现有 `ArmCapability.controller_capabilities_ref` 保持为不透明 artifact reference。
-artifact 由 adapter 生成、由 PlanRevision 冻结，建议升级为逐关节结构：
+现有 `ArmCapability.motion_capabilities_ref` 保持为不透明 artifact reference。
+artifact 由 adapter 生成、由 PlanRevision 冻结，采用逐关节结构：
 
 ```yaml
 schema_version: paos-motion-capability/v2
@@ -178,8 +178,8 @@ enforcement:
 timing:
   planner_dt_s: <provider-derived>
   controller_dt_s: <provider-derived>
-  simulator_dt_s: <provider-derived-or-null>
-qualification_ref: null
+  simulator_default_dt_s: <provider-derived-default>
+controller_qualification_ref: null
 motion_authorized: false
 ```
 
@@ -231,6 +231,31 @@ provider limits。这样 RoboTwin Franka、其他 RoboTwin embodiment 和真实 
 
 ## 7. 迁移与实施顺序
 
+### 7.1 RoboTwin MotionCapability v2 已实现的边界
+
+RoboTwin adapter 现在提供 `paos-robotwin20-motion-capability/v2`。它从选定
+checkout 的 `panda.urdf`、embodiment `config.yml`、CuRobo `curobo.yml`、
+planner、simulator 和 drive-target source，以及指定的 RoboTwin runtime
+interpreter 重新导出并绑定：七个关节的 position/velocity/effort、CuRobo
+acceleration/jerk、planner 时间步、simulator 默认时间步、joint order、provider 版本和
+每个 source 的 SHA-256。左右臂分别生成 artifact；canonical digest 绑定到
+route-request/v5 和 route-source-manifest/v3。
+
+独立验证脚本只产生
+`paos-robotwin20-motion-capability-validation/v1` 的
+`validated_planner_constraints` 记录。它会重新计算 provider source 和
+runtime identity，拒绝 source tamper、joint-order/timing 歧义和 force-limit
+越权，并固定 `independent_execution_qualification=false`、
+`controller_enforced=false`、`motion_authorized=false`。因此该 artifact
+证明“来源和 planner 约束已验证”，不证明 SAPIEN drive-target 在执行时硬性
+限制速度。
+
+simulation probe 在读取并校验两臂 artifact、validation digest、robot identity
+和 arm coverage 后，仍在 world change 之前拒绝：当前没有独立 controller
+qualification。未来真实 controller 只能通过新的 provider-specific artifact
+和独立资格证据打开这一门禁，不能修改 v2 validation 的 false 字段或复用旧
+approval。
+
 ### 阶段 A：本次完成的撤销
 
 - route v4 pose 不再携带无来源的 linear/joint speed 数字；
@@ -240,13 +265,13 @@ provider limits。这样 RoboTwin Franka、其他 RoboTwin embodiment 和真实 
 - 仍记录 finite TCP derived speed、真实执行步、contact、stop 和 reset evidence；
 - 历史 v3 route/probe 只读保留。
 
-### 阶段 B：RoboTwin provider-owned capability（后续实现）
+### 阶段 B：RoboTwin provider-owned capability（本次完成）
 
 1. 从选中的 URDF/CuRobo/profile/runtime 导出 v2 artifact；
 2. 逐关节校验 joint order 与 limits；
-3. 使用 CuRobo/provider-native timing/retiming，并保存原始与执行轨迹绑定；
+3. 导出 CuRobo planner timing 和 SAPIEN timestep；controller period 无来源时保持 null；
 4. 明确 SAPIEN effort/force-limit wiring；没有 wiring 就标 `unknown`；
-5. 运行独立 no-motion 和 simulation qualification，保持与 route approval 分离。
+5. 完成独立 no-motion source validation；simulation/controller qualification 仍保持分离且未完成。
 
 ### 阶段 C：真实 Franka provider（独立环境）
 

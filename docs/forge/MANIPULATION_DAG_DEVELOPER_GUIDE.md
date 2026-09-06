@@ -100,14 +100,14 @@ the concrete arm is selected from adapter/readiness evidence.
 
 ### Controller capability and SDK boundary
 
-`ArmCapability` may expose an adapter-owned `controller_capabilities_ref`, but
-the detailed document remains outside PAOS core. It must identify the robot,
-arm, controller version, runtime kind, limit units, provenance source, and
-enforcement semantics (`controller_hard`, `planner_only`, or
-`measured_diagnostic`). A diagnostic threshold is probe evidence only; it is
-not a hardware limit and cannot be promoted by Agent or Experience. A hard
-bound requires independent controller qualification before Action admission
-can consider it executable.
+`ArmCapability` may expose an adapter-owned `motion_capabilities_ref`, but the
+detailed document remains outside PAOS core. The RoboTwin v2 document
+identifies the robot/arm, per-joint limits, planner and simulator timing,
+controller version, runtime kind, provenance sources, and enforcement
+semantics. A diagnostic threshold or planner constraint is evidence only; it is
+not a controller limit and cannot be promoted by Agent or Experience. A hard
+bound requires a separately versioned, independent controller qualification
+before Action admission can consider it executable.
 
 The RoboTwin20 Franka simulation uses SAPIEN URDF articulation with CuRobo or
 MPlib planning; it does not import the Franka SDK. Speed values are
