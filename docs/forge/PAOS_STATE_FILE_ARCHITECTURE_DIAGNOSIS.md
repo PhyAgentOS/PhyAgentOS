@@ -1135,6 +1135,41 @@ source manifest digest
 `b476aeacf282ce3091943f4f8ba365e5b744446fa7e46040505a05a18db3f583`.
 It remains pending human simulation-only approval.
 
-The worker also rejects any segment whose planner sample count multiplied by
-the configured subdivision exceeds `trajectory_retiming.max_samples`, keeping
-the adapter-side execution budget bounded and fail-closed.
+## 32.11 v10 probe result and simulator-dynamics blocker (2026-09-06)
+
+The reviewer-approved v10 probe ran once under
+`/home/yanxu/robotwin20-sim-probe-20260906T072000Z/` and returned
+`status=unavailable`. Position subdivision allowed the route to pass contact
+and lift and enter transport, but simulator step `4293` measured
+`0.2030478779191653 m/s`, above the immutable `0.20 m/s` limit. The object was
+attached; recovery detached it successfully and reset completed. The complete
+route and semantic placement remain unproven.
+
+RoboTwin's `set_arm_joints()` sets both drive position and velocity targets;
+the velocity target is not a hard SAPIEN Cartesian-speed limiter. The v7-v10
+results therefore show that scale/subdivision tuning is non-monotonic and is
+not sufficient evidence of safe Cartesian execution. This is now recorded as
+a simulator-dynamics blocker. No further route tuning should occur until a
+profile-owned simulator controller or independent speed-bounded execution
+mechanism is specified and validated; the `0.20 m/s` gate remains unchanged.
+
+The worker also rejects any segment whose retimed planner sample count exceeds
+`trajectory_retiming.max_samples`, keeping the adapter-side execution budget
+bounded and fail-closed.
+
+## 32.12 rollback of unsupported execution tuning (2026-09-06)
+
+The v7-v10 sequence was intended to address repeated simulator waypoint-speed
+violations: v8 changed `execution_velocity_scale` from `0.25` to `0.20`, v9
+changed it to `0.10`, and v10 added four-way position subdivision. These were
+parameter experiments, not independent controller validation. The v10 probe
+still measured `0.2030478779191653 m/s` during transport, while RoboTwin's
+`set_arm_joints()` drive targets do not impose a hard Cartesian-speed limit.
+
+The unsupported subdivision implementation and its profile/materializer/test
+surface have therefore been removed. The profile scale is restored to the
+pre-sequence `0.25` advisory value; measured speed remains the only probe gate,
+and `uniform_time_dilation` remains the joint-trajectory retiming policy. The
+historical v7-v10 artifacts and negative evidence are retained, but no new
+route is generated until an independently validated speed-bounded simulator
+controller or execution contract exists.

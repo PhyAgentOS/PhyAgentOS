@@ -2,6 +2,27 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.8.0] - 2026-09-06
+
+根据 v7-v10 仿真证据撤回不能证明 Cartesian 速度受控的 position-subdivision 执行调参；`execution_velocity_scale` 恢复为 `0.25` advisory 值，measured-speed `0.20 m/s` fail-closed 门禁和 uniform retiming 保持不变。同步 profile、materializer、simulation worker 与回归测试；保留历史负证据，未生成新 route 或启动新的 probe/Gateway/Dora/Action/硬件。
+
+Based on v7-v10 simulation evidence, removed position-subdivision execution tuning that cannot prove bounded Cartesian speed; restored `execution_velocity_scale` to the `0.25` advisory value while retaining the measured-speed `0.20 m/s` fail-closed gate and uniform retiming. Synchronized the profile, materializer, simulation worker, and regression tests; historical negative evidence is preserved, with no new route or probe/Gateway/Dora/Action/hardware started.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml:L47-L49`：移除 subdivision，恢复 scale `0.25` 并标记 advisory。
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py:L546-L633,L750-L811,L939-L950`：删除 subdivision 校验/插值/乘法预算，恢复单一 planner sample 执行。
+- `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py:L105-L112`、`examples/forge-adapters/robotwin20/tests/test_simulation_probe.py:L220-L469`：同步 schema 与测试，移除无证据调参分支。
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L1157-L1173`、`docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L1158-L1174`：记录根因、回滚范围和后续门禁。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置和可维护性均通过；该回滚不授予任何生产动作权限。Architecture integration, failure paths, authority boundaries, configuration, and maintainability pass; the rollback grants no production motion authority.
+
+### 验证 / Validation
+
+`31 passed`; combined regression `716 passed, 1 skipped`; Ruff、compileall、`git diff --check` passed.
+
 ## [v5.7.10] - 2026-09-06
 
 回写 v5.7.9 simulation probe evidence 修复提交哈希 `f4222d1`；实现与安全边界不变。

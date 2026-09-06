@@ -1133,5 +1133,40 @@ source manifest digest
 `b476aeacf282ce3091943f4f8ba365e5b744446fa7e46040505a05a18db3f583`.
 It remains pending human simulation-only approval.
 
-The worker bounds effective samples as planner sample count multiplied by
-position subdivision and rejects segments exceeding `trajectory_retiming.max_samples`.
+## 32.11 v10 probe result and simulator-dynamics blocker (2026-09-06)
+
+The reviewer-approved v10 probe ran once under
+`/home/yanxu/robotwin20-sim-probe-20260906T072000Z/` and returned
+`status=unavailable`. Position subdivision allowed contact/lift and entered
+transport, but simulator step `4293` measured `0.2030478779191653 m/s`, above
+the immutable `0.20 m/s` limit. The object was attached, detach recovery
+succeeded, and reset completed. Complete route and semantic placement remain
+unproven.
+
+RoboTwin `set_arm_joints()` sets drive position and velocity targets; the
+velocity target is not a hard SAPIEN Cartesian-speed limiter. Results v7-v10
+show scale/subdivision tuning is non-monotonic and insufficient as safety
+evidence. This is a simulator-dynamics blocker; no further tuning route should
+be generated until an independently validated speed-bounded controller is
+specified. The `0.20 m/s` gate remains unchanged.
+
+The worker bounds retimed planner samples and rejects segments exceeding
+`trajectory_retiming.max_samples`.
+
+## 32.12 rollback of unsupported execution tuning (2026-09-06)
+
+The v7-v10 sequence targeted repeated simulator waypoint-speed violations:
+`execution_velocity_scale` was changed from `0.25` to `0.20` and then `0.10`,
+followed by four-way position subdivision. These changes were tuning attempts,
+not proof of a speed-bounded controller. The v10 transport failure at
+`0.2030478779191653 m/s`, together with RoboTwin's drive-target semantics,
+shows that the approach is non-monotonic and cannot establish Cartesian speed
+safety.
+
+The subdivision implementation and its profile/materializer/test surface are
+therefore rolled back. The profile scale is restored to the pre-sequence
+`0.25` advisory value; measured speed remains the probe gate and
+`uniform_time_dilation` remains the trajectory policy. Historical v7-v10
+artifacts and negative evidence remain immutable. New routes and probes are
+blocked until an independently validated speed-bounded simulator controller or
+execution contract is available.

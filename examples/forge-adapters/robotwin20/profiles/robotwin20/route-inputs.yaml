@@ -44,10 +44,9 @@ joint_limit_policy:
   joint_count: 7
   require_runtime_position_limits: true
   max_joint_speed_radps: 1.0
-  # Runtime drive targets are conservatively scaled to keep measured SAPIEN
-  # end-effector speed below the immutable 0.20 m/s route limit.
-  execution_velocity_scale: 0.10
-  execution_position_subdivision: 4
+  # Runtime drive target scaling is advisory only; measured SAPIEN end-effector
+  # speed remains subject to the immutable 0.20 m/s route gate.
+  execution_velocity_scale: 0.25
   trajectory_retiming:
     enabled: true
     method: uniform_time_dilation

@@ -229,7 +229,6 @@ def test_request_policies_are_materialized_and_strict(tmp_path: Path):
                 "max_samples": 20000,
             },
             "execution_velocity_scale": 0.25,
-            "execution_position_subdivision": 4,
         }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
     )
     _artifact_record(
@@ -248,7 +247,6 @@ def test_request_policies_are_materialized_and_strict(tmp_path: Path):
     assert policies["joint_limit_policy"]["artifact_ref"] == joint_ref
     assert policies["trajectory_retiming"]["sampling_dt_s"] == 0.004
     assert policies["execution_velocity_scale"] == 0.25
-    assert policies["execution_position_subdivision"] == 4
 
     request["candidates"][0]["route"][0]["waypoints"][0]["max_joint_speed_radps"] = 1.1
     with pytest.raises(SimulationProbeError, match="joint-limit policy"):
@@ -298,43 +296,6 @@ def test_request_policies_reject_invalid_execution_velocity_scale(tmp_path: Path
     with pytest.raises(SimulationProbeError, match="execution velocity scale"):
         _validate_request_policies(tmp_path, request, max_duration_s=12)
 
-
-@pytest.mark.parametrize("subdivision", [0, -1, 17, 1.5, True, "4"])
-def test_request_policies_reject_invalid_execution_position_subdivision(tmp_path: Path, subdivision):
-    request = _route_request(tmp_path)
-    _artifact_record(
-        tmp_path,
-        request["joint_limits_ref"],
-        (json.dumps({
-            "schema_version": "paos-robotwin20-joint-limit-policy/v1",
-            "planner_profile": "curobo",
-            "joint_count": 7,
-            "require_runtime_position_limits": True,
-            "max_joint_speed_radps": 1.0,
-            "execution_velocity_scale": 0.1,
-            "execution_position_subdivision": subdivision,
-            "trajectory_retiming": {
-                "enabled": True,
-                "method": "uniform_time_dilation",
-                "sampling_dt_s": 0.004,
-                "safety_margin": 0.95,
-                "max_samples": 20000,
-            },
-        }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
-    )
-    _artifact_record(
-        tmp_path,
-        request["stop_policy_ref"],
-        (json.dumps({
-            "schema_version": "paos-robotwin20-stop-policy/v1",
-            "max_duration_s": 12,
-            "stop_file_required": True,
-            "poll_each_step": True,
-            "failure_recovery": "reset_simulation",
-        }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
-    )
-    with pytest.raises(SimulationProbeError, match="execution position subdivision"):
-        _validate_request_policies(tmp_path, request, max_duration_s=12)
 
 def test_trajectory_retiming_preserves_endpoints_and_enforces_speed():
     np = pytest.importorskip("numpy")
@@ -439,7 +400,6 @@ def test_execute_segment_scales_velocity_before_robot_command():
         execution_state=execution_state,
         max_linear_speed_mps=0.2,
         execution_velocity_scale=0.25,
-        execution_position_subdivision=4,
     )
     assert len(task.robot.commands) == 1
     position, velocity, arm = task.robot.commands[0]
@@ -447,88 +407,6 @@ def test_execute_segment_scales_velocity_before_robot_command():
     assert np.allclose(position, 0.0)
     assert np.allclose(velocity, 0.2)
     assert execution_state["simulator_steps"] == 1
-
-
-def test_execute_segment_interpolates_position_targets_and_scales_substep_velocity():
-    np = pytest.importorskip("numpy")
-
-    class Robot:
-        def __init__(self):
-            self.commands = []
-            self.ee = np.zeros(3, dtype=np.float64)
-
-        def get_left_ee_pose(self):
-            return np.concatenate([self.ee, np.zeros(3)])
-
-        def set_arm_joints(self, position, velocity, arm):
-            self.commands.append((np.asarray(position), np.asarray(velocity), arm))
-
-    class Scene:
-        def get_timestep(self):
-            return 0.004
-
-        def step(self):
-            pass
-
-        def get_contacts(self):
-            return []
-
-    class Task:
-        def __init__(self):
-            self.robot = Robot()
-            self.scene = Scene()
-
-    task = Task()
-    _execute_segment(
-        task,
-        "left",
-        {
-            "position": np.asarray([[0.0] * 7, [0.8] + [0.0] * 6], dtype=np.float32),
-            "velocity": np.asarray([[0.8] * 7, [0.8] * 7], dtype=np.float32),
-        },
-        phase="approach",
-        deadline=time.monotonic() + 1.0,
-        stop_file=None,
-        contacts=[],
-        execution_state={"planner_object_attached": False, "simulator_steps": 0},
-        max_linear_speed_mps=0.2,
-        execution_velocity_scale=0.25,
-        execution_position_subdivision=4,
-    )
-    assert len(task.robot.commands) == 5
-    assert np.allclose(task.robot.commands[0][0], 0.0)
-    assert np.allclose(task.robot.commands[-1][0], [0.8] + [0.0] * 6)
-    assert all(np.allclose(command[1], 0.05) for command in task.robot.commands[1:])
-
-
-def test_execute_segment_rejects_effective_sample_budget_overflow():
-    np = pytest.importorskip("numpy")
-
-    class Robot:
-        def get_left_ee_pose(self):
-            return np.zeros(6)
-
-    class Task:
-        robot = Robot()
-
-    with pytest.raises(SimulationProbeError, match="effective trajectory sample budget"):
-        _execute_segment(
-            Task(),
-            "left",
-            {
-                "position": np.zeros((3, 7)),
-                "velocity": np.zeros((3, 7)),
-            },
-            phase="approach",
-            deadline=time.monotonic() + 1.0,
-            stop_file=None,
-            contacts=[],
-            execution_state={"planner_object_attached": False, "simulator_steps": 0},
-            max_linear_speed_mps=0.2,
-            execution_velocity_scale=0.1,
-            execution_position_subdivision=4,
-            max_effective_samples=8,
-        )
 
 
 def test_execute_segment_records_linear_speed_violation_details():
@@ -587,7 +465,6 @@ def test_execute_segment_records_linear_speed_violation_details():
         "observed_mps": pytest.approx(1.0),
         "limit_mps": 0.2,
         "execution_velocity_scale": 0.25,
-        "execution_position_subdivision": 1,
     }
     assert execution_state["simulator_steps"] == 1
 

@@ -545,18 +545,13 @@ def _validate_request_policies(
     stop = _load_json_artifact(root, request["stop_policy_ref"])
     if set(joint) not in (
         {
-        "schema_version", "planner_profile", "joint_count",
-        "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
+            "schema_version", "planner_profile", "joint_count",
+            "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
         },
         {
             "schema_version", "planner_profile", "joint_count",
             "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
             "execution_velocity_scale",
-        },
-        {
-            "schema_version", "planner_profile", "joint_count",
-            "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
-            "execution_velocity_scale", "execution_position_subdivision",
         },
     ) or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v1":
         raise SimulationProbeError("joint-limit policy fields are invalid")
@@ -597,13 +592,6 @@ def _validate_request_policies(
         or not 0 < float(execution_velocity_scale) <= 1
     ):
         raise SimulationProbeError("execution velocity scale is invalid")
-    execution_position_subdivision = joint.get("execution_position_subdivision", 1)
-    if (
-        isinstance(execution_position_subdivision, bool)
-        or not isinstance(execution_position_subdivision, int)
-        or not 1 <= execution_position_subdivision <= 16
-    ):
-        raise SimulationProbeError("execution position subdivision is invalid")
     if set(stop) != {
         "schema_version", "max_duration_s", "stop_file_required",
         "poll_each_step", "failure_recovery",
@@ -641,7 +629,6 @@ def _validate_request_policies(
         },
         "max_joint_speed_radps": float(max_joint_speed),
         "execution_velocity_scale": float(execution_velocity_scale),
-        "execution_position_subdivision": execution_position_subdivision,
         "trajectory_retiming": dict(retiming),
     }
 
@@ -771,8 +758,6 @@ def _execute_segment(
     execution_state: dict[str, Any],
     max_linear_speed_mps: float,
     execution_velocity_scale: float = 1.0,
-    execution_position_subdivision: int = 1,
-    max_effective_samples: int = 20000,
 ) -> None:
     import numpy as np
 
@@ -786,65 +771,44 @@ def _execute_segment(
     ):
         raise SimulationProbeError("execution velocity scale is invalid")
     velocities = np.asarray(velocities, dtype=np.float64) * float(execution_velocity_scale)
-    if (
-        isinstance(execution_position_subdivision, bool)
-        or not isinstance(execution_position_subdivision, int)
-        or not 1 <= execution_position_subdivision <= 16
-    ):
-        raise SimulationProbeError("execution position subdivision is invalid")
-    if (
-        isinstance(max_effective_samples, bool)
-        or not isinstance(max_effective_samples, int)
-        or max_effective_samples < 2
-        or len(positions) * execution_position_subdivision > max_effective_samples
-    ):
-        raise SimulationProbeError("effective trajectory sample budget is exceeded")
     ee = task.robot.get_left_ee_pose if arm == "left" else task.robot.get_right_ee_pose
     timestep = float(task.scene.get_timestep())
     if not math.isfinite(timestep) or timestep <= 0:
         raise SimulationProbeError("simulator timestep is invalid")
     previous_position = np.asarray(ee()[:3], dtype=np.float64)
     for index in range(len(positions)):
-        start = np.asarray(positions[index - 1], dtype=np.float64) if index else np.asarray(positions[index], dtype=np.float64)
-        target = np.asarray(positions[index], dtype=np.float64)
-        subdivisions = 1 if index == 0 else execution_position_subdivision
-        command_velocity = velocities[index] / subdivisions
-        for substep in range(subdivisions):
-            if time.monotonic() >= deadline:
-                raise TimeoutError("simulation probe exceeded max duration")
-            if stop_file is not None and stop_file.exists():
-                raise InterruptedError("simulation probe stop requested")
-            alpha = float(substep + 1) / float(subdivisions)
-            command_position = start + (target - start) * alpha
-            task.robot.set_arm_joints(command_position, command_velocity, arm)
-            execution_state["world_change_started"] = True
-            execution_state["phase"] = phase
-            task.scene.step()
-            execution_state["simulator_steps"] += 1
-            current_position = np.asarray(ee()[:3], dtype=np.float64)
-            linear_speed = float(np.linalg.norm(current_position - previous_position) / timestep)
-            if not math.isfinite(linear_speed) or linear_speed > max_linear_speed_mps + 1e-3:
-                execution_state["linear_speed_violation"] = {
-                    "phase": phase,
-                    "step": execution_state["simulator_steps"],
-                    "observed_mps": linear_speed,
-                    "limit_mps": float(max_linear_speed_mps),
-                    "execution_velocity_scale": float(execution_velocity_scale),
-                    "execution_position_subdivision": execution_position_subdivision,
-                }
-                raise SimulationProbeError("simulator motion exceeds waypoint linear-speed limit")
-            execution_state["max_observed_linear_speed_mps"] = max(
-                execution_state.get("max_observed_linear_speed_mps", 0.0), linear_speed
+        if time.monotonic() >= deadline:
+            raise TimeoutError("simulation probe exceeded max duration")
+        if stop_file is not None and stop_file.exists():
+            raise InterruptedError("simulation probe stop requested")
+        task.robot.set_arm_joints(positions[index], velocities[index], arm)
+        execution_state["world_change_started"] = True
+        execution_state["phase"] = phase
+        task.scene.step()
+        execution_state["simulator_steps"] += 1
+        current_position = np.asarray(ee()[:3], dtype=np.float64)
+        linear_speed = float(np.linalg.norm(current_position - previous_position) / timestep)
+        if not math.isfinite(linear_speed) or linear_speed > max_linear_speed_mps + 1e-3:
+            execution_state["linear_speed_violation"] = {
+                "phase": phase,
+                "step": execution_state["simulator_steps"],
+                "observed_mps": linear_speed,
+                "limit_mps": float(max_linear_speed_mps),
+                "execution_velocity_scale": float(execution_velocity_scale),
+            }
+            raise SimulationProbeError("simulator motion exceeds waypoint linear-speed limit")
+        execution_state["max_observed_linear_speed_mps"] = max(
+            execution_state.get("max_observed_linear_speed_mps", 0.0), linear_speed
+        )
+        previous_position = current_position
+        contacts.extend(
+            _contact_state(
+                task,
+                phase=phase,
+                step=execution_state["simulator_steps"],
+                attached=bool(execution_state["planner_object_attached"]),
             )
-            previous_position = current_position
-            contacts.extend(
-                _contact_state(
-                    task,
-                    phase=phase,
-                    step=execution_state["simulator_steps"],
-                    attached=bool(execution_state["planner_object_attached"]),
-                )
-            )
+        )
 
 
 def _set_gripper(
@@ -983,8 +947,6 @@ def _run_candidate(
                 execution_state=execution_state,
                 max_linear_speed_mps=float(route_waypoint["max_linear_speed_mps"]),
                 execution_velocity_scale=float(policies["execution_velocity_scale"]),
-                execution_position_subdivision=int(policies["execution_position_subdivision"]),
-                max_effective_samples=int(policies["trajectory_retiming"]["max_samples"]),
             )
         _set_gripper(
             task,
