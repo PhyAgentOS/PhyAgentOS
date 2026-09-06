@@ -194,6 +194,26 @@ def test_final_record_cannot_claim_enforcement_on_failure():
         )
 
 
+def test_rfc3339_z_timestamp_is_portable_to_robotwin20_python310():
+    evidence = _evidence()
+    qualification = ControllerQualification(
+        qualification_id=evidence.qualification_id,
+        plan_ref=evidence.plan_ref,
+        plan_sha256="a" * 64,
+        evidence_ref="artifact://qualification/evidence",
+        evidence_sha256="b" * 64,
+        validation_ref="artifact://qualification/validation",
+        validation_sha256="c" * 64,
+        identity=IDENTITY,
+        status="approved_pass",
+        reviewer_id="yanxu",
+        reviewed_at="2026-09-06T12:44:27.576436Z",
+        independent_execution_qualification=True,
+        controller_enforced=True,
+    )
+    assert qualification.reviewed_at.endswith("Z")
+
+
 def _approved_result_chain():
     plan = _plan()
     plan_digest = controller_qualification_digest(plan)

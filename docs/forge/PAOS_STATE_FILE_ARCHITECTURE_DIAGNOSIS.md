@@ -1342,3 +1342,13 @@ GraspGen transform attestation、scene/calibration、candidate geometry、object
 这是新的审批对象，不继承旧 route approval；在人工提供
 `I_REVIEWED_AND_APPROVE_SIMULATION_ONLY` 前，不得执行 scene.step、single-object smoke
 test、benchmark、Gateway、Dora、Action 或 hardware。
+
+### 32.22 v6.7.2 probe failure diagnosis (2026-09-07)
+
+v6.7.2 probe 先发现 RoboTwin20 Python 3.10 对 qualification artifact 中 RFC3339 `Z`
+时间戳的兼容性问题；标准化 parser 修复后重新生成 route/approval。单对象执行 970 个
+simulator steps 后，descent 阶段发生 `panda_hand ↔ block-blue-1` 非目标接触，release
+阶段发生 `panda_rightfinger ↔ table` 接触；failure artifact 保存 pair、phase、step、
+impulse、before/after snapshot、controller stop 和 reset 状态。该证据表明当前 green
+candidate 的 attached-object/environment clearance 或 arm-route selection 不满足约束，
+不是速度阈值问题；不得通过删除接触、放宽 collision gate 或复用旧 approval 处理。

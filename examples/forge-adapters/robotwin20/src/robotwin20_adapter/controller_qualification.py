@@ -108,7 +108,10 @@ def _identity_text(value: str, label: str) -> str:
 
 def _timestamp(value: str, label: str) -> str:
     try:
-        parsed = datetime.fromisoformat(value)
+        # Python 3.10 (the supported RoboTwin20 runtime) does not accept the
+        # RFC3339 ``Z`` UTC suffix, while Python 3.11+ does. Normalize it
+        # before parsing so artifacts remain portable across provider runtimes.
+        parsed = datetime.fromisoformat(value.removesuffix("Z") + "+00:00" if value.endswith("Z") else value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{label} must be an ISO timestamp") from exc
     if parsed.tzinfo is None:

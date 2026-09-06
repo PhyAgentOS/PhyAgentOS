@@ -385,3 +385,13 @@ controller_source_sha256=6a1e9cdc8731d26f2940efd590a22ed491988c4d52e8157589f068a
 - 权威边界：通过；q4 qualification 仅作为 provider-owned binding，route 仍未授予 PAOS、benchmark 或硬件 motion authority。
 - 配置与 provenance：通过；runtime、worker/controller source、双臂 capability、GraspGen attestation、scene/calibration/placement 全部可追溯绑定。
 - 可维护性：通过；生成、校验、审批和执行仍分层，旧 route 明确不可复用。
+
+### v6.7.2 probe result (2026-09-07)
+
+首次 probe 暴露 Python 3.10 对合法 RFC3339 `Z` 时间戳解析不兼容，已通过统一 parser
+修复并增加回归测试；旧 approval 因 worker digest 变化不可复用。新 approval 后，单对象
+probe 执行 970 个 simulator steps：左臂 planner 失败后右臂执行，descent 期间
+`panda_hand` 接触非目标 `block-blue-1`，release 期间 `panda_rightfinger` 接触 table。
+worker 按 attached-object/environment collision 规则 fail-closed，保存 before/after、
+contact trace、failure evidence，并完成 controller stop/reset。该结果不证明 route 成功，
+也不允许放宽碰撞门禁；下一步需重新分析候选 arm 与完整 route geometry。
