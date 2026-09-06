@@ -44,7 +44,7 @@ Implemented the first, no-motion milestone of RoboTwin/SAPIEN controller qualifi
 
 ### Git 提交 / Git Commit
 
-- Commit: `ca5c2e2`
+- Commit: `17bef6f`
 - Branch: `feature/long-horizon-workflow`
 
 ## [v6.0.0] - 2026-09-06
