@@ -324,3 +324,14 @@ simulation qualification 不能授权 hardware；Gateway 仍是唯一执行入�
 
 在这些条件之前，系统可以进行 no-motion planning、诊断和 evidence 收集，但不能把
 经验阈值、一次实测最大值或相对速度比例称为真正的硬速度限制。
+
+## 10. Controller qualification execution status (2026-09-06)
+
+The first no-motion milestone is specified in
+`ROBOTWIN_CONTROLLER_QUALIFICATION_EXECUTION_PLAN.md`. It now provides
+provider-owned plan, source manifest, review request, cross-artifact verifier,
+and scoped approval contracts. The real RoboTwin v2 capability package has
+been validated without loading a scene. This does not qualify the SAPIEN
+drive-target controller: qualification motion, benchmark motion, Gateway,
+Dora, Action, and hardware remain disabled until a human approves the new
+plan/validation package and an independent worker produces execution evidence.

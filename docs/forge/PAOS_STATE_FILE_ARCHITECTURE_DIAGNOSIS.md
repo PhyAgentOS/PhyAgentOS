@@ -1256,3 +1256,18 @@ validation digest。simulation probe 会先验证这些绑定，然后因缺少�
 controller-enforcement qualification 在任何 world change 前 fail closed。
 因此“provider artifact 已完成”与“控制器执行资格未完成”是两个明确且不可
 互相替代的状态。
+
+### 32.17 qualification plan milestone (2026-09-06)
+
+`docs/forge/ROBOTWIN_CONTROLLER_QUALIFICATION_EXECUTION_PLAN.md` now records
+the next executable milestone. RoboTwin adapter contracts separate a
+qualification plan, source manifest, human review request, no-motion
+validation, scoped approval, execution evidence, independent validation, and
+final qualification. The real v2 capability inputs produced a new immutable
+package under
+`/home/yanxu/robotwin20-runtime/artifacts/paos-controller-qualification-plan-20260906T1630Z/`.
+Cross-artifact verification passed with
+`world_change_started=false`; no scene, Gateway, Dora, Action, or hardware was
+started. The package is eligible only for human review of isolated
+qualification motion. It does not authorize benchmark motion or modify the
+existing route approval.

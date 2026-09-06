@@ -2,6 +2,51 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.1.0] - 2026-09-06
+
+Implemented the first, no-motion milestone of RoboTwin/SAPIEN controller qualification. The provider-owned adapter now separates a qualification plan, source manifest, human review request, no-motion validation, scoped approval, execution evidence, independent validation, and final qualification. Cross-artifact identity/digest checks and atomic staging publication prevent partial or drifted packages. Qualification approval is scoped only to isolated qualification motion; benchmark, hardware, and PAOS motion remain unauthorized.
+
+实现 RoboTwin/SAPIEN controller qualification 的第一阶段无动作闭环。adapter 现在分离 qualification plan、source manifest、人工审核请求、无动作验证、隔离审批、执行证据、独立验证和最终资格记录；跨 artifact identity/digest 校验与 staging 原子发布防止半包和漂移。qualification approval 仅适用于隔离资格测试，benchmark、硬件和 PAOS 动作仍未授权。
+
+### 文件变更详情 / Detailed changes
+
+- 新增 `examples/forge-adapters/robotwin20/src/robotwin20_adapter/controller_qualification.py`：严格定义五类 qualification contract、测试矩阵、证据范围、双臂 capability binding 和跨 artifact validator。
+- Added `examples/forge-adapters/robotwin20/src/robotwin20_adapter/controller_qualification.py`: strict qualification contracts, test matrix, evidence scope, dual-arm capability bindings, and cross-artifact validation.
+- 新增 `examples/forge-adapters/robotwin20/scripts/materialize_controller_qualification_plan.py`、`verify_controller_qualification_plan.py`、`validate_controller_qualification.py`、`approve_controller_qualification_plan.py`：生成、独立校验和人工审批隔离 qualification 包；不加载场景、不调用 `scene.step()`。
+- Added `materialize_controller_qualification_plan.py`, `verify_controller_qualification_plan.py`, `validate_controller_qualification.py`, and `approve_controller_qualification_plan.py`: materialize, independently verify, validate, and human-approve an isolated qualification package without loading a scene or calling `scene.step()`.
+- 新增 `examples/forge-adapters/robotwin20/tests/test_controller_qualification.py`：覆盖 schema、完整测试矩阵、digest/identity drift、权限隔离、错误审批和 CLI 路径。
+- Added `examples/forge-adapters/robotwin20/tests/test_controller_qualification.py`: covered schemas, complete test matrix, digest/identity drift, authority isolation, invalid approval, and CLI paths.
+- 新增 `docs/forge/ROBOTWIN_CONTROLLER_QUALIFICATION_EXECUTION_PLAN.md`：记录大步门禁、PAOS 所有权、实际 artifact 和五维验收结论。
+- Added `docs/forge/ROBOTWIN_CONTROLLER_QUALIFICATION_EXECUTION_PLAN.md`: documented milestone gates, PAOS ownership, real artifacts, and five-dimension acceptance.
+
+### 五维验收 / Five-Dimension Review
+
+- 架构集成：通过；qualification 留在 RoboTwin adapter，不创建第二套 PAOS lifecycle/store/execution plane。
+- Architecture integration: pass; qualification remains in the RoboTwin adapter without a second PAOS lifecycle, store, or execution plane.
+- 失败路径：通过；缺失/重复矩阵、digest mismatch、identity drift、错误审批短语和不完整绑定均 fail-closed。
+- Failure paths: pass; incomplete/duplicate matrices, digest mismatch, identity drift, wrong approval phrase, and incomplete bindings fail closed.
+- 权威边界：通过；隔离 qualification motion 与 benchmark/hardware/PAOS motion 明确分离。
+- Authority boundaries: pass; isolated qualification motion is explicitly separated from benchmark, hardware, and PAOS motion.
+- 配置与 provenance：通过；双臂 capability、validation、manifest、plan 和 review request 交叉绑定，无硬编码速度事实。
+- Configuration and provenance: pass; dual-arm capability, validation, manifest, plan, and review request are cross-bound with no hard-coded speed facts.
+- 可维护性：通过；contract、materializer、verifier、approval CLI 和测试分层，便于替换 provider。
+- Maintainability: pass; contracts, materializer, verifier, approval CLI, and tests are layered for provider replacement.
+
+### 验证 / Validation
+
+- Focused qualification suite: `10 passed`。
+- Combined core/Skill/adapter regression: `728 passed, 1 skipped`。
+- Ruff、compileall、`git diff --check`：通过。
+- Real no-motion package: `/home/yanxu/robotwin20-runtime/artifacts/paos-controller-qualification-plan-20260906T1630Z/`。
+- No-motion validation digest: `2d977c2ec9ae179fa7ad9ae37b82367e2ddf84b9d3daded96ea2841f69af497e`。
+- 未启动 qualification motion、benchmark、Gateway、Dora、Action 或硬件。
+- No qualification motion, benchmark, Gateway, Dora, Action, or hardware was started.
+
+### Git 提交 / Git Commit
+
+- Commit: `ca5c2e2`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v6.0.0] - 2026-09-06
 
 Implemented the RoboTwin provider-owned `MotionCapability` v2 artifact and bound both Franka arms into route-request/v5. The artifact is derived from the selected RoboTwin checkout and runtime interpreter, records per-joint URDF limits, CuRobo derivatives, timing, identity, source digests, and explicit enforcement semantics. Independent validation proves source/planner agreement only; it does not create controller qualification or motion authority.
