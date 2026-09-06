@@ -455,6 +455,34 @@ speed fields and fails closed before simulation world change until a
 separately qualified controller-enforcement artifact is implemented and bound.
 Human simulation approval alone does not bypass this gate.
 
+### Isolated controller qualification
+
+After a separate human approval of the qualification plan (and only for the
+isolated simulation scope), run the provider worker with a fresh artifact root:
+
+```bash
+PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime \
+python examples/forge-adapters/robotwin20/scripts/run_controller_qualification.py \
+  --plan /abs/qualification_plan.json \
+  --approval /abs/approval.json \
+  --plan-validation /abs/no_motion_validation.json \
+  --source-manifest /abs/source_manifest.json \
+  --left-capability /abs/left-motion-capability.json \
+  --left-validation /abs/left-motion-capability-validation.json \
+  --right-capability /abs/right-motion-capability.json \
+  --right-validation /abs/right-motion-capability-validation.json \
+  --artifact-root /abs/new-qualification-artifacts \
+  --robotwin-root /abs/RoboTwin \
+  --stop-file /abs/new-qualification-artifacts/STOP
+```
+
+The worker never loads a benchmark task and refuses non-isolated plans. It
+rechecks all approval-bound file digests before every SAPIEN step. Then run
+`validate_controller_qualification_evidence.py` against the generated
+evidence. Missing SAPIEN, unsupported contact/error fixtures, stale inputs,
+and incomplete traces produce `unavailable`/`validated_failure`; they cannot
+be converted into a controller limit or route approval.
+
 Materialize and independently revalidate one provider-owned capability without
 loading a scene or executing motion:
 

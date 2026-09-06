@@ -1271,3 +1271,17 @@ Cross-artifact verification passed with
 started. The package is eligible only for human review of isolated
 qualification motion. It does not authorize benchmark motion or modify the
 existing route approval.
+
+### 32.18 qualification worker implementation result (2026-09-06)
+
+大步 B 已在 RoboTwin adapter 内实现：`QualificationRuntime` provider port、隔离
+SAPIEN worker、不可变 test-trace 和独立 evidence validator。worker 每次
+`scene.step()` 前检查 approval scope、stop/timeout 以及 plan/source/capability
+输入摘要；越限命令必须得到 provider 明确的 `rejected`/`limited`/`fault` 状态，
+仅测得低速不算 controller enforcement。provider 缺少 SAPIEN 或 fixture 时，CLI
+写入完整 `unavailable` evidence，不打印一个无法审计的“失败”字符串。
+
+本次运行因当前解释器没有 SAPIEN，结果为 `unavailable`，独立 validator 输出
+`validated_failure`；这证明失败路径和证据协议可用，但不证明 RoboTwin controller
+已通过资格。该结果仍保持 `motion_authorized=false`，不得用于 benchmark、route、
+Gateway、Dora、Action 或硬件授权。

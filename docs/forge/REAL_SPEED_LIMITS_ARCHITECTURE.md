@@ -335,3 +335,9 @@ been validated without loading a scene. This does not qualify the SAPIEN
 drive-target controller: qualification motion, benchmark motion, Gateway,
 Dora, Action, and hardware remain disabled until a human approves the new
 plan/validation package and an independent worker produces execution evidence.
+
+大步 B 的隔离 qualification worker 已实现于 RoboTwin adapter，记录每个测试的
+commanded/observed joint state、TCP pose/velocity、contacts、simulator step/time、
+controller status 及 stop/error/reset 信号。当前 provider 环境没有 SAPIEN，实际
+运行生成 `unavailable` evidence，并由独立 validator 产生 `validated_failure`；
+这不是 controller enforcement 证明，也没有产生任何 motion authorization。

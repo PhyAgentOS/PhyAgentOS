@@ -102,13 +102,76 @@ evidence 和 verifier，不把 Skill workflow 写成固定执行脚本。
 ## 5. 当前状态与下一动作
 
 - MotionCapability v2/source validation/route v5：已完成；
-- controller qualification：大步 A 执行中；
-- qualification motion：未审批、未执行；
+- controller qualification：大步 A 已完成；大步 B worker/validator 已实现；
+- qualification motion：已获得隔离 simulation-only 审批，但当前 provider 缺少 SAPIEN，实际结果为 unavailable；
 - benchmark motion：未授权、未执行；
 - Gateway/Dora/Action/hardware：未接入本阶段。
 
-当前允许的下一动作仅是完成大步 A 的协议、validator、no-motion dry-run、测试和人工
-审核包。大步 B 必须等待对该审核包的显式 simulation-only qualification approval。
+当前大步 A 已完成，并已获得审核者对该包的显式
+`I_REVIEWED_AND_APPROVE_CONTROLLER_QUALIFICATION_SIMULATION_ONLY` 批准。大步 B 的
+worker、独立 evidence validator 和失败产物已实现；但由于当前调用环境没有 SAPIEN，
+真实 provider qualification 没有运行，生成的是 `unavailable` evidence。该结果不能升级
+为 controller qualification，也不能启动 benchmark 或 route motion。
+
+## 7. 大步 B 实现与实际结果（2026-09-06）
+
+新增 `runtime/robotwin_controller_qualification_worker.py`，其边界为：
+
+- `QualificationRuntime` 是 provider port；worker 不导入 PAOS lifecycle、Gateway、Dora 或 Action；
+- `SapienQualificationRuntime` 只创建空的双 Panda 场景，不加载 benchmark task objects；
+- 每次 `scene.step()` 前检查 stop file、超时、approval scope 和所有输入 artifact digest；
+- 命令来自 capability 的逐关节 velocity/position limits，代码不加入 PAOS 全局速度常量；
+- trace 保存 commanded/observed q、dq、TCP pose、derived TCP velocity、contacts、step/time、
+  controller status 和 stop/error/reset 状态；NaN/Inf、artifact drift、stop 和 provider fixture
+  缺失均 fail-closed；
+- `over_limit_velocity_command` 只有在 provider 明确返回 `rejected`、`limited` 或 `fault`
+  时才可能通过；仅观察到低速不构成 controller enforcement 证据；
+- worker 无法创建 SAPIEN 时，CLI 生成完整的 `unavailable` evidence 和每个测试的 failure
+  trace，而不是只打印错误或伪造 pass；
+- `validate_controller_qualification_evidence.py` 独立检查 plan/approval digest、全部 trace
+  digest、双臂信号、有限值和失败原因，并输出 `validated_failure`/`validated_pass`；输出仍
+  固定 `motion_authorized=false`。
+
+本次实际运行：
+
+```text
+status=unavailable
+reason=SAPIEN is unavailable in the provider runtime
+evidence=/home/yanxu/robotwin20-runtime/artifacts/qualification-run-20260906T1630Z-v3/controller-qualification/blocks-ranking-rgb-franka-sapien-q2/evidence.json
+validation_status=validated_failure
+motion_authorized=false
+```
+
+因此目前的真实结论是：worker 和证据协议可运行，当前 provider 环境不具备 SAPIEN，
+qualification motion 尚未取得 passed/failed 的物理执行结论；必须在安装并锁定 RoboTwin
+provider runtime 后重新运行同一审批绑定（若 plan/source digest 改变，必须重新审批）。
+
+### 大步 B 五维验收
+
+- **架构集成：通过。** worker/validator 留在 RoboTwin adapter；`QualificationRuntime` 是
+  可替换 provider port，不创建第二套 PAOS task、SQLite 或执行事实源。
+- **失败路径：通过。** 覆盖 package digest drift、stop/timeout、NaN/Inf、缺失 fixture、
+  over-limit 未被 controller 拒绝、缺失 trace、trace digest drift 和 provider unavailable；
+  失败结果持久化为 `failed` 或 `unavailable`，不伪造成功。
+- **权威边界：通过。** qualification approval 仅允许隔离测试；证据和独立 validation
+  始终 `motion_authorized=false`，不能授权 benchmark、Gateway、Dora、Action 或硬件。
+- **配置与 provenance：通过。** 计划、审批、capability、validation 和 source manifest
+  的 digest 在启动及每步前检查；限制来自 provider-owned MotionCapability，未新增硬编码
+  `0.20` 等速度值。
+- **可维护性：通过。** contract/worker/provider/CLI/validator/测试分层；SAPIEN 缺失时
+  有可审计 unavailable artifact，便于在独立 provider 环境重放。
+
+专项测试：`15 passed`（qualification contract + worker）；Ruff、compileall 通过。
+
+## 8. 下一步门禁
+
+1. 在独立 RoboTwin20 provider 环境安装并锁定 SAPIEN、PyYAML、NumPy 和 RoboTwin checkout，
+   记录 runtime/controller identity；
+2. 用新的唯一 artifact root 重跑 `run_controller_qualification.py`（同一 plan 仅在所有
+   digest 未变时可复用批准）；
+3. 对生成的 evidence 运行独立 validator，并人工审核 `validated_pass` 或 `validated_failure`；
+4. 只有 `validated_pass` + 新人工批准，才进入大步 C 的 route 重绑定；当前不能运行
+   `blocks_ranking_rgb`、pick-place、Gateway、Dora、Action 或硬件。
 
 ## 6. 大步 A 实际完成记录（2026-09-06）
 
