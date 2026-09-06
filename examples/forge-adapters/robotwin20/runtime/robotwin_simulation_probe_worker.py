@@ -26,10 +26,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from trajectory_controller import (
-    SpeedLimitViolationError,
-    build_robotwin_drive_target_controller,
-)
 from worker_protocol import serve
 
 from robotwin20_adapter.route_readiness import (
@@ -426,8 +422,6 @@ def _joint_limits(planner: Any) -> list[list[float]]:
 def _validate_trajectory(
     result: Mapping[str, Any],
     limits: list[list[float]],
-    *,
-    max_joint_speed_radps: float,
 ) -> None:
     import numpy as np
 
@@ -448,95 +442,6 @@ def _validate_trajectory(
     low, high = np.asarray(limits[0]), np.asarray(limits[1])
     if bool((positions < low - 1e-5).any()) or bool((positions > high + 1e-5).any()):
         raise SimulationProbeError("planner trajectory exceeds joint limits")
-    if bool((np.abs(velocities) > float(max_joint_speed_radps) + 1e-5).any()):
-        raise SimulationProbeError("planner trajectory exceeds waypoint joint-speed limit")
-
-
-def _retime_trajectory(
-    result: Mapping[str, Any],
-    *,
-    enabled: bool,
-    method: str,
-    max_joint_speed_radps: float,
-    sampling_dt_s: float,
-    safety_margin: float,
-    max_samples: int,
-) -> dict[str, Any]:
-    """Apply profile-declared uniform time dilation without changing endpoints.
-
-    RoboTwin consumes one Curobo sample per 250 Hz scene step.  Curobo's
-    velocity array is therefore in rad/s; stretching the trajectory is done by
-    resampling positions at the same scene cadence and recomputing derivatives,
-    rather than by silently scaling command values while keeping the old timing.
-    """
-    import numpy as np
-
-    if enabled is not True or method != "uniform_time_dilation":
-        raise SimulationProbeError("trajectory retiming is not enabled by policy")
-    if result.get("status") != "Success":
-        raise SimulationProbeError("planner route segment failed")
-    source_positions = np.asarray(result.get("position"))
-    source_velocities = np.asarray(result.get("velocity"))
-    if not np.issubdtype(source_positions.dtype, np.floating) or not np.issubdtype(
-        source_velocities.dtype, np.floating
-    ):
-        raise SimulationProbeError("planner trajectory dtype is not floating point")
-    positions = source_positions.astype(np.float64, copy=False)
-    velocities = source_velocities.astype(np.float64, copy=False)
-    if positions.ndim != 2 or positions.shape[1] != 7 or velocities.shape != positions.shape:
-        raise SimulationProbeError("planner trajectory shape is invalid")
-    if not math.isfinite(sampling_dt_s) or sampling_dt_s <= 0:
-        raise SimulationProbeError("trajectory retiming sampling period is invalid")
-    if (
-        isinstance(safety_margin, bool)
-        or not math.isfinite(float(safety_margin))
-        or not 0 < float(safety_margin) <= 1
-    ):
-        raise SimulationProbeError("trajectory retiming safety margin is invalid")
-    if not isinstance(max_samples, int) or isinstance(max_samples, bool) or max_samples < len(positions):
-        raise SimulationProbeError("trajectory retiming sample limit is invalid")
-    if len(positions) < 2 or not np.isfinite(positions).all() or not np.isfinite(velocities).all():
-        raise SimulationProbeError("planner trajectory contains non-finite or insufficient samples")
-    limit = float(max_joint_speed_radps) * float(safety_margin)
-    if not math.isfinite(limit) or limit <= 0:
-        raise SimulationProbeError("trajectory retiming speed limit is invalid")
-    source_speed = float(np.max(np.abs(velocities)))
-    step_speed = float(np.max(np.abs(np.diff(positions, axis=0))) / sampling_dt_s)
-    required_speed = max(source_speed, step_speed)
-    if not math.isfinite(required_speed):
-        raise SimulationProbeError("planner trajectory speed is invalid")
-    dilation = min(1.0, limit / required_speed) if required_speed else 1.0
-    sample_count = int(math.ceil((len(positions) - 1) / dilation)) + 1
-    if sample_count > max_samples:
-        raise SimulationProbeError("trajectory retiming exceeds sample limit")
-    if dilation < 1.0:
-        old_time = np.arange(len(positions), dtype=np.float64)
-        new_time = np.minimum(
-            np.arange(sample_count, dtype=np.float64) * dilation,
-            float(len(positions) - 1),
-        )
-        retimed_positions = np.column_stack(
-            [np.interp(new_time, old_time, positions[:, joint]) for joint in range(7)]
-        )
-    else:
-        retimed_positions = positions.copy()
-    retimed_velocities = np.gradient(retimed_positions, sampling_dt_s, axis=0, edge_order=1)
-    if np.max(np.abs(retimed_velocities)) > limit + 1e-5:
-        raise SimulationProbeError("retimed trajectory exceeds policy speed limit")
-    output = dict(result)
-    output["position"] = retimed_positions.astype(source_positions.dtype, copy=False)
-    output["velocity"] = retimed_velocities.astype(source_velocities.dtype, copy=False)
-    output["retiming"] = {
-        "method": "uniform_time_dilation",
-        "sampling_dt_s": float(sampling_dt_s),
-        "dilation_factor": float(dilation),
-        "source_max_speed_radps": source_speed,
-        "source_step_speed_radps": step_speed,
-        "retimed_max_speed_radps": float(np.max(np.abs(retimed_velocities))),
-        "sample_count_before": int(len(positions)),
-        "sample_count_after": int(len(retimed_positions)),
-    }
-    return output
 
 
 def _validate_request_policies(
@@ -547,72 +452,17 @@ def _validate_request_policies(
 ) -> dict[str, Any]:
     joint = _load_json_artifact(root, request["joint_limits_ref"])
     stop = _load_json_artifact(root, request["stop_policy_ref"])
-    if set(joint) not in ({
-            "schema_version", "planner_profile", "joint_count",
-            "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
-        }, {
-            "schema_version", "planner_profile", "joint_count",
-            "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
-            "execution_velocity_scale",
-        }, {
-            "schema_version", "planner_profile", "joint_count",
-            "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
-            "execution_velocity_scale",
-            "execution_controller",
-        }) or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v1":
+    if set(joint) != {
+        "schema_version", "planner_profile", "joint_count",
+        "require_runtime_position_limits",
+    } or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v2":
         raise SimulationProbeError("joint-limit policy fields are invalid")
-    max_joint_speed = joint["max_joint_speed_radps"]
     if (
         joint["planner_profile"] != "curobo"
         or joint["joint_count"] != 7
         or joint["require_runtime_position_limits"] is not True
-        or isinstance(max_joint_speed, bool)
-        or not isinstance(max_joint_speed, (int, float))
-        or not math.isfinite(float(max_joint_speed))
-        or max_joint_speed <= 0
     ):
         raise SimulationProbeError("joint-limit policy is invalid")
-    retiming = joint["trajectory_retiming"]
-    if not isinstance(retiming, Mapping) or set(retiming) != {
-        "enabled", "method", "sampling_dt_s", "safety_margin", "max_samples",
-    } or retiming["enabled"] is not True or retiming["method"] != "uniform_time_dilation":
-        raise SimulationProbeError("trajectory retiming policy is invalid")
-    if (
-        isinstance(retiming["sampling_dt_s"], bool)
-        or not isinstance(retiming["sampling_dt_s"], (int, float))
-        or not math.isfinite(float(retiming["sampling_dt_s"]))
-        or not math.isclose(float(retiming["sampling_dt_s"]), 1 / 250, abs_tol=1e-9)
-        or isinstance(retiming["safety_margin"], bool)
-        or not isinstance(retiming["safety_margin"], (int, float))
-        or not 0 < float(retiming["safety_margin"]) <= 1
-        or isinstance(retiming["max_samples"], bool)
-        or not isinstance(retiming["max_samples"], int)
-        or retiming["max_samples"] < 2
-    ):
-        raise SimulationProbeError("trajectory retiming policy values are invalid")
-    execution_velocity_scale = joint.get("execution_velocity_scale", 1.0)
-    if (
-        isinstance(execution_velocity_scale, bool)
-        or not isinstance(execution_velocity_scale, (int, float))
-        or not math.isfinite(float(execution_velocity_scale))
-        or not 0 < float(execution_velocity_scale) <= 1
-    ):
-        raise SimulationProbeError("execution velocity scale is invalid")
-    controller_policy = joint.get("execution_controller", {
-        "schema_version": "paos-robotwin20-execution-controller/v1",
-        "controller_id": "robotwin-sapien-drive-target",
-        "controller_version": "unqualified-drive-target",
-        "mode": "diagnostic_measured_guard",
-        "hard_cartesian_speed_limit": False,
-        "measured_speed_guard": True,
-    })
-    if not isinstance(controller_policy, Mapping) or set(controller_policy) != {
-        "schema_version", "controller_id", "controller_version", "mode",
-        "hard_cartesian_speed_limit", "measured_speed_guard",
-    } or controller_policy["schema_version"] != "paos-robotwin20-execution-controller/v1":
-        raise SimulationProbeError("execution controller policy is invalid")
-    if controller_policy.get("mode") != "diagnostic_measured_guard":
-        raise SimulationProbeError("execution controller mode is unsupported")
     if set(stop) != {
         "schema_version", "max_duration_s", "stop_file_required",
         "poll_each_step", "failure_recovery",
@@ -627,32 +477,9 @@ def _validate_request_policies(
         or stop["failure_recovery"] != "reset_simulation"
     ):
         raise SimulationProbeError("stop policy is invalid")
-    for candidate in request["candidates"]:
-        speed_limited_poses = [candidate["execution_grasp"]["robot_target_pose"]]
-        speed_limited_poses.extend(
-            waypoint
-            for phase in candidate["route"]
-            for waypoint in phase["waypoints"]
-        )
-        if any(
-            float(pose["max_joint_speed_radps"]) > float(max_joint_speed)
-            for pose in speed_limited_poses
-        ):
-            raise SimulationProbeError("candidate pose exceeds joint-limit policy")
-    return {
-        "joint_limit_policy": {
-            "artifact_ref": request["joint_limits_ref"],
-            "sha256": _sha_bytes(_artifact_path(root, request["joint_limits_ref"]).read_bytes()),
-        },
-        "stop_policy": {
-            "artifact_ref": request["stop_policy_ref"],
-            "sha256": _sha_bytes(_artifact_path(root, request["stop_policy_ref"]).read_bytes()),
-        },
-        "max_joint_speed_radps": float(max_joint_speed),
-        "execution_velocity_scale": float(execution_velocity_scale),
-        "execution_controller": dict(controller_policy),
-        "trajectory_retiming": dict(retiming),
-    }
+    raise SimulationProbeError(
+        "provider-owned motion speed capability is unavailable for route-request/v4"
+    )
 
 
 def _validate_world_pose(
@@ -778,36 +605,17 @@ def _execute_segment(
     stop_file: Path | None,
     contacts: list[dict[str, Any]],
     execution_state: dict[str, Any],
-    max_linear_speed_mps: float,
-    execution_velocity_scale: float = 1.0,
-    controller_policy: Mapping[str, Any] | None = None,
 ) -> None:
     import numpy as np
 
     positions = result["position"]
     velocities = result["velocity"]
-    if (
-        isinstance(execution_velocity_scale, bool)
-        or not isinstance(execution_velocity_scale, (int, float))
-        or not math.isfinite(float(execution_velocity_scale))
-        or not 0 < float(execution_velocity_scale) <= 1
-    ):
-        raise SimulationProbeError("execution velocity scale is invalid")
-    velocities = np.asarray(velocities, dtype=np.float64) * float(execution_velocity_scale)
+    velocities = np.asarray(velocities, dtype=np.float64)
     ee = task.robot.get_left_ee_pose if arm == "left" else task.robot.get_right_ee_pose
     timestep = float(task.scene.get_timestep())
     if not math.isfinite(timestep) or timestep <= 0:
         raise SimulationProbeError("simulator timestep is invalid")
     previous_position = np.asarray(ee()[:3], dtype=np.float64)
-    controller = build_robotwin_drive_target_controller(
-        mode="diagnostic_measured_guard",
-        expected=controller_policy,
-    )
-    controller.preflight(max_linear_speed_mps=max_linear_speed_mps, timestep_s=timestep)
-    execution_state["controller"] = {
-        **controller.capabilities.as_dict(),
-        "mode": controller.mode,
-    }
     for index in range(len(positions)):
         if time.monotonic() >= deadline:
             raise TimeoutError("simulation probe exceeded max duration")
@@ -819,21 +627,10 @@ def _execute_segment(
         task.scene.step()
         execution_state["simulator_steps"] += 1
         current_position = np.asarray(ee()[:3], dtype=np.float64)
-        try:
-            linear_speed = controller.measure_step(
-                previous_position=previous_position,
-                current_position=current_position,
-                timestep_s=timestep,
-                max_linear_speed_mps=max_linear_speed_mps,
-                details={
-                    "phase": phase,
-                    "step": execution_state["simulator_steps"],
-                    "execution_velocity_scale": float(execution_velocity_scale),
-                },
-            )
-        except SpeedLimitViolationError as exc:
-            execution_state["linear_speed_violation"] = exc.details
-            raise SimulationProbeError(str(exc)) from exc
+        displacement = current_position - previous_position
+        linear_speed = float(np.linalg.norm(displacement) / timestep)
+        if not math.isfinite(linear_speed):
+            raise SimulationProbeError("simulator reported a non-finite end-effector speed")
         execution_state["max_observed_linear_speed_mps"] = max(
             execution_state.get("max_observed_linear_speed_mps", 0.0), linear_speed
         )
@@ -908,24 +705,7 @@ def _run_candidate(
             )
             fn = task.robot.left_plan_path if arm == "left" else task.robot.right_plan_path
             result = fn(pose)
-            result = _retime_trajectory(
-                result,
-                max_joint_speed_radps=float(
-                    candidate["execution_grasp"]["robot_target_pose"][
-                        "max_joint_speed_radps"
-                    ]
-                ),
-                **policies["trajectory_retiming"],
-            )
-            _validate_trajectory(
-                result,
-                limits,
-                max_joint_speed_radps=float(
-                    candidate["execution_grasp"]["robot_target_pose"][
-                        "max_joint_speed_radps"
-                    ]
-                ),
-            )
+            _validate_trajectory(result, limits)
             arm_results[arm] = (limits, result)
             arm_attempts.append({"arm": arm, "status": "pass"})
         except Exception as exc:
@@ -955,16 +735,7 @@ def _run_candidate(
         planned_segments = []
         for route_waypoint, waypoint in zip(phase["waypoints"], world_waypoints):
             result = fn(waypoint)
-            result = _retime_trajectory(
-                result,
-                max_joint_speed_radps=float(route_waypoint["max_joint_speed_radps"]),
-                **policies["trajectory_retiming"],
-            )
-            _validate_trajectory(
-                result,
-                limits,
-                max_joint_speed_radps=float(route_waypoint["max_joint_speed_radps"]),
-            )
+            _validate_trajectory(result, limits)
             planned_segments.append(
                 {
                     "route_waypoint": route_waypoint,
@@ -982,9 +753,6 @@ def _run_candidate(
                 stop_file=stop_file,
                 contacts=contact_trace,
                 execution_state=execution_state,
-                max_linear_speed_mps=float(route_waypoint["max_linear_speed_mps"]),
-                execution_velocity_scale=float(policies["execution_velocity_scale"]),
-                controller_policy=policies["execution_controller"],
             )
         _set_gripper(
             task,
@@ -1041,7 +809,6 @@ def _run_candidate(
         "scene_revision": request["scene_revision"],
         "arm": arm,
         "arm_selection_attempts": arm_attempts,
-        "controller": execution_state.get("controller"),
         "phases": route_records,
         "contact_samples": len(contact_trace),
     }
@@ -1051,7 +818,6 @@ def _run_candidate(
         "arm": arm,
         "joint_limits": limits,
         "source_policy": policies["joint_limit_policy"],
-        "max_joint_speed_radps": policies["max_joint_speed_radps"],
         "max_observed_linear_speed_mps": execution_state.get(
             "max_observed_linear_speed_mps", 0.0
         ),

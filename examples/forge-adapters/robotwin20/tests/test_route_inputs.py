@@ -58,15 +58,11 @@ def _grasp():
             "frame_id": "world",
             "position_m": [0.01, 0.01, 0.77],
             "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
-            "max_linear_speed_mps": 0.2,
-            "max_joint_speed_radps": 1.0,
         },
         "robot_target_pose": {
             "frame_id": "world",
             "position_m": [0.01, 0.01, 0.65],
             "orientation_xyzw": [2 ** -0.5, 0.0, 2 ** -0.5, 0.0],
-            "max_linear_speed_mps": 0.2,
-            "max_joint_speed_radps": 1.0,
         },
         "robot_target_frame": "robotwin_gripper",
         "robot_target_round_trip_residual_m": 0.0,
@@ -84,8 +80,6 @@ def test_route_inputs_derive_non_identity_measured_object_robot_target_and_place
         geometry_ref="artifact://route/geometry",
         transform_ref="artifact://route/object-t-robot-target",
         placement_ref="artifact://route/placement",
-        max_linear_speed_mps=0.2,
-        max_joint_speed_radps=1.0,
         semantic_tolerance={"target_position_m": 0.04, "target_orientation_rad": 0.35},
         contact_shell_tolerance_m=0.015,
     )
@@ -124,6 +118,4 @@ def test_route_inputs_reject_unbound_entity_and_tolerance():
             geometry_ref="artifact://route/geometry",
             transform_ref="artifact://route/object-t-robot-target",
             placement_ref="artifact://route/placement",
-            max_linear_speed_mps=0.2,
-            max_joint_speed_radps=1.0,
         )

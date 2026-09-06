@@ -61,8 +61,6 @@ def _inputs():
             "frame_id": "world", "vector": [0, 0, 1],
             "provenance_ref": "artifact://profile/support-normal",
         },
-        "max_linear_speed_mps": 0.2,
-        "max_joint_speed_radps": 1.0,
     }
     return proposal, payload, base, profile
 

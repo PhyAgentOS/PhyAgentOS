@@ -30,8 +30,7 @@ def _finite(value: Any, label: str, *, positive: bool = False) -> float:
 
 def _pose(value: Any, frame_id: str, label: str) -> dict[str, Any]:
     if not isinstance(value, Mapping) or set(value) != {
-        "frame_id", "position_m", "orientation_xyzw", "max_linear_speed_mps",
-        "max_joint_speed_radps",
+        "frame_id", "position_m", "orientation_xyzw",
     }:
         raise RouteGenerationError(f"{label} fields are invalid")
     if value["frame_id"] != frame_id:
@@ -54,12 +53,6 @@ def _pose(value: Any, frame_id: str, label: str) -> dict[str, Any]:
         "frame_id": frame_id,
         "position_m": [float(item) for item in position],
         "orientation_xyzw": [float(item) for item in orientation],
-        "max_linear_speed_mps": _finite(
-            value["max_linear_speed_mps"], f"{label}.max_linear_speed_mps", positive=True
-        ),
-        "max_joint_speed_radps": _finite(
-            value["max_joint_speed_radps"], f"{label}.max_joint_speed_radps", positive=True
-        ),
     }
 
 
@@ -152,8 +145,6 @@ def _matrix_pose(matrix: list[list[float]], template: Mapping[str, Any]) -> dict
         "frame_id": template["frame_id"],
         "position_m": [matrix[index][3] for index in range(3)],
         "orientation_xyzw": _rotation_to_quat([row[:3] for row in matrix[:3]]),
-        "max_linear_speed_mps": template["max_linear_speed_mps"],
-        "max_joint_speed_radps": template["max_joint_speed_radps"],
     }
 
 
@@ -199,7 +190,7 @@ def generate_route_request(
     placement_target: Mapping[str, Any],
     route_policy: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Generate one v3 route request from explicit adapter-owned projections."""
+    """Generate one v4 route request from explicit adapter-owned projections."""
 
     required_base = {
         "schema_version", "request_id", "observation_ref", "observation_frame_id",

@@ -31,8 +31,6 @@ def _pose(z: float = 0.8) -> dict:
         "frame_id": "world",
         "position_m": [0.0, 0.0, z],
         "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
-        "max_linear_speed_mps": 0.2,
-        "max_joint_speed_radps": 1.0,
     }
 
 
@@ -117,7 +115,7 @@ def test_valid_route_request_is_deterministically_bound(tmp_path: Path):
         (lambda r: r["candidates"][0]["attached_object"].update(geometry_sha256="bad"), "SHA-256"),
         (lambda r: r["workspace_bounds_m"].update(frame_id="wrist"), "share a frame"),
         (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(position_m=[0, 0, 2]), "workspace"),
-        (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(max_linear_speed_mps=0), "positive"),
+        (lambda r: r["candidates"][0]["route"][0]["waypoints"][0].update(unknown_speed=0), "fields"),
         (lambda r: r["candidates"][0]["placement_target"]["release_robot_target_pose"].update(position_m=[0.1, 0, 0.7]), "release RoboTwin target"),
         (lambda r: r["candidates"][0]["route"][6].update(gripper_state="closed"), "gripper state"),
     ],

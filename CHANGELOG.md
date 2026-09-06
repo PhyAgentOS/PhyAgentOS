@@ -2,6 +2,28 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.10.2] - 2026-09-06
+
+撤销 RoboTwin 抓取放置 route 中所有无 provider 来源的硬编码速度行为：route v4、route-input profile v3 和 joint-limit policy v2 不再携带统一 `0.20 m/s`、`1.0 rad/s`、execution scale 或自制 retiming；删除伪 speed-controller 层。当前 simulation probe 在缺少 provider-owned motion capability 时于 world change 前 fail-closed，末端速度只作为诊断 evidence。新增真实速度限制架构文档。
+
+Removed every provider-unbacked hard-coded speed behavior from the RoboTwin pick-place route: route v4, route-input profile v3, and joint-limit policy v2 no longer carry global `0.20 m/s`, `1.0 rad/s`, execution scaling, or custom retiming, and the pseudo speed-controller layer was deleted. The simulation probe now fails closed before world change while provider-owned motion capability is absent; end-effector speed remains diagnostic evidence only. Added the real speed-limit architecture document.
+
+### 文件变更详情 / Detailed changes
+
+- `route_readiness.py:L25-L84`、`route_generation.py:L31-L56,L143-L148`、`grasp_adaptation.py:L201-L208,L309-L333`、`route_inputs.py:L16-L20,L205-L216,L312-L316`：删除 pose 速度字段并升级严格 schema。
+- `route-inputs.yaml:L1-L52`、`materialize_complete_route.py:L82-L112,L308-L323,L352-L362`：删除无来源速度配置、scale、controller 伪绑定与 retiming。
+- `robotwin_simulation_probe_worker.py:L422-L482,L598-L645,L745-L822`：删除补偿和 threshold gate；缺 provider capability 时 pre-motion fail-closed，保留 finite diagnostic measurement。
+- 删除 `runtime/trajectory_controller.py:L1-L179` 与 `tests/test_trajectory_controller.py:L1-L126`。
+- 新增 `docs/forge/REAL_SPEED_LIMITS_ARCHITECTURE.md:L1-L301`，同步 planning/developer/adapter 文档与回归测试。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置/provenance 和可维护性通过；未启动仿真动作、Gateway、Dora、Action 或硬件。Architecture integration, failure paths, authority boundaries, configuration/provenance, and maintainability pass; no simulation motion, Gateway, Dora, Action, or hardware was started.
+
+### 验证 / Validation
+
+`717 passed, 1 skipped`; Ruff、compileall、`git diff --check` passed。
+
 ## [v5.10.0] - 2026-09-06
 
 复用既有 `CapabilitySnapshot/ArmCapability`，为左右臂增加 adapter-owned controller capability artifact 引用，并新增严格的 RoboTwin controller capability 文档模型。RoboTwin Franka 仿真使用 SAPIEN/URDF 与 CuRobo/MPlib，未接入 Franka SDK；当前 `0.20 m/s` 明确为 measured diagnostic threshold，不是 PAOS 或 Franka 全局硬限制。

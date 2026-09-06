@@ -202,7 +202,7 @@ def adapt_grasp_candidate(
         "schema_version", "extrinsic_semantics", "provider_T_contact_center",
         "robot_target_frame", "robot_target_reference_distance_m",
         "robot_gripper_bias_m", "robot_delta_matrix", "adaptation_provenance_ref",
-        "support_clear_direction", "max_linear_speed_mps", "max_joint_speed_radps",
+        "support_clear_direction",
     }
     if not isinstance(profile, Mapping) or set(profile) != required_profile:
         raise GraspAdaptationError("grasp adaptation profile fields are invalid")
@@ -306,25 +306,16 @@ def adapt_grasp_candidate(
     provenance_ref = profile["adaptation_provenance_ref"]
     if not isinstance(provenance_ref, str) or not provenance_ref.startswith("artifact://"):
         raise GraspAdaptationError("adaptation provenance_ref is invalid")
-    speeds = {}
-    for key in ("max_linear_speed_mps", "max_joint_speed_radps"):
-        value = profile[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or float(value) <= 0:
-            raise GraspAdaptationError(f"{key} must be positive")
-        speeds[key] = float(value)
-
     return {
         "contact_center_pose": {
             "frame_id": "world",
             "position_m": [world_from_canonical[index][3] for index in range(3)],
             "orientation_xyzw": _rotation_quat(canonical_rotation),
-            **speeds,
         },
         "robot_target_pose": {
             "frame_id": "world",
             "position_m": robot_target_position,
             "orientation_xyzw": _rotation_quat(robot_target_rotation),
-            **speeds,
         },
         "robot_target_frame": robot_target_frame,
         "robot_target_round_trip_residual_m": round_trip_residual,

@@ -417,11 +417,13 @@ target, then rerun the complete route and the no-motion evidence verifier; do no
 
 The final policy/recovery review additionally requires materialized joint-limit and stop-policy JSON artifacts.
 The approval binds their SHA-256 values together with the calibration digest; the worker enforces runtime
-position limits, planner joint velocity, SAPIEN end-effector linear velocity, and is single-use to prevent scene
-revision drift. Any failure after scene reset—including planning or final evidence persistence—produces a bound
-failure artifact and attempts simulator reset. Scene reset itself counts as a world change.
+position limits and records planner/controller observations without inventing a Cartesian speed limit. Speed
+constraints must come from the provider-owned planner/controller capability artifact described in
+`docs/forge/REAL_SPEED_LIMITS_ARCHITECTURE.md`. Any failure after scene reset—including planning or final
+evidence persistence—produces a bound failure artifact and attempts simulator reset. Scene reset itself counts
+as a world change.
 
-The latest run is
+The latest historical run is
 `/home/yanxu/robotwin20-runtime/artifacts/paos-simulation-probe-20260905T020000p0800-policy-v6`.
 It returned `unavailable` before a robot-control step: the left arm could not plan, while the right-arm trajectory
 exceeded the approved `1.0 rad/s` waypoint limit. Before/after-failure snapshots and reset-completed evidence were
@@ -438,12 +440,16 @@ Routes and simulation preflight consume `robot_target_pose`/`object_T_robot_targ
 canonical contact pose is retained only for contact-shell and round-trip evidence. Mixed
 v2 fields (`contact_tcp_pose`, `object_T_tcp`, `release_tcp_pose`) are rejected.
 
-The repaired v5 package above is superseded for review by the fresh v6 package under
+The historical v5/v6 packages under
 `/home/yanxu/robotwin20-runtime/artifacts/paos-route-inputs-20260905T204500Z/materialized/`.
-It validates as `paos-robotwin20-route-request/v3` and remains pending human review with
-`motion_authorized=false`. Its no-motion preflight uses the profile-declared 250 Hz
-`uniform_time_dilation` retiming (safety margin `0.95`, bounded to 20,000 samples): the
-right arm passes all eight planner phases, while the left arm remains unavailable. The
-run has zero robot-control and simulator steps and is still only planner/policy evidence;
+use the retired `paos-robotwin20-route-request/v3` speed policy and are retained only as
+historical evidence. They cannot be approved or replayed through the current v4 route
+contract. The historical no-motion run had zero robot-control and simulator steps and is
+still only planner/policy evidence;
 attached-object collision, physical lift, contact dynamics, semantic placement, and
 readiness approval remain unproven.
+
+The current `paos-robotwin20-route-request/v4` removes the unbacked waypoint
+speed fields and fails closed before simulation world change until a
+provider-owned motion-capability artifact is implemented and bound. Human
+simulation approval alone does not bypass this gate.

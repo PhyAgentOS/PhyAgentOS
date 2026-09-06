@@ -1,4 +1,4 @@
-schema_version: paos-robotwin20-route-input-profile/v2
+schema_version: paos-robotwin20-route-input-profile/v3
 route_frame_id: world
 calibration_revision: robotwin20-head-camera-seed0-v1
 workspace_bounds_m:
@@ -29,8 +29,6 @@ grasp_adaptation:
     evidence_ref: artifact://provider-attestation/graspgen-ptv3-tool-tcp
   contact_shell_tolerance_m: 0.015
   support_clear_direction: [0.0, 0.0, 1.0]
-  max_linear_speed_mps: 0.20
-  max_joint_speed_radps: 1.0
 route_policy:
   approach_clearance_m: 0.08
   lift_clearance_m: 0.10
@@ -39,27 +37,10 @@ route_policy:
   retreat_distance_m: 0.10
   retreat_direction: [0.0, 0.0, 1.0]
 joint_limit_policy:
-  schema_version: paos-robotwin20-joint-limit-policy/v1
+  schema_version: paos-robotwin20-joint-limit-policy/v2
   planner_profile: curobo
   joint_count: 7
   require_runtime_position_limits: true
-  max_joint_speed_radps: 1.0
-  # Runtime drive target scaling is advisory only; measured SAPIEN end-effector
-  # speed remains subject to the immutable 0.20 m/s route gate.
-  execution_velocity_scale: 0.25
-  execution_controller:
-    schema_version: paos-robotwin20-execution-controller/v1
-    controller_id: robotwin-sapien-drive-target
-    controller_version: unqualified-drive-target
-    mode: diagnostic_measured_guard
-    hard_cartesian_speed_limit: false
-    measured_speed_guard: true
-  trajectory_retiming:
-    enabled: true
-    method: uniform_time_dilation
-    sampling_dt_s: 0.004
-    safety_margin: 0.95
-    max_samples: 20000
 stop_policy:
   schema_version: paos-robotwin20-stop-policy/v1
   max_duration_s: 300

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize one reviewable v3 route without authorizing simulation motion."""
+"""Materialize one reviewable v4 route without authorizing simulation motion."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
     adaptation = value["grasp_adaptation"]
     if not isinstance(adaptation, Mapping) or set(adaptation) != {
         "extrinsic_semantics", "provider_T_contact_center", "support_clear_direction",
-        "max_linear_speed_mps", "max_joint_speed_radps", "provider_transform_source",
+        "provider_transform_source",
         "contact_shell_tolerance_m", "robot_target_frame",
         "robot_target_reference_distance_m", "robot_gripper_bias_m",
         "robot_delta_matrix",
@@ -104,19 +104,8 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
     joint_policy = value["joint_limit_policy"]
     if not isinstance(joint_policy, Mapping) or set(joint_policy) != {
         "schema_version", "planner_profile", "joint_count", "require_runtime_position_limits",
-        "max_joint_speed_radps", "trajectory_retiming", "execution_velocity_scale",
-        "execution_controller",
     }:
         raise MaterializationError("route input joint-limit policy fields are invalid")
-    scale = joint_policy["execution_velocity_scale"]
-    if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not 0 < float(scale) <= 1:
-        raise MaterializationError("route input execution velocity scale is invalid")
-    controller = joint_policy["execution_controller"]
-    if not isinstance(controller, Mapping) or set(controller) != {
-        "schema_version", "controller_id", "controller_version", "mode",
-        "hard_cartesian_speed_limit", "measured_speed_guard",
-    } or controller["schema_version"] != "paos-robotwin20-execution-controller/v1":
-        raise MaterializationError("route input execution controller is invalid")
     tolerance = value["semantic_tolerance"]
     if not isinstance(tolerance, Mapping) or set(tolerance) != {"target_position_m", "target_orientation_rad"}:
         raise MaterializationError("route input semantic tolerance is invalid")
@@ -331,8 +320,6 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             "vector": profile["grasp_adaptation"]["support_clear_direction"],
             "provenance_ref": refs["workspace"],
         },
-        "max_linear_speed_mps": profile["grasp_adaptation"]["max_linear_speed_mps"],
-        "max_joint_speed_radps": profile["grasp_adaptation"]["max_joint_speed_radps"],
     }
     adaptation_artifact = {
         **adaptation_config,
@@ -370,8 +357,6 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         geometry_ref=refs["object-geometry"],
         transform_ref=refs["object-t-robot-target"],
         placement_ref=refs["placement-target"],
-        max_linear_speed_mps=profile["grasp_adaptation"]["max_linear_speed_mps"],
-        max_joint_speed_radps=profile["grasp_adaptation"]["max_joint_speed_radps"],
         semantic_tolerance=profile["semantic_tolerance"],
         contact_shell_tolerance_m=profile["grasp_adaptation"]["contact_shell_tolerance_m"],
     )

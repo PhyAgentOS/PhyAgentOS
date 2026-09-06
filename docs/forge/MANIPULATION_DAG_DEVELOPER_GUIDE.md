@@ -110,10 +110,11 @@ bound requires independent controller qualification before Action admission
 can consider it executable.
 
 The RoboTwin20 Franka simulation uses SAPIEN URDF articulation with CuRobo or
-MPlib planning; it does not import the Franka SDK. Its `0.20 m/s` route value
-is adapter-local and must not be copied into a universal PAOS or Franka
-hardware profile. A future hardware adapter may use libfranka/frankx or another
-controller while reusing the same capability snapshot and route contracts.
+MPlib planning; it does not import the Franka SDK. Speed values are
+provider-owned artifacts, not a universal PAOS number. A future hardware
+adapter may use libfranka/frankx or another controller while reusing the same
+capability snapshot and route contracts; see
+`REAL_SPEED_LIMITS_ARCHITECTURE.md` for the binding and qualification rules.
 
 The evidence boundary is reproducible from
 `/home/yanxu/robotwin20-runtime/RoboTwin/scripts/requirements.txt` and the

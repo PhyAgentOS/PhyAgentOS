@@ -50,12 +50,13 @@ assignment; it never imports an SDK or changes a limit.
 
 The RoboTwin20 Franka path is simulation-only. Its local requirements include
 SAPIEN, MPlib, and CuRobo but no `libfranka`/`frankx`; the simulation loads
-`panda.urdf` and drives SAPIEN articulation targets. The current `0.20 m/s`
-value is therefore an adapter-local diagnostic threshold, not a Franka SDK or
-PAOS-global hard limit. A hard bound may be advertised only after a
-controller-specific qualification artifact proves enforcement and binds the
-controller identity/version. A diagnostic measurement must remain
-`measured_diagnostic` and cannot authorize motion.
+`panda.urdf` and drives SAPIEN articulation targets. No global numeric speed
+threshold is defined by PAOS. An adapter must bind provider-owned limits and
+their provenance before planning or execution. A hard bound may be advertised
+only after a controller-specific qualification artifact proves enforcement and
+binds the controller identity/version. Diagnostic measurements remain evidence
+only and cannot authorize motion. See `REAL_SPEED_LIMITS_ARCHITECTURE.md` for
+the normative route.
 
 Evidence sources: `RoboTwin/scripts/requirements.txt`,
 `assets/embodiments/franka-panda/config.yml`,

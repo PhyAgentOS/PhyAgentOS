@@ -22,7 +22,7 @@ from .perception_profile import (
 )
 from .process_worker import JsonlProcessWorkerClient
 
-ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v3"
+ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v4"
 SIMULATION_ROUTE_READINESS_SCHEMA_VERSION = "paos-robotwin20-simulation-route-readiness/v2"
 ROUTE_READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-readiness/v1"
 ROUTE_PHASES = (
@@ -72,8 +72,7 @@ def _finite_vector(value: Any, length: int, label: str) -> tuple[float, ...]:
 
 def _pose(value: Any, frame_id: str, label: str) -> tuple[float, ...]:
     if not isinstance(value, Mapping) or set(value) != {
-        "frame_id", "position_m", "orientation_xyzw", "max_linear_speed_mps",
-        "max_joint_speed_radps",
+        "frame_id", "position_m", "orientation_xyzw",
     }:
         raise RouteReadinessError(f"{label} fields are invalid")
     if value["frame_id"] != frame_id:
@@ -82,13 +81,6 @@ def _pose(value: Any, frame_id: str, label: str) -> tuple[float, ...]:
     quaternion = _finite_vector(value["orientation_xyzw"], 4, f"{label}.orientation_xyzw")
     if abs(math.sqrt(sum(item * item for item in quaternion)) - 1.0) > 1e-3:
         raise RouteReadinessError(f"{label}.orientation_xyzw must be normalized")
-    for key in ("max_linear_speed_mps", "max_joint_speed_radps"):
-        speed = value[key]
-        if (
-            isinstance(speed, bool) or not isinstance(speed, (int, float))
-            or not math.isfinite(float(speed)) or float(speed) <= 0
-        ):
-            raise RouteReadinessError(f"{label}.{key} must be positive")
     return position
 
 

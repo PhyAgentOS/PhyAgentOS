@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from typing import Any
 
 ROUTE_SCENE_FACTS_SCHEMA_VERSION = "paos-robotwin20-route-scene-facts/v1"
-ROUTE_INPUT_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-input-profile/v2"
+ROUTE_INPUT_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-input-profile/v3"
 OBJECT_GEOMETRY_SCHEMA_VERSION = "paos-robotwin20-object-geometry/v1"
 OBJECT_ROBOT_TARGET_TRANSFORM_SCHEMA_VERSION = "paos-robotwin20-object-robot-target-transform/v1"
 PLACEMENT_TARGET_SCHEMA_VERSION = "paos-robotwin20-placement-target/v1"
@@ -211,8 +211,6 @@ def derive_bound_route_inputs(
     geometry_ref: str,
     transform_ref: str,
     placement_ref: str,
-    max_linear_speed_mps: float,
-    max_joint_speed_radps: float,
     semantic_tolerance: Mapping[str, Any] | None = None,
     contact_shell_tolerance_m: float = 0.0,
 ) -> dict[str, Any]:
@@ -315,8 +313,6 @@ def derive_bound_route_inputs(
         "frame_id": facts["route_frame_id"],
         "position_m": [target_matrix[index][3] for index in range(3)],
         "orientation_xyzw": _rotation_to_xyzw([row[:3] for row in target_matrix[:3]]),
-        "max_linear_speed_mps": float(max_linear_speed_mps),
-        "max_joint_speed_radps": float(max_joint_speed_radps),
     }
     return {
         "geometry_artifact": geometry,

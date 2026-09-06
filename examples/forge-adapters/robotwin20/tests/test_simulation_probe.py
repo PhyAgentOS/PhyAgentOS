@@ -18,7 +18,6 @@ from robotwin_simulation_probe_worker import (
     _joint_limits,
     _label_probe_actors,
     _recover_candidate_failure,
-    _retime_trajectory,
     _validate_approval,
     _validate_request_policies,
     _validate_route_input_artifacts,
@@ -208,7 +207,7 @@ def test_route_input_artifacts_are_content_bound(tmp_path: Path):
         _validate_route_input_artifacts(tmp_path, request, candidate)
 
 
-def test_request_policies_are_materialized_and_strict(tmp_path: Path):
+def test_request_policies_fail_closed_without_provider_speed_capability(tmp_path: Path):
     request = _route_request(tmp_path)
     joint_ref = request["joint_limits_ref"]
     stop_ref = request["stop_policy_ref"]
@@ -216,19 +215,10 @@ def test_request_policies_are_materialized_and_strict(tmp_path: Path):
         tmp_path,
         joint_ref,
         (json.dumps({
-            "schema_version": "paos-robotwin20-joint-limit-policy/v1",
+            "schema_version": "paos-robotwin20-joint-limit-policy/v2",
             "planner_profile": "curobo",
             "joint_count": 7,
             "require_runtime_position_limits": True,
-            "max_joint_speed_radps": 1.0,
-            "trajectory_retiming": {
-                "enabled": True,
-                "method": "uniform_time_dilation",
-                "sampling_dt_s": 0.004,
-                "safety_margin": 0.95,
-                "max_samples": 20000,
-            },
-            "execution_velocity_scale": 0.25,
         }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
     )
     _artifact_record(
@@ -242,120 +232,10 @@ def test_request_policies_are_materialized_and_strict(tmp_path: Path):
             "failure_recovery": "reset_simulation",
         }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
     )
-    policies = _validate_request_policies(tmp_path, request, max_duration_s=12)
-    assert policies["max_joint_speed_radps"] == 1.0
-    assert policies["joint_limit_policy"]["artifact_ref"] == joint_ref
-    assert policies["trajectory_retiming"]["sampling_dt_s"] == 0.004
-    assert policies["execution_velocity_scale"] == 0.25
-
-    request["candidates"][0]["route"][0]["waypoints"][0]["max_joint_speed_radps"] = 1.1
-    with pytest.raises(SimulationProbeError, match="joint-limit policy"):
+    with pytest.raises(SimulationProbeError, match="provider-owned motion speed capability"):
         _validate_request_policies(tmp_path, request, max_duration_s=12)
 
-    request = _route_request(tmp_path)
-    request["candidates"][0]["execution_grasp"]["robot_target_pose"][
-        "max_joint_speed_radps"
-    ] = 1.1
-    with pytest.raises(SimulationProbeError, match="joint-limit policy"):
-        _validate_request_policies(tmp_path, request, max_duration_s=12)
-
-
-@pytest.mark.parametrize("scale", [0, -0.1, 1.1, "0.25", True])
-def test_request_policies_reject_invalid_execution_velocity_scale(tmp_path: Path, scale):
-    request = _route_request(tmp_path)
-    _artifact_record(
-        tmp_path,
-        request["joint_limits_ref"],
-        (json.dumps({
-            "schema_version": "paos-robotwin20-joint-limit-policy/v1",
-            "planner_profile": "curobo",
-            "joint_count": 7,
-            "require_runtime_position_limits": True,
-            "max_joint_speed_radps": 1.0,
-            "execution_velocity_scale": scale,
-            "trajectory_retiming": {
-                "enabled": True,
-                "method": "uniform_time_dilation",
-                "sampling_dt_s": 0.004,
-                "safety_margin": 0.95,
-                "max_samples": 20000,
-            },
-        }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
-    )
-    _artifact_record(
-        tmp_path,
-        request["stop_policy_ref"],
-        (json.dumps({
-            "schema_version": "paos-robotwin20-stop-policy/v1",
-            "max_duration_s": 12,
-            "stop_file_required": True,
-            "poll_each_step": True,
-            "failure_recovery": "reset_simulation",
-        }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
-    )
-    with pytest.raises(SimulationProbeError, match="execution velocity scale"):
-        _validate_request_policies(tmp_path, request, max_duration_s=12)
-
-
-def test_trajectory_retiming_preserves_endpoints_and_enforces_speed():
-    np = pytest.importorskip("numpy")
-
-    source = {
-        "status": "Success",
-        "position": np.array([[0.0] * 7, [0.02] + [0.0] * 6], dtype=np.float32),
-        "velocity": np.array(
-            [[5.0] + [0.0] * 6, [5.0] + [0.0] * 6], dtype=np.float32
-        ),
-    }
-    retimed = _retime_trajectory(
-        source,
-        enabled=True,
-        method="uniform_time_dilation",
-        max_joint_speed_radps=1.0,
-        sampling_dt_s=0.004,
-        safety_margin=0.95,
-        max_samples=100,
-    )
-    assert np.allclose(retimed["position"][0], source["position"][0])
-    assert np.allclose(retimed["position"][-1], source["position"][-1])
-    assert np.max(np.abs(retimed["velocity"])) <= 0.95 + 1e-5
-    assert retimed["position"].dtype == np.float32
-    assert retimed["velocity"].dtype == np.float32
-    assert retimed["retiming"]["sample_count_after"] > 2
-    assert retimed["retiming"]["dilation_factor"] < 1.0
-
-
-def test_trajectory_retiming_fails_closed_on_budget_or_planner_failure():
-    np = pytest.importorskip("numpy")
-
-    source = {
-        "status": "Success",
-        "position": np.array([[0.0] * 7, [1.0] + [0.0] * 6]),
-        "velocity": np.array([[250.0] + [0.0] * 6] * 2),
-    }
-    with pytest.raises(SimulationProbeError, match="sample limit"):
-        _retime_trajectory(
-            source,
-            enabled=True,
-            method="uniform_time_dilation",
-            max_joint_speed_radps=1.0,
-            sampling_dt_s=0.004,
-            safety_margin=0.95,
-            max_samples=10,
-        )
-    with pytest.raises(SimulationProbeError, match="planner route segment failed"):
-        _retime_trajectory(
-            {"status": "Fail"},
-            enabled=True,
-            method="uniform_time_dilation",
-            max_joint_speed_radps=1.0,
-            sampling_dt_s=0.004,
-            safety_margin=0.95,
-            max_samples=10,
-        )
-
-
-def test_execute_segment_scales_velocity_before_robot_command():
+def test_execute_segment_passes_planner_velocity_to_robot_command():
     np = pytest.importorskip("numpy")
 
     class Robot:
@@ -398,82 +278,12 @@ def test_execute_segment_scales_velocity_before_robot_command():
         stop_file=None,
         contacts=[],
         execution_state=execution_state,
-        max_linear_speed_mps=0.2,
-        execution_velocity_scale=0.25,
     )
     assert len(task.robot.commands) == 1
     position, velocity, arm = task.robot.commands[0]
     assert arm == "left"
     assert np.allclose(position, 0.0)
-    assert np.allclose(velocity, 0.2)
-    assert execution_state["simulator_steps"] == 1
-    assert execution_state["controller"] == {
-        "schema_version": "paos-robotwin20-execution-controller/v1",
-        "controller_id": "robotwin-sapien-drive-target",
-        "controller_version": "unqualified-drive-target",
-        "hard_cartesian_speed_limit": False,
-        "measured_speed_guard": True,
-        "mode": "diagnostic_measured_guard",
-    }
-
-
-def test_execute_segment_records_linear_speed_violation_details():
-    np = pytest.importorskip("numpy")
-
-    class Robot:
-        def __init__(self):
-            self.ee = np.zeros(3, dtype=np.float64)
-
-        def get_left_ee_pose(self):
-            return np.concatenate([self.ee, np.zeros(3)])
-
-        def set_arm_joints(self, position, velocity, arm):
-            pass
-
-    class Scene:
-        def __init__(self, robot):
-            self.robot = robot
-
-        def get_timestep(self):
-            return 0.01
-
-        def step(self):
-            self.robot.ee[0] += 0.01
-
-        def get_contacts(self):
-            return []
-
-    class Task:
-        def __init__(self):
-            self.robot = Robot()
-            self.scene = Scene(self.robot)
-
-    task = Task()
-    execution_state = {"planner_object_attached": False, "simulator_steps": 0}
-    with pytest.raises(SimulationProbeError, match="linear-speed limit"):
-        _execute_segment(
-            task,
-            "left",
-            {
-                "position": np.asarray([[0.0] * 7], dtype=np.float32),
-                "velocity": np.asarray([[0.1] * 7], dtype=np.float32),
-            },
-            phase="contact",
-            deadline=time.monotonic() + 1.0,
-            stop_file=None,
-            contacts=[],
-            execution_state=execution_state,
-            max_linear_speed_mps=0.2,
-            execution_velocity_scale=0.25,
-        )
-    violation = execution_state["linear_speed_violation"]
-    assert violation == {
-        "phase": "contact",
-        "step": 1,
-        "observed_mps": pytest.approx(1.0),
-        "limit_mps": 0.2,
-        "execution_velocity_scale": 0.25,
-    }
+    assert np.allclose(velocity, 0.8)
     assert execution_state["simulator_steps"] == 1
 
 def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch):
@@ -515,13 +325,6 @@ def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch)
         "phase": "finalizing",
         "simulator_steps": 9,
         "contact_trace": [],
-        "linear_speed_violation": {
-            "phase": "contact",
-            "step": 9,
-            "observed_mps": 0.31,
-            "limit_mps": 0.2,
-            "execution_velocity_scale": 0.25,
-        },
     }
     response = _recover_candidate_failure(
         backend=backend,
@@ -549,13 +352,7 @@ def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch)
     failure = json.loads((tmp_path / "probe/request/candidate/failure.json").read_text())
     assert failure["failed_phase"] == "finalizing"
     assert failure["simulation_reset_status"] == "completed"
-    assert failure["linear_speed_violation"] == {
-        "phase": "contact",
-        "step": 9,
-        "observed_mps": 0.31,
-        "limit_mps": 0.2,
-        "execution_velocity_scale": 0.25,
-    }
+    assert failure["linear_speed_violation"] is None
 
     no_step_state = {
         "planner_object_attached": False,
@@ -749,7 +546,6 @@ def test_worker_is_single_use_after_an_authorized_attempt(tmp_path: Path, monkey
         lambda *args, **kwargs: {
             "joint_limit_policy": {},
             "stop_policy": {},
-            "max_joint_speed_radps": 1.0,
         },
     )
     monkeypatch.setattr(probe_worker, "_load_json_artifact", lambda *args: {})
