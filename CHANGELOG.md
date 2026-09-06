@@ -2,6 +2,13 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.10.3] - 2026-09-06
+
+回写 v5.10.2 速度限制架构变更的 Git 提交信息。Recorded the v5.10.2 real speed-limit architecture commit metadata.
+
+- Commit: `891dfea`
+- Branch: `feature/long-horizon-workflow`
+
 ## [v5.10.2] - 2026-09-06
 
 撤销 RoboTwin 抓取放置 route 中所有无 provider 来源的硬编码速度行为：route v4、route-input profile v3 和 joint-limit policy v2 不再携带统一 `0.20 m/s`、`1.0 rad/s`、execution scale 或自制 retiming；删除伪 speed-controller 层。当前 simulation probe 在缺少 provider-owned motion capability 时于 world change 前 fail-closed，末端速度只作为诊断 evidence。新增真实速度限制架构文档。
@@ -23,6 +30,11 @@ Removed every provider-unbacked hard-coded speed behavior from the RoboTwin pick
 ### 验证 / Validation
 
 `717 passed, 1 skipped`; Ruff、compileall、`git diff --check` passed。
+
+### Git 提交 / Git Commit
+
+- Commit: `891dfea`
+- Branch: `feature/long-horizon-workflow`
 
 ## [v5.10.0] - 2026-09-06
 
