@@ -2,6 +2,16 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.7.1] - 2026-09-07
+
+Materialized a fresh immutable RoboTwin/Franka simulation-only route package from the v6.7 sources. The package binds q4 controller qualification, both-arm MotionCapability artifacts, runtime, GraspGen provenance, placement/geometry artifacts, and current worker/controller source digests. No simulation step, benchmark, Gateway, Dora, Action, or hardware motion was executed; the package remains pending fresh human approval.
+
+使用 v6.7 当前源码生成新的不可覆盖 RoboTwin/Franka simulation-only route package，绑定 q4 controller qualification、双臂 MotionCapability、runtime、GraspGen provenance、放置/几何 artifact 及当前 worker/controller source digest。未执行仿真 step、benchmark、Gateway、Dora、Action 或硬件动作；package 仍等待新的人工审批。
+
+Artifacts: `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v6.7.1-20260907T0020Z/`; route digest `5dc2abfb6b23c322f12816c86e1762d36dde5da47dfd17b996e7eb112a6a0808`; source-manifest digest `73aed005d1e07c3a11ba50785ee29cb0bb356217bae6c99b55d087f8abcedd2e`.
+
+Validation: no-motion digest check passed; focused route/approval/probe `64 passed`; full `750 passed, 1 skipped`; `git diff --check` passed. Fresh `I_REVIEWED_AND_APPROVE_SIMULATION_ONLY` is still required before any probe.
+
 ## [v6.7.0] - 2026-09-07
 
 Bound the RoboTwin simulation probe to the exact provider controller qualified by the immutable MotionCapability artifacts. Every trajectory step now settles through the bounded controller, controller source/version digests are rechecked before execution, and stale approvals, source drift, input drift, invalid commands, and recovery failures remain fail-closed. This change does not authorize benchmark, Gateway, Dora, Action, or hardware motion.

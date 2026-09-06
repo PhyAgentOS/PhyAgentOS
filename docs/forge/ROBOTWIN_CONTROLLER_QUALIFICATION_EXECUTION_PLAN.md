@@ -361,3 +361,27 @@ after_step`，夹爪阶段先发零速度 arm-hold；每一步重检输入 artif
 本修复只完成 qualification 证据绑定到 simulation probe 执行路径的门禁，不等于 route
 执行授权。下一步必须用当前源码重新 materialize 唯一路线并取得新的
 `I_REVIEWED_AND_APPROVE_SIMULATION_ONLY`；新审批前不得运行 benchmark 或抓取放置动作。
+
+### v6.7.1 fresh route materialization (2026-09-07)
+
+已使用 v6.7 当前源码和 q4 `ControllerQualification(status=approved_pass)` 重新实体化不可覆盖的 route package：
+
+```text
+artifact_root=/home/yanxu/robotwin20-runtime/artifacts/paos-route-v6.7.1-20260907T0020Z/
+request_id=franka-blocks-green1-qualified-q4-v671-20260907
+route_geometry_digest=5dc2abfb6b23c322f12816c86e1762d36dde5da47dfd17b996e7eb112a6a0808
+source_manifest_sha256=73aed005d1e07c3a11ba50785ee29cb0bb356217bae6c99b55d087f8abcedd2e
+route_request_sha256=61cae3e2a19f1af4fece88e61ce9835a9a6449332a942660369ef1e643f78a9d
+simulation_probe_worker_sha256=0460e10b03c1ee484aff1ca51b59f8d827ceb73746b179f9c28b4156d5dc6f19
+controller_source_sha256=6a1e9cdc8731d26f2940efd590a22ed491988c4d52e8157589f068a196e3bbc0
+```
+
+只读 no-motion 校验通过：route schema、几何 digest、manifest 中 scene/calibration/candidate geometry/object transform/placement/attestation/route artifact digest 均一致；`decision=pending_human_review`、`motion_authorized=false`、`robot_control_steps=0`、`simulator_steps=0`。该 package 尚未获得新的 `I_REVIEWED_AND_APPROVE_SIMULATION_ONLY`，因此仍不得运行 simulation probe、单对象抓取放置或 `blocks_ranking_rgb` 长程 benchmark。
+
+#### v6.7.1 五维门禁复核
+
+- 架构集成：通过；仅新增不可变 route artifact，不创建第二套 PAOS 生命周期或执行面。
+- 失败路径：通过；空目录/旧产物覆盖、schema、digest、qualification、capability 和 source drift 均在 materializer/validator 中 fail-closed。
+- 权威边界：通过；q4 qualification 仅作为 provider-owned binding，route 仍未授予 PAOS、benchmark 或硬件 motion authority。
+- 配置与 provenance：通过；runtime、worker/controller source、双臂 capability、GraspGen attestation、scene/calibration/placement 全部可追溯绑定。
+- 可维护性：通过；生成、校验、审批和执行仍分层，旧 route 明确不可复用。

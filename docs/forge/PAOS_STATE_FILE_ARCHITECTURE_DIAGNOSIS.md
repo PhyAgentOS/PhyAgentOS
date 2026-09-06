@@ -1321,3 +1321,24 @@ controller 及每一步前验证当前导入 controller 源码摘要、版本和
 速度 arm-hold，输入 digest 每一步重检，stop/fault/reset 停止所有 controller。native
 controller、源码漂移、stale approval 和输入突变均 fail closed。旧 route/approval 必须
 重新 materialize 和重新人工审批，之前不得运行 benchmark、Gateway、Dora、Action 或硬件。
+
+### 32.21 fresh v6.7.1 route package (2026-09-07)
+
+按照 32.20 的门禁，使用当前 worker/controller 源码生成了唯一、不可覆盖的
+simulation-only route package：
+
+```text
+/home/yanxu/robotwin20-runtime/artifacts/paos-route-v6.7.1-20260907T0020Z/
+route_geometry_digest=5dc2abfb6b23c322f12816c86e1762d36dde5da47dfd17b996e7eb112a6a0808
+source_manifest_sha256=73aed005d1e07c3a11ba50785ee29cb0bb356217bae6c99b55d087f8abcedd2e
+```
+
+物化时绑定了 q4 approved qualification、左右臂 capability/validation、当前
+simulation-probe worker digest、bounded controller source digest、RoboTwin runtime、
+GraspGen transform attestation、scene/calibration、candidate geometry、object transform
+和 placement target。只读校验确认所有 route/manifest/artifact digest 一致，且
+`robot_control_steps=0`、`simulator_steps=0`、`motion_authorized=false`。
+
+这是新的审批对象，不继承旧 route approval；在人工提供
+`I_REVIEWED_AND_APPROVE_SIMULATION_ONLY` 前，不得执行 scene.step、single-object smoke
+test、benchmark、Gateway、Dora、Action 或 hardware。
