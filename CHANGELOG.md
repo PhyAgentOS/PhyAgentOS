@@ -2,6 +2,27 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.10.0] - 2026-09-06
+
+复用既有 `CapabilitySnapshot/ArmCapability`，为左右臂增加 adapter-owned controller capability artifact 引用，并新增严格的 RoboTwin controller capability 文档模型。RoboTwin Franka 仿真使用 SAPIEN/URDF 与 CuRobo/MPlib，未接入 Franka SDK；当前 `0.20 m/s` 明确为 measured diagnostic threshold，不是 PAOS 或 Franka 全局硬限制。
+
+Reused the existing `CapabilitySnapshot/ArmCapability` contracts with adapter-owned controller-capability artifact references for both arms, and added a strict RoboTwin controller-capability document model. RoboTwin Franka simulation uses SAPIEN/URDF with CuRobo/MPlib and does not use the Franka SDK; the current `0.20 m/s` value is explicitly a measured diagnostic threshold, not a PAOS or Franka global hard limit.
+
+### 文件变更详情 / Detailed changes
+
+- `PhyAgentOS/forge/manipulation.py:L90-L121`：增加可选、严格校验的 `controller_capabilities_ref`。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py:L98-L167`、`profiles/robotwin20/manipulation-planning.yaml:L6-L25`：绑定每个 arm 的 controller capability artifact。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/controller_capabilities.py:L1-L147`：新增来源、执行语义、qualification 和 digest 校验。
+- `docs/forge/PLANNING_MODULE_DESIGN.md:L27-L55`、`MANIPULATION_DAG_DEVELOPER_GUIDE.md:L101-L123`、两份诊断/审查文档：记录 RoboTwin/Franka SDK 证据及 PAOS 分层。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置/provenance 和可维护性通过；未启动 Gateway、Dora、仿真动作或硬件。Architecture integration, failure paths, authority boundaries, configuration/provenance, and maintainability pass; no Gateway, Dora, simulation motion, or hardware was started.
+
+### 验证 / Validation
+
+`734 passed, 1 skipped`; Ruff、compileall、`git diff --check` passed。
+
 ## [v5.9.2] - 2026-09-06
 
 为 adapter-local speed controller 增加独立 `ControllerQualification` 资格协议。`hard_bounded` 必须绑定已批准、独立、限速匹配且有 artifact provenance 的资格证据；缺失、待审核、超限或 identity 漂移均 fail-closed。当前 RoboTwin/SAPIEN drive-target backend 仍不具备 hard-limit 资格。

@@ -20,6 +20,13 @@ from .adapter import (
     SensorArtifact,
     SensorCapture,
 )
+from .controller_capabilities import (
+    CONTROLLER_CAPABILITY_SCHEMA_VERSION,
+    ControllerCapabilityDocument,
+    ControllerCapabilityError,
+    controller_capability_digest,
+    load_controller_capability_document,
+)
 from .grasp_adaptation import (
     GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
     GraspAdaptationError,
@@ -230,6 +237,11 @@ __all__ = [
     "GraspProfileError",
     "build_grasp_provider",
     "load_grasp_profile",
+    "CONTROLLER_CAPABILITY_SCHEMA_VERSION",
+    "ControllerCapabilityDocument",
+    "ControllerCapabilityError",
+    "controller_capability_digest",
+    "load_controller_capability_document",
     "FilesystemPerceptionArtifactStore",
     "LocalizationRequest",
     "LocalizationResult",

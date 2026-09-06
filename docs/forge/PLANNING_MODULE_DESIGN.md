@@ -38,6 +38,32 @@ plan.
 The planning module must not import Gateway clients, SQLite stores, adapter
 providers, or Skill Runtime state.
 
+## Robot/controller capability boundary
+
+`CapabilitySnapshot` and `ArmCapability` are the sole PAOS capability
+projection. Robot-specific controller limits are not a second core model: each
+arm may carry an opaque `controller_capabilities_ref` to an adapter-owned,
+immutable capability artifact. The artifact records controller/simulator
+identity, units, provenance, and whether a limit is actually enforced by the
+controller. Planning consumes this projection for admission and arm
+assignment; it never imports an SDK or changes a limit.
+
+The RoboTwin20 Franka path is simulation-only. Its local requirements include
+SAPIEN, MPlib, and CuRobo but no `libfranka`/`frankx`; the simulation loads
+`panda.urdf` and drives SAPIEN articulation targets. The current `0.20 m/s`
+value is therefore an adapter-local diagnostic threshold, not a Franka SDK or
+PAOS-global hard limit. A hard bound may be advertised only after a
+controller-specific qualification artifact proves enforcement and binds the
+controller identity/version. A diagnostic measurement must remain
+`measured_diagnostic` and cannot authorize motion.
+
+Evidence sources: `RoboTwin/scripts/requirements.txt`,
+`assets/embodiments/franka-panda/config.yml`,
+`assets/embodiments/franka-panda/curobo.yml`, and RoboTwin
+`envs/robot/robot.py:set_arm_joints`; the upstream
+[libfranka Robot API](https://raw.githubusercontent.com/frankaemika/libfranka/main/include/franka/robot.h)
+documents explicit rate-limiting controls and joint-velocity-limit queries.
+
 ## Protocols
 
 - `PlanGraph` / `PlanNode`: current task's semantic DAG, bound to a task and

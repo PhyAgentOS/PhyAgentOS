@@ -10,6 +10,7 @@ arms:
     planner_profile_ref: artifact://robotwin/franka/left-planner
     workspace_ref: artifact://robotwin/franka/left-workspace
     joint_limits_ref: artifact://robotwin/franka/left-joint-limits
+    controller_capabilities_ref: artifact://robotwin/franka/left-controller-capabilities
     park_pose_ref: artifact://robotwin/franka/left-park
     supported_modes: [single_resource, alternative_resource]
   - arm_id: right
@@ -19,6 +20,7 @@ arms:
     planner_profile_ref: artifact://robotwin/franka/right-planner
     workspace_ref: artifact://robotwin/franka/right-workspace
     joint_limits_ref: artifact://robotwin/franka/right-joint-limits
+    controller_capabilities_ref: artifact://robotwin/franka/right-controller-capabilities
     park_pose_ref: artifact://robotwin/franka/right-park
     supported_modes: [single_resource, alternative_resource]
 route_policy:

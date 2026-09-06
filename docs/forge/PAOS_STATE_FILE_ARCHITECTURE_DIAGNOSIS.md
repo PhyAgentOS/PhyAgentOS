@@ -1206,3 +1206,31 @@ This is an adapter/provider evidence gate, not a new PAOS lifecycle or motion
 authority. The current RoboTwin/SAPIEN drive-target backend remains
 `hard_cartesian_speed_limit=false`; its diagnostic measured guard can produce
 negative evidence but cannot satisfy this qualification gate.
+
+## 32.15 controller/SDK capability boundary review (2026-09-06)
+
+结合速度诊断和 RoboTwin 依赖核验，本方案最终复用现有
+`CapabilitySnapshot/ArmCapability`，不新增 PAOS Core 的 `MotionLimit` 事实源。
+每个 arm 可携带 adapter-owned `controller_capabilities_ref`；详细限制、来源
+和执行语义保存在不可变 controller-capability artifact 中，允许左右臂和不
+同 embodiment 使用各自的 controller profile。
+
+RoboTwin20 的本地 requirements 只有 SAPIEN、MPlib、CuRobo 等仿真/规划依赖，
+Franka 配置加载 `panda.urdf`、`config.yml` 和 `curobo.yml`，执行通过 SAPIEN
+`set_drive_target`/`set_drive_velocity_target`。当前 RoboTwin20 Python 环境中
+`frankx`、`libfranka`、`franka_ros` 均不可导入，RoboTwin 仿真路径也未导入这
+些 SDK。官方 libfranka API 单独提供 rate-limiting 参数和动态关节速度上限
+接口，说明真实硬限制必须由未来 Franka hardware/controller adapter 提供，
+不能从仿真参数推导。
+
+因此 route profile 的 `0.20 m/s` 保留为
+`source_kind=diagnostic_threshold`、`enforcement=measured_diagnostic` 的
+RoboTwin probe policy，不代表 PAOS 全局限制、benchmark 硬要求或 Franka SDK
+上限。只有具有 controller identity/version、明确来源、实际执行保证和独立
+qualification evidence 的 controller 才能声明 `controller_hard`。Planning
+只读取能力快照并做准入，Gateway/Controller 负责执行，Evidence 负责实测，
+Experience 只能学习路线和工具策略。
+
+本轮实现复用现有能力协议并增加 controller artifact 引用校验，没有新增
+生命周期、锁、Gateway 调用或动作授权；RoboTwin 仍保持
+`motion_authorized=false`。

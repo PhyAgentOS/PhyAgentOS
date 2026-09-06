@@ -1201,3 +1201,28 @@ The gate remains adapter/provider-local and does not create a second PAOS
 lifecycle or motion authority. RoboTwin/SAPIEN drive-target remains
 `hard_cartesian_speed_limit=false`; diagnostic measured-speed evidence is not
 hard-limit qualification.
+
+## 32.15 Controller/SDK capability boundary review (2026-09-06)
+
+The implementation reuses the existing `CapabilitySnapshot/ArmCapability`
+contract instead of introducing a parallel core `MotionLimit` model. Each arm
+may bind an adapter-owned `controller_capabilities_ref`; the referenced
+artifact owns controller identity, runtime kind, units, source provenance, and
+enforcement semantics. Planning consumes the projection and never imports an
+SDK or mutates a limit.
+
+RoboTwin20 source and requirements confirm a SAPIEN/URDF simulation path with
+CuRobo/MPlib planning. The active RoboTwin20 interpreter imports SAPIEN, MPlib,
+and CuRobo but not `frankx`, `libfranka`, or Franka ROS packages. The Franka
+asset configuration points to `panda.urdf` and `curobo.yml`, while
+`set_arm_joints()` sets SAPIEN drive targets. The current `0.20 m/s` value is
+therefore classified as an adapter-local measured diagnostic threshold, not a
+Franka SDK or PAOS-global hard limit. A future hardware adapter must provide
+its own SDK/controller capability artifact and independent qualification before
+advertising `controller_hard`.
+
+This keeps the PAOS ownership split intact: Adapter/Profile supplies
+capabilities, Planning performs no-motion admission, Gateway/Controller owns
+execution, Evidence records measurements, Verifier owns semantic success, and
+Experience may evolve policy but not physical limits. No Gateway, Dora,
+simulation motion, or hardware action is enabled by this change.

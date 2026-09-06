@@ -40,8 +40,8 @@ def _profile() -> dict:
         "topology": "dual_independent",
         "route_frame_id": "world",
         "arms": [
-            {"arm_id": "left", "base_frame": "world", "tool_frame": "panda_hand", "gripper_identity": "panda-gripper", "planner_profile_ref": "artifact://planner/left", "workspace_ref": "artifact://workspace/left", "joint_limits_ref": "artifact://limits/left", "park_pose_ref": "artifact://park/left", "supported_modes": ["single_resource", "alternative_resource"]},
-            {"arm_id": "right", "base_frame": "world", "tool_frame": "panda_hand", "gripper_identity": "panda-gripper", "planner_profile_ref": "artifact://planner/right", "workspace_ref": "artifact://workspace/right", "joint_limits_ref": "artifact://limits/right", "park_pose_ref": "artifact://park/right", "supported_modes": ["single_resource", "alternative_resource"]},
+            {"arm_id": "left", "base_frame": "world", "tool_frame": "panda_hand", "gripper_identity": "panda-gripper", "planner_profile_ref": "artifact://planner/left", "workspace_ref": "artifact://workspace/left", "joint_limits_ref": "artifact://limits/left", "controller_capabilities_ref": "artifact://controller/left", "park_pose_ref": "artifact://park/left", "supported_modes": ["single_resource", "alternative_resource"]},
+            {"arm_id": "right", "base_frame": "world", "tool_frame": "panda_hand", "gripper_identity": "panda-gripper", "planner_profile_ref": "artifact://planner/right", "workspace_ref": "artifact://workspace/right", "joint_limits_ref": "artifact://limits/right", "controller_capabilities_ref": "artifact://controller/right", "park_pose_ref": "artifact://park/right", "supported_modes": ["single_resource", "alternative_resource"]},
         ],
         "route_policy": {
             "approach_clearance_m": 0.08,
