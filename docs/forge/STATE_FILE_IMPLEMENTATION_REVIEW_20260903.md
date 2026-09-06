@@ -1187,3 +1187,17 @@ hard-limit semantics before enabling `hard_bounded`; command scaling and
 post-step measurement remain insufficient for that claim. Current diagnostic
 trajectory and failure evidence records controller identity and mode for
 attribution only.
+
+## 32.14 controller qualification evidence gate (2026-09-06)
+
+Capability flags alone do not enable hard-bounded execution. The adapter's
+`ControllerQualification` record binds controller/simulator identity, exact
+Cartesian speed limit, observed maximum speed, sample count, immutable
+`artifact://` evidence, independence, and approved review status. Missing,
+pending, over-limit, or drifted qualification is rejected before hard-mode
+execution.
+
+The gate remains adapter/provider-local and does not create a second PAOS
+lifecycle or motion authority. RoboTwin/SAPIEN drive-target remains
+`hard_cartesian_speed_limit=false`; diagnostic measured-speed evidence is not
+hard-limit qualification.
