@@ -47,6 +47,13 @@ joint_limit_policy:
   # Runtime drive target scaling is advisory only; measured SAPIEN end-effector
   # speed remains subject to the immutable 0.20 m/s route gate.
   execution_velocity_scale: 0.25
+  execution_controller:
+    schema_version: paos-robotwin20-execution-controller/v1
+    controller_id: robotwin-sapien-drive-target
+    controller_version: unqualified-drive-target
+    mode: diagnostic_measured_guard
+    hard_cartesian_speed_limit: false
+    measured_speed_guard: true
   trajectory_retiming:
     enabled: true
     method: uniform_time_dilation

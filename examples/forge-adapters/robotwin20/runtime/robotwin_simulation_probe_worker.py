@@ -26,6 +26,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from trajectory_controller import (
+    SpeedLimitViolationError,
+    build_robotwin_drive_target_controller,
+)
 from worker_protocol import serve
 
 from robotwin20_adapter.route_readiness import (
@@ -543,17 +547,19 @@ def _validate_request_policies(
 ) -> dict[str, Any]:
     joint = _load_json_artifact(root, request["joint_limits_ref"])
     stop = _load_json_artifact(root, request["stop_policy_ref"])
-    if set(joint) not in (
-        {
+    if set(joint) not in ({
             "schema_version", "planner_profile", "joint_count",
             "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
-        },
-        {
+        }, {
             "schema_version", "planner_profile", "joint_count",
             "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
             "execution_velocity_scale",
-        },
-    ) or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v1":
+        }, {
+            "schema_version", "planner_profile", "joint_count",
+            "require_runtime_position_limits", "max_joint_speed_radps", "trajectory_retiming",
+            "execution_velocity_scale",
+            "execution_controller",
+        }) or joint["schema_version"] != "paos-robotwin20-joint-limit-policy/v1":
         raise SimulationProbeError("joint-limit policy fields are invalid")
     max_joint_speed = joint["max_joint_speed_radps"]
     if (
@@ -592,6 +598,21 @@ def _validate_request_policies(
         or not 0 < float(execution_velocity_scale) <= 1
     ):
         raise SimulationProbeError("execution velocity scale is invalid")
+    controller_policy = joint.get("execution_controller", {
+        "schema_version": "paos-robotwin20-execution-controller/v1",
+        "controller_id": "robotwin-sapien-drive-target",
+        "controller_version": "unqualified-drive-target",
+        "mode": "diagnostic_measured_guard",
+        "hard_cartesian_speed_limit": False,
+        "measured_speed_guard": True,
+    })
+    if not isinstance(controller_policy, Mapping) or set(controller_policy) != {
+        "schema_version", "controller_id", "controller_version", "mode",
+        "hard_cartesian_speed_limit", "measured_speed_guard",
+    } or controller_policy["schema_version"] != "paos-robotwin20-execution-controller/v1":
+        raise SimulationProbeError("execution controller policy is invalid")
+    if controller_policy.get("mode") != "diagnostic_measured_guard":
+        raise SimulationProbeError("execution controller mode is unsupported")
     if set(stop) != {
         "schema_version", "max_duration_s", "stop_file_required",
         "poll_each_step", "failure_recovery",
@@ -629,6 +650,7 @@ def _validate_request_policies(
         },
         "max_joint_speed_radps": float(max_joint_speed),
         "execution_velocity_scale": float(execution_velocity_scale),
+        "execution_controller": dict(controller_policy),
         "trajectory_retiming": dict(retiming),
     }
 
@@ -758,6 +780,7 @@ def _execute_segment(
     execution_state: dict[str, Any],
     max_linear_speed_mps: float,
     execution_velocity_scale: float = 1.0,
+    controller_policy: Mapping[str, Any] | None = None,
 ) -> None:
     import numpy as np
 
@@ -776,6 +799,15 @@ def _execute_segment(
     if not math.isfinite(timestep) or timestep <= 0:
         raise SimulationProbeError("simulator timestep is invalid")
     previous_position = np.asarray(ee()[:3], dtype=np.float64)
+    controller = build_robotwin_drive_target_controller(
+        mode="diagnostic_measured_guard",
+        expected=controller_policy,
+    )
+    controller.preflight(max_linear_speed_mps=max_linear_speed_mps, timestep_s=timestep)
+    execution_state["controller"] = {
+        **controller.capabilities.as_dict(),
+        "mode": controller.mode,
+    }
     for index in range(len(positions)):
         if time.monotonic() >= deadline:
             raise TimeoutError("simulation probe exceeded max duration")
@@ -787,16 +819,21 @@ def _execute_segment(
         task.scene.step()
         execution_state["simulator_steps"] += 1
         current_position = np.asarray(ee()[:3], dtype=np.float64)
-        linear_speed = float(np.linalg.norm(current_position - previous_position) / timestep)
-        if not math.isfinite(linear_speed) or linear_speed > max_linear_speed_mps + 1e-3:
-            execution_state["linear_speed_violation"] = {
-                "phase": phase,
-                "step": execution_state["simulator_steps"],
-                "observed_mps": linear_speed,
-                "limit_mps": float(max_linear_speed_mps),
-                "execution_velocity_scale": float(execution_velocity_scale),
-            }
-            raise SimulationProbeError("simulator motion exceeds waypoint linear-speed limit")
+        try:
+            linear_speed = controller.measure_step(
+                previous_position=previous_position,
+                current_position=current_position,
+                timestep_s=timestep,
+                max_linear_speed_mps=max_linear_speed_mps,
+                details={
+                    "phase": phase,
+                    "step": execution_state["simulator_steps"],
+                    "execution_velocity_scale": float(execution_velocity_scale),
+                },
+            )
+        except SpeedLimitViolationError as exc:
+            execution_state["linear_speed_violation"] = exc.details
+            raise SimulationProbeError(str(exc)) from exc
         execution_state["max_observed_linear_speed_mps"] = max(
             execution_state.get("max_observed_linear_speed_mps", 0.0), linear_speed
         )
@@ -947,6 +984,7 @@ def _run_candidate(
                 execution_state=execution_state,
                 max_linear_speed_mps=float(route_waypoint["max_linear_speed_mps"]),
                 execution_velocity_scale=float(policies["execution_velocity_scale"]),
+                controller_policy=policies["execution_controller"],
             )
         _set_gripper(
             task,
@@ -1003,6 +1041,7 @@ def _run_candidate(
         "scene_revision": request["scene_revision"],
         "arm": arm,
         "arm_selection_attempts": arm_attempts,
+        "controller": execution_state.get("controller"),
         "phases": route_records,
         "contact_samples": len(contact_trace),
     }
@@ -1104,6 +1143,7 @@ def _recover_candidate_failure(
             "failed_phase": execution_state["phase"],
             "simulator_steps": execution_state["simulator_steps"],
             "linear_speed_violation": execution_state.get("linear_speed_violation"),
+            "controller": execution_state.get("controller"),
             "arm_selection_attempts": execution_state.get("arm_selection_attempts", []),
             "contact_trace": execution_state.get("contact_trace", []),
             "planner_detach_status": detach_status,

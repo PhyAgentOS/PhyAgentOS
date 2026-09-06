@@ -1173,3 +1173,22 @@ and `uniform_time_dilation` remains the joint-trajectory retiming policy. The
 historical v7-v10 artifacts and negative evidence are retained, but no new
 route is generated until an independently validated speed-bounded simulator
 controller or execution contract exists.
+
+## 32.13 adapter-local speed controller seam (2026-09-06)
+
+The speed-control design passed the five-dimension architecture gate and is
+implemented only in the RoboTwin adapter. `trajectory_controller.py` exposes a
+provider-local capability contract with two explicit modes:
+`diagnostic_measured_guard` and `hard_bounded`. The current SAPIEN
+drive-target backend advertises `hard_cartesian_speed_limit=false`; requesting
+`hard_bounded` therefore fails before any simulator world change. Diagnostic
+mode measures actual end-effector displacement after each step and raises a
+structured violation while preserving the existing probe failure artifact.
+
+This seam does not move speed control into PAOS Planning, the Skill, Gateway,
+or Experience. A future qualified backend must provide its own controller
+identity/version, bind them into the profile/approval artifact, and independently
+validate hard-limit semantics before it may use `hard_bounded`; command scaling
+and post-step measurement cannot satisfy that requirement. The current
+diagnostic trajectory and failure evidence records the adapter controller
+identity and mode for attribution, but this is not hard-limit qualification.

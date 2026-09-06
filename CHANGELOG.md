@@ -2,6 +2,28 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.9.0] - 2026-09-06
+
+在 RoboTwin adapter 内新增 provider-local `SpeedBoundedExecutionController` seam，明确区分 `hard_bounded` 与 `diagnostic_measured_guard`。当前 SAPIEN drive-target backend 在 world change 前拒绝 hard mode；diagnostic mode 仅记录实测 Cartesian 速度并在超限时 fail-closed。Planning、Skill、Gateway、Experience 未承载仿真器实现。
+
+Added a provider-local `SpeedBoundedExecutionController` seam in the RoboTwin adapter, explicitly distinguishing `hard_bounded` from `diagnostic_measured_guard`. The current SAPIEN drive-target backend rejects hard mode before world change; diagnostic mode only records measured Cartesian speed and fails closed on violations. Planning, Skill, Gateway, and Experience carry no simulator implementation.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-adapters/robotwin20/runtime/trajectory_controller.py:L1-L125`：controller capability、模式、预检、policy binding 和 violation contract。
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py:L29-L39,L546-L635,L782-L824,L1018-L1032`：接入 measured-speed controller seam 并记录 controller provenance。
+- `examples/forge-adapters/robotwin20/tests/test_trajectory_controller.py:L1-L87`、`test_simulation_probe.py:L389-L417`：覆盖 hard-mode 拒绝、速度、输入、policy 漂移和 evidence 失败路径。
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml:L47-L57`、`scripts/materialize_complete_route.py:L105-L118`：绑定 execution controller profile。
+- `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L1176-L1192`、`docs/forge/STATE_FILE_IMPLEMENTATION_REVIEW_20260903.md:L1173-L1189`：记录五维审查与 qualification gate。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置和可维护性均通过；当前后端仍不具备 hard Cartesian 限速资格，不得进入新的完整 route probe。Architecture integration, failure paths, authority boundaries, configuration, and maintainability pass; the current backend remains unqualified for hard Cartesian limiting, so no new complete-route probe is authorized.
+
+### 验证 / Validation
+
+`38 passed` focused; combined regression `723 passed, 1 skipped`; Ruff、compileall、`git diff --check` passed.
+
 ## [v5.8.0] - 2026-09-06
 
 根据 v7-v10 仿真证据撤回不能证明 Cartesian 速度受控的 position-subdivision 执行调参；`execution_velocity_scale` 恢复为 `0.25` advisory 值，measured-speed `0.20 m/s` fail-closed 门禁和 uniform retiming 保持不变。同步 profile、materializer、simulation worker 与回归测试；保留历史负证据，未生成新 route 或启动新的 probe/Gateway/Dora/Action/硬件。

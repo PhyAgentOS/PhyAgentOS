@@ -1170,3 +1170,20 @@ therefore rolled back. The profile scale is restored to the pre-sequence
 artifacts and negative evidence remain immutable. New routes and probes are
 blocked until an independently validated speed-bounded simulator controller or
 execution contract is available.
+
+## 32.13 adapter-local speed controller seam (2026-09-06)
+
+The speed-control design passed the five-dimension gate and is implemented in
+the RoboTwin adapter only. `trajectory_controller.py` defines explicit
+`diagnostic_measured_guard` and `hard_bounded` modes. The current SAPIEN
+drive-target backend declares no hard Cartesian limiter, so `hard_bounded`
+fails before world change; diagnostic mode measures actual displacement and
+preserves structured violation evidence.
+
+The seam does not add simulator logic to PAOS Planning, Skill, Gateway, or
+Experience. A future qualified backend must provide controller identity/version,
+bind them into profile and approval artifacts, and independently validate
+hard-limit semantics before enabling `hard_bounded`; command scaling and
+post-step measurement remain insufficient for that claim. Current diagnostic
+trajectory and failure evidence records controller identity and mode for
+attribution only.

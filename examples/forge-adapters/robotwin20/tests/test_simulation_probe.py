@@ -407,6 +407,14 @@ def test_execute_segment_scales_velocity_before_robot_command():
     assert np.allclose(position, 0.0)
     assert np.allclose(velocity, 0.2)
     assert execution_state["simulator_steps"] == 1
+    assert execution_state["controller"] == {
+        "schema_version": "paos-robotwin20-execution-controller/v1",
+        "controller_id": "robotwin-sapien-drive-target",
+        "controller_version": "unqualified-drive-target",
+        "hard_cartesian_speed_limit": False,
+        "measured_speed_guard": True,
+        "mode": "diagnostic_measured_guard",
+    }
 
 
 def test_execute_segment_records_linear_speed_violation_details():
