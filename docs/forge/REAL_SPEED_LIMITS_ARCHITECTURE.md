@@ -355,3 +355,8 @@ q4 已完成隔离 controller qualification 并通过独立 evidence validation�
 dropped-step、contact fixture 以及单臂/双臂 step 语义的执行资格。它仍不代表真实
 Franka SDK 的 hardware qualification，也不会自动改变 PAOS Gateway 或 route admission；
 最终结果必须经过独立人工审批后才能进入下一阶段。
+
+q4 最终 `ControllerQualification(approved_pass)` 已生成并通过 schema 验证。它是
+当前 bounded RoboTwin provider controller 的隔离资格记录；真实硬件 SDK、route
+重绑定、Gateway 和 benchmark 仍需各自的 provenance、审批和 evidence，不得由该记录
+自动推导。

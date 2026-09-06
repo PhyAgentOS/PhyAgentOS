@@ -273,6 +273,36 @@ digest 和单臂 idle-arm semantics 的有效 qualification；q3 evidence 保留
 当前仍缺少最终结果人工确认。必须对 q4 evidence/validation 审核后，才能生成
 `ControllerQualification(status=approved_pass)`；在该记录生成前不得进入 route 重绑定。
 
+### q4 最终 qualification（2026-09-06）
+
+q4 evidence/validation 已获得独立结果审批
+`I_REVIEWED_AND_APPROVE_CONTROLLER_QUALIFICATION_EVIDENCE`，并生成最终记录：
+
+```text
+qualification=/home/yanxu/robotwin20-runtime/artifacts/qualification-run-20260906T2245Z/controller-qualification/blocks-ranking-rgb-franka-bounded-q4/qualification.json
+status=approved_pass
+qualification_sha256=50ac70982b1dcdeb67ae65cfbd0e3ff3fcc31ebca5b7dd99baa7dcb03f3dc8e6
+motion_authorized=false
+benchmark_motion_authorized=false
+hardware_motion_authorized=false
+```
+
+最终 artifact 已通过 `validate_controller_qualification.py --kind qualification`。
+该记录只证明当前 RoboTwin bounded provider controller 的隔离 qualification，不是
+真实 Franka SDK hardware qualification，也不会自动修改 route/Gateway authorization。
+
+### 大步 B 完成后的门禁
+
+大步 B 现在完成：plan approval、实际 qualification motion、独立 evidence validation
+和最终结果人工审批均已具备。下一步进入大步 C 前，仍必须：
+
+1. 用 `approved_pass` qualification 重新生成新的 route/source manifest；
+2. 将 q4 qualification digest 绑定到 route admission；
+3. 对新 route 进行独立 simulation-only 审批，旧 route approval 不复用；
+4. 先执行单对象 smoke test，保存完整 lift/transport/descent/release/retreat/contact
+   和 before/after semantic evidence；
+5. 单对象语义验收通过后，才能进入 `blocks_ranking_rgb` 长程 DAG。
+
 ## 附录 A：大步 A 实际完成记录（2026-09-06）
 
 已完成 provider-owned qualification plan、source manifest、human review request、

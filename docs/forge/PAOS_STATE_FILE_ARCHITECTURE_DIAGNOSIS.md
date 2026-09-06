@@ -1306,3 +1306,8 @@ trace，结果为 `passed`，独立 validator 为 `validated_pass`。其中 over
 和 reset 路径均有对应证据。随后为修正单臂/空闲臂调度语义更新了 controller source，
 因此 q3 digest 不再适用于当前代码；新的 q4 capability/plan 已重新审批并运行通过。
 q4 的独立 validator 输出 `validated_pass`，但最终 `approved_pass` 仍需单独人工结果审批。
+
+最终结果审批已完成：q4 `ControllerQualification` 状态为 `approved_pass`，digest
+`50ac70982b1dcdeb67ae65cfbd0e3ff3fcc31ebca5b7dd99baa7dcb03f3dc8e6`，且
+`motion_authorized=false`。这只关闭 controller qualification 门禁，不关闭 route、
+Gateway 或 benchmark motion 门禁。
