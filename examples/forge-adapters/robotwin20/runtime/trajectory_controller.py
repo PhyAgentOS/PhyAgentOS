@@ -28,6 +28,39 @@ class SpeedLimitViolationError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ControllerQualification:
+    """Independent evidence required before a backend may claim hard bounds."""
+
+    controller_id: str
+    controller_version: str
+    simulator_id: str
+    simulator_version: str
+    max_linear_speed_mps: float
+    observed_max_linear_speed_mps: float
+    sample_count: int
+    evidence_ref: str
+    independent: bool
+    review_status: Literal["approved", "pending", "rejected"]
+
+    def validate_for(self, capabilities: "ControllerCapabilities", *, limit_mps: float) -> None:
+        if self.controller_id != capabilities.controller_id or self.controller_version != capabilities.controller_version:
+            raise ControllerUnavailableError("controller qualification identity does not match backend")
+        if not self.simulator_id.strip() or not self.simulator_version.strip():
+            raise ControllerUnavailableError("controller qualification simulator identity is missing")
+        if (
+            not math.isfinite(self.max_linear_speed_mps)
+            or not math.isclose(self.max_linear_speed_mps, float(limit_mps), abs_tol=1e-9)
+            or not math.isfinite(self.observed_max_linear_speed_mps)
+            or self.observed_max_linear_speed_mps > self.max_linear_speed_mps + 1e-3
+            or self.sample_count < 1
+            or not self.evidence_ref.startswith("artifact://")
+            or self.independent is not True
+            or self.review_status != "approved"
+        ):
+            raise ControllerUnavailableError("controller qualification evidence is insufficient")
+
+
+@dataclass(frozen=True)
 class ControllerCapabilities:
     controller_id: str
     controller_version: str
@@ -62,7 +95,13 @@ class SpeedBoundedExecutionController:
         self.capabilities = capabilities
         self.mode = mode
 
-    def preflight(self, *, max_linear_speed_mps: float, timestep_s: float) -> None:
+    def preflight(
+        self,
+        *,
+        max_linear_speed_mps: float,
+        timestep_s: float,
+        qualification: ControllerQualification | None = None,
+    ) -> None:
         if (
             not math.isfinite(float(max_linear_speed_mps))
             or float(max_linear_speed_mps) <= 0
@@ -72,6 +111,10 @@ class SpeedBoundedExecutionController:
             raise ControllerUnavailableError("controller speed limit or timestep is invalid")
         if self.mode == "hard_bounded" and not self.capabilities.hard_cartesian_speed_limit:
             raise ControllerUnavailableError("backend has no hard Cartesian speed limiter")
+        if self.mode == "hard_bounded":
+            if qualification is None:
+                raise ControllerUnavailableError("hard-bounded controller qualification is missing")
+            qualification.validate_for(self.capabilities, limit_mps=float(max_linear_speed_mps))
         if self.mode == "diagnostic_measured_guard" and not self.capabilities.measured_speed_guard:
             raise ControllerUnavailableError("backend has no measured-speed guard")
 
@@ -99,7 +142,10 @@ class SpeedBoundedExecutionController:
 
 
 def build_robotwin_drive_target_controller(
-    *, mode: ControllerMode, expected: Mapping[str, Any] | None = None
+    *,
+    mode: ControllerMode,
+    expected: Mapping[str, Any] | None = None,
+    qualification: ControllerQualification | None = None,
 ) -> SpeedBoundedExecutionController:
     """Build the current RoboTwin/SAPIEN drive-target controller seam.
 
@@ -116,11 +162,15 @@ def build_robotwin_drive_target_controller(
         )
     if expected is not None and dict(expected) != capabilities.as_dict() | {"mode": mode}:
         raise ControllerUnavailableError("controller policy does not match backend capabilities")
-    return SpeedBoundedExecutionController(capabilities, mode=mode)
+    controller = SpeedBoundedExecutionController(capabilities, mode=mode)
+    if mode == "hard_bounded":
+        controller.preflight(max_linear_speed_mps=1.0, timestep_s=1.0, qualification=qualification)
+    return controller
 
 
 __all__ = [
     "ControllerCapabilities",
+    "ControllerQualification",
     "ControllerMode",
     "ControllerUnavailableError",
     "SpeedBoundedExecutionController",

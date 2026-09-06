@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from trajectory_controller import (
     ControllerCapabilities,
+    ControllerQualification,
     ControllerUnavailableError,
     SpeedBoundedExecutionController,
     SpeedLimitViolationError,
@@ -17,6 +18,44 @@ def test_drive_target_backend_is_explicitly_diagnostic_only():
         build_robotwin_drive_target_controller(mode="hard_bounded").preflight(
             max_linear_speed_mps=0.2, timestep_s=0.004
         )
+
+
+def test_hard_mode_requires_independent_approved_qualification():
+    capabilities = ControllerCapabilities("qualified", "v1", True, True)
+    controller = SpeedBoundedExecutionController(capabilities, mode="hard_bounded")
+    with pytest.raises(ControllerUnavailableError, match="qualification"):
+        controller.preflight(max_linear_speed_mps=0.2, timestep_s=0.004)
+    qualification = ControllerQualification(
+        controller_id="qualified",
+        controller_version="v1",
+        simulator_id="sim",
+        simulator_version="1",
+        max_linear_speed_mps=0.2,
+        observed_max_linear_speed_mps=0.19,
+        sample_count=10,
+        evidence_ref="artifact://qualification/run",
+        independent=True,
+        review_status="approved",
+    )
+    controller.preflight(max_linear_speed_mps=0.2, timestep_s=0.004, qualification=qualification)
+
+
+def test_qualification_rejects_controller_drift_and_pending_review():
+    capabilities = ControllerCapabilities("qualified", "v1", True, True)
+    qualification = ControllerQualification(
+        controller_id="other",
+        controller_version="v1",
+        simulator_id="sim",
+        simulator_version="1",
+        max_linear_speed_mps=0.2,
+        observed_max_linear_speed_mps=0.19,
+        sample_count=10,
+        evidence_ref="artifact://qualification/run",
+        independent=True,
+        review_status="pending",
+    )
+    with pytest.raises(ControllerUnavailableError, match="identity"):
+        qualification.validate_for(capabilities, limit_mps=0.2)
 
 
 def test_controller_policy_binding_rejects_identity_or_mode_drift():

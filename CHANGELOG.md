@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v5.9.2] - 2026-09-06
+
+为 adapter-local speed controller 增加独立 `ControllerQualification` 资格协议。`hard_bounded` 必须绑定已批准、独立、限速匹配且有 artifact provenance 的资格证据；缺失、待审核、超限或 identity 漂移均 fail-closed。当前 RoboTwin/SAPIEN drive-target backend 仍不具备 hard-limit 资格。
+
+Added an independent `ControllerQualification` contract for the adapter-local speed controller. `hard_bounded` now requires approved, independent, limit-matching qualification evidence with artifact provenance; missing, pending, over-limit, or identity-drifted evidence fails closed. The current RoboTwin/SAPIEN drive-target backend remains unqualified for hard limits.
+
+### 文件变更详情 / Detailed changes
+
+- `examples/forge-adapters/robotwin20/runtime/trajectory_controller.py:L18-L151`：新增 qualification contract 并强制 hard-mode 校验。
+- `examples/forge-adapters/robotwin20/tests/test_trajectory_controller.py:L13-L73`：覆盖资格缺失、批准、漂移和 pending review。
+- `changelog/2026-09_part3.md`、两份 PAOS 诊断/实现审查文档：记录 qualification 门禁和五维审查。
+
+### 五维审查 / Five-Dimension Review
+
+架构集成、失败路径、权威边界、配置/provenance 和可维护性均通过；当前 backend 仍不可进入 hard-bounded simulation probe。Architecture integration, failure paths, authority boundaries, configuration/provenance, and maintainability pass; the current backend remains ineligible for a hard-bounded simulation probe.
+
+### 验证 / Validation
+
+`40 passed` focused; combined regression `725 passed, 1 skipped`; Ruff、compileall、`git diff --check` passed.
+
 ## [v5.9.0] - 2026-09-06
 
 在 RoboTwin adapter 内新增 provider-local `SpeedBoundedExecutionController` seam，明确区分 `hard_bounded` 与 `diagnostic_measured_guard`。当前 SAPIEN drive-target backend 在 world change 前拒绝 hard mode；diagnostic mode 仅记录实测 Cartesian 速度并在超限时 fail-closed。Planning、Skill、Gateway、Experience 未承载仿真器实现。
