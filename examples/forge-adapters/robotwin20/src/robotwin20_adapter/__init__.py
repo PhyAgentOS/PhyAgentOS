@@ -45,6 +45,7 @@ from .controller_qualification import (
     canonical_controller_qualification,
     controller_qualification_digest,
     validate_controller_qualification_plan_package,
+    validate_controller_qualification_result_package,
 )
 from .grasp_adaptation import (
     GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
@@ -297,6 +298,7 @@ __all__ = [
     "canonical_controller_qualification",
     "controller_qualification_digest",
     "validate_controller_qualification_plan_package",
+    "validate_controller_qualification_result_package",
     "canonical_motion_capability",
     "derive_robotwin_motion_capability",
     "motion_capability_digest",

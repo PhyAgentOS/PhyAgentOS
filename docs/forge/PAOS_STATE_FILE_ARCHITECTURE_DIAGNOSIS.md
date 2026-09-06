@@ -1311,3 +1311,13 @@ q4 的独立 validator 输出 `validated_pass`，但最终 `approved_pass` 仍�
 `50ac70982b1dcdeb67ae65cfbd0e3ff3fcc31ebca5b7dd99baa7dcb03f3dc8e6`，且
 `motion_authorized=false`。这只关闭 controller qualification 门禁，不关闭 route、
 Gateway 或 benchmark motion 门禁。
+### 32.20 qualification-to-execution path binding (2026-09-07)
+
+五维复审发现：若 probe 在 controller qualification 之后仍直接写
+`task.robot.set_arm_joints()` 并调用 `scene.step()`，q4 evidence 并未证明 route 使用
+同一 controller。这是执行路径权威断裂，不是调参问题。现在 provider boundary 在创建
+controller 及每一步前验证当前导入 controller 源码摘要、版本和 bounded controller id
+与双臂 MotionCapability 一致；轨迹命令必须经过 pre-step/acknowledgement，夹爪使用零
+速度 arm-hold，输入 digest 每一步重检，stop/fault/reset 停止所有 controller。native
+controller、源码漂移、stale approval 和输入突变均 fail closed。旧 route/approval 必须
+重新 materialize 和重新人工审批，之前不得运行 benchmark、Gateway、Dora、Action 或硬件。

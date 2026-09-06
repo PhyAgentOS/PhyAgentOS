@@ -19,6 +19,7 @@ from robotwin20_adapter.controller_qualification import (
     QualificationTestSpec,
     controller_qualification_digest,
     validate_controller_qualification_plan_package,
+    validate_controller_qualification_result_package,
 )
 from robotwin20_adapter.motion_capabilities import (
     MotionCapabilityDocument,
@@ -190,6 +191,89 @@ def test_final_record_cannot_claim_enforcement_on_failure():
             reviewed_at="2026-09-06T08:04:00+00:00",
             independent_execution_qualification=True,
             controller_enforced=True,
+        )
+
+
+def _approved_result_chain():
+    plan = _plan()
+    plan_digest = controller_qualification_digest(plan)
+    evidence = _evidence().model_copy(
+        update={
+            "plan_ref": "artifact://qualification/plan",
+            "plan_sha256": plan_digest,
+        }
+    )
+    evidence_digest = controller_qualification_digest(evidence)
+    validation = ControllerQualificationValidation(
+        qualification_id=plan.qualification_id,
+        evidence_ref="artifact://qualification/evidence",
+        evidence_sha256=evidence_digest,
+        validator_id="independent-validator/v1",
+        producer_id=evidence.producer_id,
+        validated_at="2026-09-06T08:03:00+00:00",
+        status="validated_pass",
+        checks=("identity", "all_tests", "controller_enforcement", "reset"),
+        controller_enforced=True,
+    )
+    validation_digest = controller_qualification_digest(validation)
+    qualification = ControllerQualification(
+        qualification_id=plan.qualification_id,
+        plan_ref=evidence.plan_ref,
+        plan_sha256=plan_digest,
+        evidence_ref=validation.evidence_ref,
+        evidence_sha256=evidence_digest,
+        validation_ref="artifact://qualification/validation",
+        validation_sha256=validation_digest,
+        identity=plan.identity,
+        status="approved_pass",
+        reviewer_id="yanxu",
+        reviewed_at="2026-09-06T08:04:00+00:00",
+        independent_execution_qualification=True,
+        controller_enforced=True,
+    )
+    return qualification, plan, evidence, validation
+
+
+def test_approved_result_package_is_cross_bound():
+    qualification, plan, evidence, validation = _approved_result_chain()
+    validate_controller_qualification_result_package(
+        qualification=qualification,
+        plan=plan,
+        evidence=evidence,
+        validation=validation,
+        qualification_file_sha256=controller_qualification_digest(qualification),
+        plan_file_sha256=controller_qualification_digest(plan),
+        evidence_file_sha256=controller_qualification_digest(evidence),
+        validation_file_sha256=controller_qualification_digest(validation),
+    )
+
+
+def test_result_package_rejects_digest_and_identity_drift():
+    qualification, plan, evidence, validation = _approved_result_chain()
+    with pytest.raises(ValueError, match="qualification file digest"):
+        validate_controller_qualification_result_package(
+            qualification=qualification,
+            plan=plan,
+            evidence=evidence,
+            validation=validation,
+            qualification_file_sha256="0" * 64,
+            plan_file_sha256=controller_qualification_digest(plan),
+            evidence_file_sha256=controller_qualification_digest(evidence),
+            validation_file_sha256=controller_qualification_digest(validation),
+        )
+    drifted = evidence.model_copy(
+        update={"identity": evidence.identity.model_copy(update={"robot_identity": "other"})}
+    )
+    with pytest.raises(ValueError, match="provider identity drifted"):
+        validate_controller_qualification_result_package(
+            qualification=qualification,
+            plan=plan,
+            evidence=drifted,
+            validation=validation,
+            qualification_file_sha256=controller_qualification_digest(qualification),
+            plan_file_sha256=controller_qualification_digest(plan),
+            evidence_file_sha256=controller_qualification_digest(drifted),
+            validation_file_sha256=controller_qualification_digest(validation),
         )
 
 

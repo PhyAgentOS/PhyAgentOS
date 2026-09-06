@@ -619,6 +619,82 @@ def controller_qualification_digest(value: BaseModel | Mapping[str, object]) -> 
     return hashlib.sha256(canonical_controller_qualification(value)).hexdigest()
 
 
+def validate_controller_qualification_result_package(
+    *,
+    qualification: ControllerQualification,
+    plan: ControllerQualificationPlan,
+    evidence: ControllerQualificationEvidence,
+    validation: ControllerQualificationValidation,
+    qualification_file_sha256: str,
+    plan_file_sha256: str,
+    evidence_file_sha256: str,
+    validation_file_sha256: str,
+) -> None:
+    """Validate the complete, post-review controller qualification chain."""
+
+    digests = {
+        "qualification": qualification_file_sha256,
+        "plan": plan_file_sha256,
+        "evidence": evidence_file_sha256,
+        "validation": validation_file_sha256,
+    }
+    for label, digest in digests.items():
+        _digest(digest, f"{label} file digest")
+    if qualification_file_sha256 != controller_qualification_digest(qualification):
+        raise ControllerQualificationError("final qualification file digest is invalid")
+    if plan_file_sha256 != controller_qualification_digest(plan):
+        raise ControllerQualificationError("qualification plan file digest is invalid")
+    if evidence_file_sha256 != controller_qualification_digest(evidence):
+        raise ControllerQualificationError("qualification evidence file digest is invalid")
+    if validation_file_sha256 != controller_qualification_digest(validation):
+        raise ControllerQualificationError("qualification validation file digest is invalid")
+    if not (
+        qualification.qualification_id
+        == plan.qualification_id
+        == evidence.qualification_id
+        == validation.qualification_id
+    ):
+        raise ControllerQualificationError("qualification result identities do not match")
+    if qualification.identity != plan.identity or qualification.identity != evidence.identity:
+        raise ControllerQualificationError("qualification result provider identity drifted")
+    plan_tests = {item.test_id: item.command_family for item in plan.tests}
+    evidence_tests = {item.test_id: item.command_family for item in evidence.tests}
+    if plan_tests != evidence_tests or evidence.producer_id != plan.producer_id:
+        raise ControllerQualificationError("qualification test evidence drifted from plan")
+    if (
+        qualification.plan_sha256 != plan_file_sha256
+        or evidence.plan_ref != qualification.plan_ref
+        or evidence.plan_sha256 != plan_file_sha256
+        or qualification.evidence_ref != validation.evidence_ref
+        or qualification.evidence_sha256 != evidence_file_sha256
+        or validation.evidence_sha256 != evidence_file_sha256
+        or validation.producer_id != evidence.producer_id
+        or qualification.validation_sha256 != validation_file_sha256
+    ):
+        raise ControllerQualificationError("qualification result artifact bindings are invalid")
+    if (
+        qualification.status != "approved_pass"
+        or not qualification.independent_execution_qualification
+        or not qualification.controller_enforced
+        or evidence.status != "passed"
+        or not evidence.outcome_known
+        or not evidence.world_change_completed
+        or not evidence.reset_completed
+        or validation.status != "validated_pass"
+        or not validation.independent
+        or not validation.controller_enforced
+    ):
+        raise ControllerQualificationError("controller qualification is not an approved pass")
+    if (
+        qualification.motion_authorized
+        or qualification.benchmark_motion_authorized
+        or qualification.hardware_motion_authorized
+        or evidence.motion_authorized
+        or validation.motion_authorized
+    ):
+        raise ControllerQualificationError("qualification result exceeds its authority")
+
+
 def validate_controller_qualification_plan_package(
     *,
     plan: ControllerQualificationPlan,
@@ -721,5 +797,6 @@ __all__ = [
     "QualificationTestSpec",
     "canonical_controller_qualification",
     "controller_qualification_digest",
+    "validate_controller_qualification_result_package",
     "validate_controller_qualification_plan_package",
 ]

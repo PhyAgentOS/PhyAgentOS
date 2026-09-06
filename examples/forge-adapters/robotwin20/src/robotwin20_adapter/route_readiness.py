@@ -22,7 +22,7 @@ from .perception_profile import (
 )
 from .process_worker import JsonlProcessWorkerClient
 
-ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v5"
+ROUTE_REQUEST_SCHEMA_VERSION = "paos-robotwin20-route-request/v6"
 SIMULATION_ROUTE_READINESS_SCHEMA_VERSION = "paos-robotwin20-simulation-route-readiness/v2"
 ROUTE_READINESS_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-readiness/v1"
 ROUTE_PHASES = (
@@ -190,6 +190,7 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
         "scene_revision", "frame_id", "calibration_ref", "calibration_sha256",
         "calibration_revision", "candidate_set_ref", "candidates", "workspace_bounds_m",
         "joint_limits_ref", "stop_policy_ref", "motion_capabilities",
+        "controller_qualification",
     }
     if not isinstance(request, Mapping) or set(request) != required:
         raise RouteReadinessError("route readiness request fields are invalid")
@@ -235,6 +236,29 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
         seen_refs.update((artifact_ref, validation_ref))
     if seen_arms != {"left", "right"}:
         raise RouteReadinessError("route motion capabilities must bind both arms")
+    qualification = request["controller_qualification"]
+    if not isinstance(qualification, Mapping) or set(qualification) != {
+        "qualification_id",
+        "artifact_ref",
+        "sha256",
+        "plan_ref",
+        "plan_sha256",
+        "evidence_ref",
+        "evidence_sha256",
+        "validation_ref",
+        "validation_sha256",
+    }:
+        raise RouteReadinessError("route controller qualification binding fields are invalid")
+    _ref(qualification["qualification_id"], "controller qualification id")
+    for field in ("artifact_ref", "plan_ref", "evidence_ref", "validation_ref"):
+        reference = _ref(
+            qualification[field], f"controller qualification {field}", "artifact://"
+        )
+        if reference in seen_refs:
+            raise RouteReadinessError("route qualification references are duplicated")
+        seen_refs.add(reference)
+    for field in ("sha256", "plan_sha256", "evidence_sha256", "validation_sha256"):
+        _sha(qualification[field], f"controller qualification {field}")
     bounds = _workspace(request["workspace_bounds_m"], route_frame)
 
     candidates = request["candidates"]

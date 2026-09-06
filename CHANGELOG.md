@@ -2,6 +2,14 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.7.0] - 2026-09-07
+
+Bound the RoboTwin simulation probe to the exact provider controller qualified by the immutable MotionCapability artifacts. Every trajectory step now settles through the bounded controller, controller source/version digests are rechecked before execution, and stale approvals, source drift, input drift, invalid commands, and recovery failures remain fail-closed. This change does not authorize benchmark, Gateway, Dora, Action, or hardware motion.
+
+将 RoboTwin simulation probe 绑定到 MotionCapability artifact 资格化的精确 provider controller。每个轨迹 step 都经过 bounded controller 结算，并在执行前重新校验 controller 源码/版本摘要；旧审批、源码漂移、输入漂移、非法命令和恢复失败均保持 fail-closed。本变更不授权 benchmark、Gateway、Dora、Action 或硬件动作。
+
+Validation: focused `67 passed`; full `750 passed, 1 skipped`; Ruff, compileall, and `git diff --check` passed. Existing route artifacts remain diagnostic-only until fresh materialization and human simulation-only approval.
+
 ## [v6.1.0] - 2026-09-06
 
 Implemented the first, no-motion milestone of RoboTwin/SAPIEN controller qualification. The provider-owned adapter now separates a qualification plan, source manifest, human review request, no-motion validation, scoped approval, execution evidence, independent validation, and final qualification. Cross-artifact identity/digest checks and atomic staging publication prevent partial or drifted packages. Qualification approval is scoped only to isolated qualification motion; benchmark, hardware, and PAOS motion remain unauthorized.

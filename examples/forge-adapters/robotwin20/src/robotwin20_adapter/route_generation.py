@@ -190,13 +190,14 @@ def generate_route_request(
     placement_target: Mapping[str, Any],
     route_policy: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Generate one v5 route request from explicit adapter-owned projections."""
+    """Generate one v6 route request from explicit adapter-owned projections."""
 
     required_base = {
         "schema_version", "request_id", "observation_ref", "observation_frame_id",
         "scene_revision", "frame_id", "calibration_ref", "calibration_sha256",
         "calibration_revision", "candidate_set_ref", "candidates", "workspace_bounds_m",
         "joint_limits_ref", "stop_policy_ref", "motion_capabilities",
+        "controller_qualification",
     }
     if not isinstance(base_request, Mapping) or set(base_request) != required_base:
         raise RouteGenerationError("route generation base request fields are invalid")

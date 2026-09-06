@@ -333,3 +333,31 @@ no_motion_validation_sha256: 2d977c2ec9ae179fa7ad9ae37b82367e2ddf84b9d3daded96ea
 结论：大步 A 已完成并通过五维验收。当前仍不能执行大步 B；下一步必须由人工审核
 上述新 plan/validation 包后，才允许实现和运行隔离 qualification worker。即使大步 B
 通过，也必须重新生成新的 route 并重新审批，不能复用现有 route approval。
+
+### v6.7 route execution-path binding (2026-09-07)
+
+复审发现 q4 qualification 只证明隔离 `CapabilityBoundedDriveController`，而旧
+simulation probe 仍可直接调用 `task.robot.set_arm_joints()`/`scene.step()`；这使
+qualification evidence 与实际 route 执行脱节，是 Blocker 而非参数调优问题。
+
+已修复并验证：route v6、source manifest v4、review request v3、simulation approval
+v4 固定 q4 四文件及 digest；每个轨迹段执行 `command → before_step → scene.step →
+after_step`，夹爪阶段先发零速度 arm-hold；每一步重检输入 artifact digest；stop、异常
+和 reset 前停止所有 controller；仅允许 bounded provider controller，当前导入源码摘要
+和版本必须与 MotionCapability 一致，native controller、源码/版本漂移、夹爪越界和
+非有限命令均 fail closed。
+
+专项回归 `67 passed`，全量回归 `750 passed, 1 skipped`；Ruff、compileall、
+`git diff --check` 均通过。
+
+#### v6.7 五维验收
+
+- **架构集成：通过。** binding、step 结算和恢复属于 RoboTwin provider adapter；PAOS AgentTask、PlanRevision、DAG、Gateway、SQLite 所有权不变。
+- **失败路径：通过。** 覆盖 controller identity/source/version drift、审批 digest drift、步间输入突变、越限/非有限命令、stop、dropped-step、simulator 异常和 reset。
+- **权威边界：通过。** q4 仍保持 `motion_authorized=false`，不创建 Gateway invocation，不授予 benchmark 或 hardware authority。
+- **配置与 provenance：通过。** route、manifest、approval、qualification、双臂 capability、runtime、worker/controller source digest 全部不可变绑定，无硬编码速度。
+- **可维护性：通过。** controller 注入、执行 guard、失败恢复和证据写入职责分离，正负路径均有回归测试；历史 artifact 明确不可复用。
+
+本修复只完成 qualification 证据绑定到 simulation probe 执行路径的门禁，不等于 route
+执行授权。下一步必须用当前源码重新 materialize 唯一路线并取得新的
+`I_REVIEWED_AND_APPROVE_SIMULATION_ONLY`；新审批前不得运行 benchmark 或抓取放置动作。

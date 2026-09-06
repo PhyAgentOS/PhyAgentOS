@@ -14,7 +14,7 @@ import yaml
 
 from robotwin20_adapter.route_readiness import route_geometry_digest, validate_route_request
 
-APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-probe-approval/v3"
+APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-probe-approval/v4"
 
 
 class ApprovalError(RuntimeError):
@@ -77,12 +77,14 @@ def approve(args: argparse.Namespace) -> Path:
         "object_robot_target_transform_sha256",
         "placement_target_sha256", "calibration_sha256", "joint_limits_sha256",
         "stop_policy_sha256", "required_decision", "required_reviewer",
+        "controller_qualification_ref", "controller_qualification_sha256",
+        "simulation_probe_worker_sha256",
         "simulation_only",
     }
     if (
         set(review) != required_review_fields
         or review.get("schema_version")
-        != "paos-robotwin20-simulation-probe-review-request/v2"
+        != "paos-robotwin20-simulation-probe-review-request/v3"
         or review.get("decision") != "pending_human_review"
         or review.get("motion_authorized") is not False
         or review.get("simulation_only") is not True
@@ -91,6 +93,10 @@ def approve(args: argparse.Namespace) -> Path:
         or review.get("route_geometry_digest") != route_digest
         or review.get("request_id") != request["request_id"]
         or review.get("scene_revision") != request["scene_revision"]
+        or review.get("controller_qualification_ref")
+        != request["controller_qualification"]["artifact_ref"]
+        or review.get("controller_qualification_sha256")
+        != request["controller_qualification"]["sha256"]
     ):
         raise ApprovalError("review request is not an approvable simulation-only request")
     route_request_sha256 = hashlib.sha256(
@@ -145,6 +151,9 @@ def approve(args: argparse.Namespace) -> Path:
     profile_digest = _sha(args.simulation_probe_profile)
     if profile_digest != review["producer_profile_sha256"]:
         raise ApprovalError("simulation probe profile changed after review materialization")
+    worker_digest = _sha(args.simulation_probe_worker)
+    if worker_digest != review["simulation_probe_worker_sha256"]:
+        raise ApprovalError("simulation probe worker changed after review materialization")
     bindings = {
         "calibration_sha256": _sha(_artifact_path(root, request["calibration_ref"])),
         "joint_limits_sha256": _sha(_artifact_path(root, request["joint_limits_ref"])),
@@ -154,6 +163,9 @@ def approve(args: argparse.Namespace) -> Path:
         ),
         "placement_target_sha256": _sha(
             _artifact_path(root, candidate["placement_target"]["provenance_ref"])
+        ),
+        "controller_qualification_sha256": _sha(
+            _artifact_path(root, request["controller_qualification"]["artifact_ref"])
         ),
     }
     if any(review.get(field) != digest for field, digest in bindings.items()):
@@ -181,6 +193,8 @@ def approve(args: argparse.Namespace) -> Path:
         "source_manifest_ref": source_manifest_ref,
         "source_manifest_sha256": review["source_manifest_sha256"],
         "runtime_profile_sha256": runtime_profile_digest,
+        "controller_qualification_ref": request["controller_qualification"]["artifact_ref"],
+        "simulation_probe_worker_sha256": worker_digest,
         **bindings,
     }
     destination = root / "probe" / "approval.json"
@@ -201,6 +215,7 @@ def main() -> int:
     parser.add_argument("--review-request", type=Path, required=True)
     parser.add_argument("--runtime-profile", type=Path, required=True)
     parser.add_argument("--simulation-probe-profile", type=Path, required=True)
+    parser.add_argument("--simulation-probe-worker", type=Path, required=True)
     parser.add_argument("--reviewer-id", required=True)
     parser.add_argument("--confirm-route-digest", required=True)
     parser.add_argument("--confirm-source-manifest-digest", required=True)

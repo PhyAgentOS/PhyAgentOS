@@ -15,6 +15,14 @@ from typing import Any, Mapping
 import yaml
 
 from robotwin20_adapter.arm_candidates import ArmPlanningError, load_arm_planning_profile
+from robotwin20_adapter.controller_qualification import (
+    ControllerQualification,
+    ControllerQualificationError,
+    ControllerQualificationEvidence,
+    ControllerQualificationPlan,
+    ControllerQualificationValidation,
+    validate_controller_qualification_result_package,
+)
 from robotwin20_adapter.grasp_adaptation import (
     GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
     adapt_grasp_candidate,
@@ -56,6 +64,46 @@ def _load_json(path: Path, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise MaterializationError(f"{label} must contain an object")
     return value
+
+
+def _load_controller_qualification(
+    args: argparse.Namespace,
+) -> tuple[
+    ControllerQualification,
+    ControllerQualificationPlan,
+    ControllerQualificationEvidence,
+    ControllerQualificationValidation,
+    dict[str, str],
+]:
+    inputs = {
+        "qualification": args.controller_qualification,
+        "plan": args.controller_qualification_plan,
+        "evidence": args.controller_qualification_evidence,
+        "validation": args.controller_qualification_validation,
+    }
+    values = {name: _load_json(path, name.replace("_", " ")) for name, path in inputs.items()}
+    try:
+        qualification = ControllerQualification.model_validate(values["qualification"])
+        plan = ControllerQualificationPlan.model_validate(values["plan"])
+        evidence = ControllerQualificationEvidence.model_validate(values["evidence"])
+        validation = ControllerQualificationValidation.model_validate(values["validation"])
+    except ValueError as exc:
+        raise MaterializationError("controller qualification package is invalid") from exc
+    digests = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in inputs.items()}
+    try:
+        validate_controller_qualification_result_package(
+            qualification=qualification,
+            plan=plan,
+            evidence=evidence,
+            validation=validation,
+            qualification_file_sha256=digests["qualification"],
+            plan_file_sha256=digests["plan"],
+            evidence_file_sha256=digests["evidence"],
+            validation_file_sha256=digests["validation"],
+        )
+    except ControllerQualificationError as exc:
+        raise MaterializationError("controller qualification package is not approved") from exc
+    return qualification, plan, evidence, validation, digests
 
 
 def _load_profile(path: Path) -> Mapping[str, Any]:
@@ -281,10 +329,22 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         or args.runtime_profile.is_symlink()
     ):
         raise MaterializationError("runtime_profile must be an absolute regular file")
+    if (
+        not args.simulation_probe_worker.is_absolute()
+        or not args.simulation_probe_worker.is_file()
+        or args.simulation_probe_worker.is_symlink()
+    ):
+        raise MaterializationError("simulation_probe_worker must be an absolute regular file")
+    simulation_probe_worker_sha256 = hashlib.sha256(
+        args.simulation_probe_worker.read_bytes()
+    ).hexdigest()
 
     facts = validate_scene_facts(_load_json(args.scene_facts, "scene facts"))
     profile = _load_profile(args.route_input_profile)
     runtime_identity = _load_runtime_identity(args.runtime_profile)
+    qualification, qualification_plan, _, _, qualification_digests = (
+        _load_controller_qualification(args)
+    )
     try:
         arm_profile = load_arm_planning_profile(args.arm_planning_profile)
     except ArmPlanningError as exc:
@@ -328,28 +388,26 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             "provider-transform-attestation",
         )
     }
-    for arm_id, arm in arm_profiles.items():
-        refs[f"{arm_id}-motion-capability"] = arm["motion_capabilities_ref"]
-        refs[f"{arm_id}-motion-capability-validation"] = (
-            f"{arm['motion_capabilities_ref']}-source-validation"
-        )
-    facts_digest = _write_json(output_root, refs["scene-facts"], facts)
-    calibration_ref = facts["calibration_ref"]
-    calibration_digest = _copy_source_artifact(source_root, output_root, calibration_ref, ".json")
-    for provenance_ref in proposal.get("provenance", []):
-        _copy_source_artifact(source_root, output_root, provenance_ref, ".npy")
-
-    workspace_artifact = {
-        "schema_version": "paos-robotwin20-workspace-bounds/v1",
-        "scene_revision": facts["scene_revision"],
-        **dict(profile["workspace_bounds_m"]),
-        "source_profile_sha256": hashlib.sha256(args.route_input_profile.read_bytes()).hexdigest(),
+    qualification_bindings = {
+        item.arm_id: item.model_dump(mode="json")
+        for item in qualification_plan.capability_bindings
     }
-    _write_json(output_root, refs["workspace"], workspace_artifact)
-    _write_json(output_root, refs["joint-limits"], profile["joint_limit_policy"])
-    _write_json(output_root, refs["stop-policy"], profile["stop_policy"])
-    _write_json(output_root, refs["semantic-tolerance"], profile["semantic_tolerance"])
+    for arm_id, arm in arm_profiles.items():
+        approved_binding = qualification_bindings[arm_id]
+        if arm["motion_capabilities_ref"] != approved_binding["artifact_ref"]:
+            raise MaterializationError(
+                "arm planning capability reference does not match controller qualification"
+            )
+        refs[f"{arm_id}-motion-capability"] = approved_binding["artifact_ref"]
+        refs[f"{arm_id}-motion-capability-validation"] = approved_binding[
+            "validation_ref"
+        ]
+    qualification_ref = (
+        f"artifact://controller-qualification/{qualification.qualification_id}/qualification"
+    )
     capability_bindings = []
+    loaded_capabilities: dict[str, MotionCapabilityDocument] = {}
+    capability_payloads: dict[str, tuple[bytes, bytes]] = {}
     for arm_id in ("left", "right"):
         capability_path = getattr(args, f"{arm_id}_motion_capability")
         validation_path = getattr(args, f"{arm_id}_motion_capability_validation")
@@ -376,19 +434,86 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             raise MaterializationError(f"{arm_id} motion capability semantics are invalid")
         capability_ref = refs[f"{arm_id}-motion-capability"]
         validation_ref = refs[f"{arm_id}-motion-capability-validation"]
-        written_capability_digest = _write_bytes(
-            _artifact_path(output_root, capability_ref), canonical_motion_capability(capability)
-        )
-        written_validation_digest = _write_json(
-            output_root, validation_ref, validation.model_dump(mode="json")
-        )
+        capability_payload = canonical_motion_capability(capability)
+        validation_payload = canonical_json(validation.model_dump(mode="json"))
+        capability_file_digest = hashlib.sha256(capability_payload).hexdigest()
+        validation_file_digest = hashlib.sha256(validation_payload).hexdigest()
         capability_bindings.append({
             "arm_id": arm_id,
             "artifact_ref": capability_ref,
-            "sha256": written_capability_digest,
+            "sha256": capability_file_digest,
             "validation_ref": validation_ref,
-            "validation_sha256": written_validation_digest,
+            "validation_sha256": validation_file_digest,
         })
+        loaded_capabilities[arm_id] = capability
+        capability_payloads[arm_id] = (capability_payload, validation_payload)
+    if qualification_bindings != {
+        item["arm_id"]: item for item in capability_bindings
+    }:
+        raise MaterializationError(
+            "route motion capabilities do not match controller qualification"
+        )
+    qualification_identity = qualification.identity
+    for capability in loaded_capabilities.values():
+        provider = capability.provider
+        if (
+            qualification_identity.robot_identity != runtime_identity["robot_identity"]
+            or qualification_identity.robot_identity != capability.robot_identity
+            or qualification_identity.simulator_id != provider.simulator_id
+            or qualification_identity.simulator_version != provider.simulator_version
+            or qualification_identity.controller_id != provider.controller_id
+            or qualification_identity.controller_version != provider.controller_version
+            or qualification_identity.runtime_python_version
+            != provider.runtime_python_version
+            or qualification_identity.robotwin_git_revision
+            != provider.robotwin_git_revision
+        ):
+            raise MaterializationError("controller qualification runtime identity is invalid")
+
+    facts_digest = _write_json(output_root, refs["scene-facts"], facts)
+    calibration_ref = facts["calibration_ref"]
+    calibration_digest = _copy_source_artifact(source_root, output_root, calibration_ref, ".json")
+    for provenance_ref in proposal.get("provenance", []):
+        _copy_source_artifact(source_root, output_root, provenance_ref, ".npy")
+
+    workspace_artifact = {
+        "schema_version": "paos-robotwin20-workspace-bounds/v1",
+        "scene_revision": facts["scene_revision"],
+        **dict(profile["workspace_bounds_m"]),
+        "source_profile_sha256": hashlib.sha256(args.route_input_profile.read_bytes()).hexdigest(),
+    }
+    _write_json(output_root, refs["workspace"], workspace_artifact)
+    _write_json(output_root, refs["joint-limits"], profile["joint_limit_policy"])
+    _write_json(output_root, refs["stop-policy"], profile["stop_policy"])
+    _write_json(output_root, refs["semantic-tolerance"], profile["semantic_tolerance"])
+    for arm_id, (capability_payload, validation_payload) in capability_payloads.items():
+        _write_bytes(
+            _artifact_path(output_root, refs[f"{arm_id}-motion-capability"]),
+            capability_payload,
+        )
+        _write_bytes(
+            _artifact_path(output_root, refs[f"{arm_id}-motion-capability-validation"]),
+            validation_payload,
+        )
+    for reference, source, digest in (
+        (qualification.plan_ref, args.controller_qualification_plan, qualification_digests["plan"]),
+        (qualification.evidence_ref, args.controller_qualification_evidence, qualification_digests["evidence"]),
+        (qualification.validation_ref, args.controller_qualification_validation, qualification_digests["validation"]),
+        (qualification_ref, args.controller_qualification, qualification_digests["qualification"]),
+    ):
+        if _write_bytes(_artifact_path(output_root, reference), source.read_bytes()) != digest:
+            raise MaterializationError("controller qualification copy digest mismatch")
+    qualification_binding = {
+        "qualification_id": qualification.qualification_id,
+        "artifact_ref": qualification_ref,
+        "sha256": qualification_digests["qualification"],
+        "plan_ref": qualification.plan_ref,
+        "plan_sha256": qualification.plan_sha256,
+        "evidence_ref": qualification.evidence_ref,
+        "evidence_sha256": qualification.evidence_sha256,
+        "validation_ref": qualification.validation_ref,
+        "validation_sha256": qualification.validation_sha256,
+    }
     transform_attestation_digest = _write_json(
         output_root, refs["provider-transform-attestation"], transform_attestation
     )
@@ -408,6 +533,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         "joint_limits_ref": refs["joint-limits"],
         "stop_policy_ref": refs["stop-policy"],
         "motion_capabilities": capability_bindings,
+        "controller_qualification": qualification_binding,
         "candidates": [],
     }
     adaptation_config = {
@@ -505,7 +631,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
     route_sha256 = _write_json(output_root, refs["route-request"], route_request)
     _write_bytes(output_root / "route_request.json", canonical_json(route_request))
     source_manifest = {
-        "schema_version": "paos-robotwin20-route-source-manifest/v3",
+        "schema_version": "paos-robotwin20-route-source-manifest/v4",
         "request_id": args.request_id,
         "scene_revision": facts["scene_revision"],
         "candidate_ref": args.candidate_ref,
@@ -515,6 +641,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         "grasp_results_sha256": hashlib.sha256(args.grasp_results.read_bytes()).hexdigest(),
         "route_input_profile_sha256": hashlib.sha256(args.route_input_profile.read_bytes()).hexdigest(),
         "runtime_profile_sha256": hashlib.sha256(args.runtime_profile.read_bytes()).hexdigest(),
+        "simulation_probe_worker_sha256": simulation_probe_worker_sha256,
         "route_request": {"artifact_ref": refs["route-request"], "sha256": route_sha256},
         "object_geometry": {"artifact_ref": refs["object-geometry"], "sha256": geometry_digest},
         "object_robot_target_transform": {
@@ -526,12 +653,13 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             "sha256": transform_attestation_digest,
         },
         "motion_capabilities": capability_bindings,
+        "controller_qualification": qualification_binding,
         "route_geometry_digest": route_digest,
         "motion_authorized": False,
     }
     manifest_digest = _write_json(output_root, refs["source-manifest"], source_manifest)
     review = {
-        "schema_version": "paos-robotwin20-simulation-probe-review-request/v2",
+        "schema_version": "paos-robotwin20-simulation-probe-review-request/v3",
         "decision": "pending_human_review",
         "motion_authorized": False,
         "request_id": args.request_id,
@@ -544,6 +672,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         "source_manifest_sha256": manifest_digest,
         "producer_profile_sha256": hashlib.sha256(args.simulation_probe_profile.read_bytes()).hexdigest(),
         "runtime_profile_sha256": hashlib.sha256(args.runtime_profile.read_bytes()).hexdigest(),
+        "simulation_probe_worker_sha256": simulation_probe_worker_sha256,
         "object_robot_target_transform_sha256": transform_digest,
         "placement_target_sha256": placement_digest,
         "calibration_sha256": calibration_digest,
@@ -553,6 +682,8 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         "stop_policy_sha256": hashlib.sha256(
             _artifact_path(output_root, refs["stop-policy"]).read_bytes()
         ).hexdigest(),
+        "controller_qualification_ref": qualification_ref,
+        "controller_qualification_sha256": qualification_digests["qualification"],
         "required_decision": "approved_independent_simulation_probe",
         "required_reviewer": "human",
         "simulation_only": True,
@@ -570,12 +701,17 @@ def main() -> int:
     parser.add_argument("--grasp-transform-attestation", type=Path, required=True)
     parser.add_argument("--graspgen-source-root", type=Path, required=True)
     parser.add_argument("--simulation-probe-profile", type=Path, required=True)
+    parser.add_argument("--simulation-probe-worker", type=Path, required=True)
     parser.add_argument("--runtime-profile", type=Path, required=True)
     parser.add_argument("--arm-planning-profile", type=Path, required=True)
     parser.add_argument("--left-motion-capability", type=Path, required=True)
     parser.add_argument("--right-motion-capability", type=Path, required=True)
     parser.add_argument("--left-motion-capability-validation", type=Path, required=True)
     parser.add_argument("--right-motion-capability-validation", type=Path, required=True)
+    parser.add_argument("--controller-qualification", type=Path, required=True)
+    parser.add_argument("--controller-qualification-plan", type=Path, required=True)
+    parser.add_argument("--controller-qualification-evidence", type=Path, required=True)
+    parser.add_argument("--controller-qualification-validation", type=Path, required=True)
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--candidate-ref", required=True)
     parser.add_argument("--entity-ref", required=True)

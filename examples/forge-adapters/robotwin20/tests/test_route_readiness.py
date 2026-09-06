@@ -80,6 +80,17 @@ def _request(tmp_path: Path) -> dict:
                 "validation_sha256": "4" * 64,
             },
         ],
+        "controller_qualification": {
+            "qualification_id": "qualification-1",
+            "artifact_ref": "artifact://qualification/final",
+            "sha256": "5" * 64,
+            "plan_ref": "artifact://qualification/plan",
+            "plan_sha256": "6" * 64,
+            "evidence_ref": "artifact://qualification/evidence",
+            "evidence_sha256": "7" * 64,
+            "validation_ref": "artifact://qualification/validation",
+            "validation_sha256": "8" * 64,
+        },
         "candidates": [{
             "candidate_ref": "candidate://red-block/1",
             "entity_ref": "entity://red-block",
@@ -136,6 +147,8 @@ def test_valid_route_request_is_deterministically_bound(tmp_path: Path):
         (lambda r: r["candidates"][0]["route"][6].update(gripper_state="closed"), "gripper state"),
         (lambda r: r["motion_capabilities"].pop(), "both arms"),
         (lambda r: r["motion_capabilities"][1].update(arm_id="left"), "arm binding"),
+        (lambda r: r["controller_qualification"].update(sha256="bad"), "SHA-256"),
+        (lambda r: r["controller_qualification"].pop("validation_ref"), "qualification binding"),
     ],
 )
 def test_route_request_fails_closed(tmp_path: Path, mutate, message: str):

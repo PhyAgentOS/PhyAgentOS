@@ -26,8 +26,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from robotwin_capability_controller import (
+    CapabilityBoundedDriveController,
+    ControllerCommandError,
+    ControllerLimits,
+)
 from worker_protocol import serve
 
+from robotwin20_adapter.controller_qualification import (
+    ControllerQualification,
+    ControllerQualificationError,
+    ControllerQualificationEvidence,
+    ControllerQualificationPlan,
+    ControllerQualificationValidation,
+    controller_qualification_digest,
+    validate_controller_qualification_result_package,
+)
 from robotwin20_adapter.motion_capabilities import (
     MotionCapabilityDocument,
     MotionCapabilityValidation,
@@ -40,7 +54,7 @@ from robotwin20_adapter.route_readiness import (
 )
 
 SCHEMA_VERSION = "paos-robotwin20-simulation-probe/v1"
-APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-probe-approval/v3"
+APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-probe-approval/v4"
 _STATE_FIELDS = ("scene_revision", "observation_ref", "frame_id", "candidate_set_ref")
 _GRIPPER_VALUES = {"open": 1.0, "contact": 1.0, "closed": 0.0, "released": 1.0}
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
@@ -195,6 +209,8 @@ def _validate_approval(
         "route_request_sha256", "source_manifest_ref", "source_manifest_sha256",
         "runtime_profile_sha256",
         "object_robot_target_transform_sha256", "placement_target_sha256",
+        "controller_qualification_ref", "controller_qualification_sha256",
+        "simulation_probe_worker_sha256",
     }
     if set(approval) != required or approval["schema_version"] != APPROVAL_SCHEMA_VERSION:
         raise SimulationProbeError("probe approval record fields are invalid")
@@ -202,12 +218,18 @@ def _validate_approval(
         raise SimulationProbeError("probe approval does not authorize simulation probe")
     if approval["producer_id"] != producer_id or approval["producer_profile_sha256"] != producer_profile_sha256:
         raise SimulationProbeError("probe approval producer binding is invalid")
+    if approval["simulation_probe_worker_sha256"] != _sha_bytes(Path(__file__).read_bytes()):
+        raise SimulationProbeError("probe approval worker source binding is invalid")
     if approval["task_name"] != profile["task_name"] or approval["scene_revision"] != request["scene_revision"]:
         raise SimulationProbeError("probe approval scene binding is invalid")
     if (
         approval["request_id"] != request["request_id"]
         or approval["candidate_ref"] != candidate_ref
         or approval["route_geometry_digest"] != route_geometry_digest(request)
+        or approval["controller_qualification_ref"]
+        != request["controller_qualification"]["artifact_ref"]
+        or approval["controller_qualification_sha256"]
+        != request["controller_qualification"]["sha256"]
     ):
         raise SimulationProbeError("probe approval route binding is invalid")
     if approval["embodiment_binding"] != profile["embodiment_binding"]:
@@ -257,17 +279,21 @@ def _validate_approval(
             raise SimulationProbeError(f"probe approval {digest_field} binding is invalid")
     manifest = _load_json_artifact(root, approval["source_manifest_ref"])
     if (
-        manifest.get("schema_version") != "paos-robotwin20-route-source-manifest/v3"
+        manifest.get("schema_version") != "paos-robotwin20-route-source-manifest/v4"
         or manifest.get("request_id") != request["request_id"]
         or manifest.get("candidate_ref") != candidate_ref
         or manifest.get("scene_revision") != request["scene_revision"]
         or manifest.get("route_geometry_digest") != route_geometry_digest(request)
         or manifest.get("route_request", {}).get("sha256") != approval["route_request_sha256"]
         or manifest.get("runtime_profile_sha256") != approval["runtime_profile_sha256"]
+        or manifest.get("simulation_probe_worker_sha256")
+        != approval["simulation_probe_worker_sha256"]
         or manifest.get("object_robot_target_transform", {}).get("sha256")
         != approval["object_robot_target_transform_sha256"]
         or manifest.get("placement_target", {}).get("sha256") != approval["placement_target_sha256"]
         or manifest.get("motion_capabilities") != request["motion_capabilities"]
+        or manifest.get("controller_qualification")
+        != request["controller_qualification"]
         or manifest.get("motion_authorized") is not False
     ):
         raise SimulationProbeError("probe approval source manifest binding is invalid")
@@ -485,6 +511,7 @@ def _validate_request_policies(
     ):
         raise SimulationProbeError("stop policy is invalid")
     validated_arms: set[str] = set()
+    capabilities: dict[str, MotionCapabilityDocument] = {}
     for binding in request["motion_capabilities"]:
         capability_payload = _load_json_artifact(root, binding["artifact_ref"])
         validation_payload = _load_json_artifact(root, binding["validation_ref"])
@@ -505,15 +532,192 @@ def _validate_request_policies(
         ):
             raise SimulationProbeError("motion capability binding is invalid")
         validated_arms.add(capability.arm_id)
+        capabilities[capability.arm_id] = capability
     if validated_arms != {"left", "right"}:
         raise SimulationProbeError("motion capability arm coverage is invalid")
+    qualification_binding = request["controller_qualification"]
+    try:
+        qualification = ControllerQualification.model_validate(
+            _load_json_artifact(root, qualification_binding["artifact_ref"])
+        )
+        plan = ControllerQualificationPlan.model_validate(
+            _load_json_artifact(root, qualification_binding["plan_ref"])
+        )
+        evidence = ControllerQualificationEvidence.model_validate(
+            _load_json_artifact(root, qualification_binding["evidence_ref"])
+        )
+        qualification_validation = ControllerQualificationValidation.model_validate(
+            _load_json_artifact(root, qualification_binding["validation_ref"])
+        )
+        validate_controller_qualification_result_package(
+            qualification=qualification,
+            plan=plan,
+            evidence=evidence,
+            validation=qualification_validation,
+            qualification_file_sha256=_sha_bytes(
+                _artifact_path(root, qualification_binding["artifact_ref"]).read_bytes()
+            ),
+            plan_file_sha256=_sha_bytes(
+                _artifact_path(root, qualification_binding["plan_ref"]).read_bytes()
+            ),
+            evidence_file_sha256=_sha_bytes(
+                _artifact_path(root, qualification_binding["evidence_ref"]).read_bytes()
+            ),
+            validation_file_sha256=_sha_bytes(
+                _artifact_path(root, qualification_binding["validation_ref"]).read_bytes()
+            ),
+        )
+    except (ValueError, ControllerQualificationError) as exc:
+        raise SimulationProbeError("controller qualification package is invalid") from exc
+    if qualification_binding != {
+        "qualification_id": qualification.qualification_id,
+        "artifact_ref": qualification_binding["artifact_ref"],
+        "sha256": controller_qualification_digest(qualification),
+        "plan_ref": qualification.plan_ref,
+        "plan_sha256": qualification.plan_sha256,
+        "evidence_ref": qualification.evidence_ref,
+        "evidence_sha256": qualification.evidence_sha256,
+        "validation_ref": qualification.validation_ref,
+        "validation_sha256": qualification.validation_sha256,
+    }:
+        raise SimulationProbeError("controller qualification route binding is invalid")
+    plan_bindings = {
+        item.arm_id: item.model_dump(mode="json") for item in plan.capability_bindings
+    }
+    route_bindings = {
+        item["arm_id"]: dict(item) for item in request["motion_capabilities"]
+    }
+    if plan_bindings != route_bindings:
+        raise SimulationProbeError("controller qualification capability binding drifted")
+    for capability in capabilities.values():
+        provider = capability.provider
+        identity = qualification.identity
+        if (
+            identity.robot_identity != capability.robot_identity
+            or identity.simulator_id != provider.simulator_id
+            or identity.simulator_version != provider.simulator_version
+            or identity.controller_id != provider.controller_id
+            or identity.controller_version != provider.controller_version
+            or identity.runtime_python_version != provider.runtime_python_version
+            or identity.robotwin_git_revision != provider.robotwin_git_revision
+        ):
+            raise SimulationProbeError("controller qualification provider identity drifted")
+    return {
+        "joint_limit_policy": dict(joint),
+        "stop_policy": dict(stop),
+        "controller_qualification": qualification_binding,
+        "motion_capability_documents": capabilities,
+        "execution_input_digests": {
+            request["joint_limits_ref"]: _sha_bytes(
+                _artifact_path(root, request["joint_limits_ref"]).read_bytes()
+            ),
+            request["stop_policy_ref"]: _sha_bytes(
+                _artifact_path(root, request["stop_policy_ref"]).read_bytes()
+            ),
+            **{
+                item[field]: item[digest_field]
+                for item in request["motion_capabilities"]
+                for field, digest_field in (
+                    ("artifact_ref", "sha256"),
+                    ("validation_ref", "validation_sha256"),
+                )
+            },
+            qualification_binding["artifact_ref"]: qualification_binding["sha256"],
+            qualification_binding["plan_ref"]: qualification_binding["plan_sha256"],
+            qualification_binding["evidence_ref"]: qualification_binding["evidence_sha256"],
+            qualification_binding["validation_ref"]: qualification_binding[
+                "validation_sha256"
+            ],
+        },
+    }
 
-    # Validation/v1 deliberately attests source and planner constraints only.
-    # A future, separately versioned execution qualification must be checked
-    # here before this function may return policies to the motion path.
-    raise SimulationProbeError(
-        "controller-enforced motion capability qualification is unavailable"
-    )
+
+def _build_route_controllers(
+    task: Any,
+    capabilities: Mapping[str, MotionCapabilityDocument],
+) -> dict[str, CapabilityBoundedDriveController]:
+    _guard_controller_source_binding(capabilities)
+    controllers: dict[str, CapabilityBoundedDriveController] = {}
+    for arm_id in ("left", "right"):
+        capability = capabilities.get(arm_id)
+        if capability is None:
+            raise SimulationProbeError("route controller capability coverage is incomplete")
+        controllers[arm_id] = CapabilityBoundedDriveController(
+            ControllerLimits(
+                joint_order=capability.joint_order,
+                position_lower_rad=capability.limits.position_lower_rad,
+                position_upper_rad=capability.limits.position_upper_rad,
+                velocity_lower_radps=capability.limits.velocity_lower_radps,
+                velocity_upper_radps=capability.limits.velocity_upper_radps,
+            ),
+            lambda q, dq, selected_arm=arm_id: task.robot.set_arm_joints(
+                q, dq, selected_arm
+            ),
+        )
+    return controllers
+
+
+def _controller_source_path() -> Path:
+    module = sys.modules.get(CapabilityBoundedDriveController.__module__)
+    module_path = Path(getattr(module, "__file__", "")) if module is not None else None
+    if (
+        module_path is None
+        or not module_path.is_absolute()
+        or not module_path.is_file()
+        or module_path.is_symlink()
+    ):
+        raise SimulationProbeError("qualified controller source is unavailable")
+    return module_path
+
+
+def _guard_controller_source_digest(expected_digest: str) -> None:
+    if _sha_bytes(_controller_source_path().read_bytes()) != expected_digest:
+        raise SimulationProbeError("qualified controller source digest drifted")
+
+
+def _guard_controller_source_binding(
+    capabilities: Mapping[str, MotionCapabilityDocument],
+) -> str:
+    """Bind the controller imported by this worker to the qualified source.
+
+    Qualification is meaningful only for the exact provider controller that
+    will receive route commands.  A changed module, stale import, or a
+    capability that still describes RoboTwin's unqualified native drive
+    target must therefore fail before the first simulator step.
+    """
+    source_digest = _sha_bytes(_controller_source_path().read_bytes())
+    expected_version = f"source-{source_digest[:16]}"
+    for capability in capabilities.values():
+        if capability.provider.controller_id != "paos-robotwin-capability-bounded-drive-target":
+            raise SimulationProbeError("route controller is not the qualified bounded provider")
+        controller_sources = [
+            item for item in capability.sources if item.role == "controller_source"
+        ]
+        if len(controller_sources) != 1:
+            raise SimulationProbeError("qualified controller source binding is incomplete")
+        source = controller_sources[0]
+        if source.sha256 != source_digest or capability.provider.controller_version != expected_version:
+            raise SimulationProbeError("qualified controller source digest drifted")
+    return source_digest
+
+
+def _guard_execution_inputs(root: Path, bindings: Mapping[str, str]) -> None:
+    for reference, expected_digest in bindings.items():
+        if _sha_bytes(_artifact_path(root, reference).read_bytes()) != expected_digest:
+            raise SimulationProbeError("simulation execution input digest drifted")
+
+
+def _step_bounded_controller(
+    task: Any,
+    controller: CapabilityBoundedDriveController,
+) -> None:
+    controller.before_step()
+    try:
+        task.scene.step()
+    except Exception:
+        controller.dropped_step()
+        raise
+    controller.after_step()
 
 
 def _validate_world_pose(
@@ -650,15 +854,23 @@ def _execute_segment(
     if not math.isfinite(timestep) or timestep <= 0:
         raise SimulationProbeError("simulator timestep is invalid")
     previous_position = np.asarray(ee()[:3], dtype=np.float64)
+    controller = execution_state["_controllers"][arm]
     for index in range(len(positions)):
         if time.monotonic() >= deadline:
             raise TimeoutError("simulation probe exceeded max duration")
         if stop_file is not None and stop_file.exists():
+            for item in execution_state["_controllers"].values():
+                item.stop()
             raise InterruptedError("simulation probe stop requested")
-        task.robot.set_arm_joints(positions[index], velocities[index], arm)
+        _guard_execution_inputs(
+            execution_state["_artifact_root"],
+            execution_state["_execution_input_digests"],
+        )
+        _guard_controller_source_digest(execution_state["_controller_source_sha256"])
+        controller.command(positions[index], velocities[index])
         execution_state["world_change_started"] = True
         execution_state["phase"] = phase
-        task.scene.step()
+        _step_bounded_controller(task, controller)
         execution_state["simulator_steps"] += 1
         current_position = np.asarray(ee()[:3], dtype=np.float64)
         displacement = current_position - previous_position
@@ -690,15 +902,31 @@ def _set_gripper(
     contacts: list[dict[str, Any]],
     execution_state: dict[str, Any],
 ) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SimulationProbeError("gripper command must be a finite normalized number")
+    normalized_value = float(value)
+    if not math.isfinite(normalized_value) or not 0.0 <= normalized_value <= 1.0:
+        raise SimulationProbeError("gripper command is outside provider normalized bounds")
+    controller = execution_state["_controllers"][arm]
+    entity = task.robot.left_entity if arm == "left" else task.robot.right_entity
     for _ in range(20):
         if time.monotonic() >= deadline:
             raise TimeoutError("simulation probe exceeded max duration")
         if stop_file is not None and stop_file.exists():
+            for item in execution_state["_controllers"].values():
+                item.stop()
             raise InterruptedError("simulation probe stop requested")
-        task.robot.set_gripper(value, arm)
+        _guard_execution_inputs(
+            execution_state["_artifact_root"],
+            execution_state["_execution_input_digests"],
+        )
+        _guard_controller_source_digest(execution_state["_controller_source_sha256"])
+        current_position = [float(item) for item in entity.get_qpos()[:7]]
+        controller.command(current_position, [0.0] * len(current_position))
+        task.robot.set_gripper(normalized_value, arm)
         execution_state["world_change_started"] = True
         execution_state["phase"] = phase
-        task.scene.step()
+        _step_bounded_controller(task, controller)
         execution_state["simulator_steps"] += 1
         contacts.extend(
             _contact_state(
@@ -899,6 +1127,15 @@ def _recover_candidate_failure(
 ) -> dict[str, Any]:
     """Detach, snapshot, and reset after any post-step probe failure."""
     planner = execution_state.pop("_planner", None)
+    controller_stop_status = "not_initialized"
+    controllers = execution_state.pop("_controllers", {})
+    if controllers:
+        controller_stop_status = "stopped"
+        try:
+            for controller in controllers.values():
+                controller.stop()
+        except ControllerCommandError:
+            controller_stop_status = "stop_failed"
     detach_status = "not_attached"
     if execution_state["planner_object_attached"] and planner is not None:
         try:
@@ -948,6 +1185,7 @@ def _recover_candidate_failure(
             "contact_trace": execution_state.get("contact_trace", []),
             "planner_detach_status": detach_status,
             "simulation_reset_status": reset_status,
+            "controller_stop_status": controller_stop_status,
             "before_snapshot": dict(before_ref) if before_ref is not None else None,
             "after_failure_snapshot": after_failure_ref,
             "after_failure_snapshot_error": snapshot_error,
@@ -1218,6 +1456,9 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
                 max_duration_s=max_duration_s,
                 robot_identity=profile["embodiment_binding"]["robot_identity"],
             )
+            policies["execution_input_digests"][approval_ref] = _sha_bytes(
+                _artifact_path(artifact_root, approval_ref).read_bytes()
+            )
         except Exception as exc:
             return {
                 "request_id": request["request_id"],
@@ -1276,6 +1517,18 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
                 raise SimulationProbeError("RoboTwin simulation task is unavailable")
             if backend.snapshot().get("scene_revision") != request["scene_revision"]:
                 raise SimulationProbeError("simulation backend revision binding is invalid")
+            execution_state["_controllers"] = _build_route_controllers(
+                task, policies["motion_capability_documents"]
+            )
+            execution_state["_controller_source_sha256"] = (
+                _guard_controller_source_binding(
+                    policies["motion_capability_documents"]
+                )
+            )
+            execution_state["_artifact_root"] = artifact_root
+            execution_state["_execution_input_digests"] = policies[
+                "execution_input_digests"
+            ]
             _label_probe_actors(task)
             _validate_runtime_route_input_binding(task, candidate, route_input_artifacts)
             start = time.monotonic()

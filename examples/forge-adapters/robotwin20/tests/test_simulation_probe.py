@@ -9,15 +9,21 @@ from pathlib import Path
 import pytest
 import robotwin_simulation_probe_worker as probe_worker
 import yaml
+from robotwin_capability_controller import (
+    CapabilityBoundedDriveController,
+    ControllerLimits,
+)
 from robotwin_simulation_probe_worker import (
     APPROVAL_SCHEMA_VERSION,
     SimulationProbeError,
     _artifact_record,
     _execute_segment,
+    _guard_controller_source_binding,
     _handle_factory,
     _joint_limits,
     _label_probe_actors,
     _recover_candidate_failure,
+    _set_gripper,
     _validate_approval,
     _validate_request_policies,
     _validate_route_input_artifacts,
@@ -26,14 +32,34 @@ from test_route_readiness import _request as _route_request
 
 from robotwin20_adapter import (
     SIMULATION_PROBE_PROFILE_SCHEMA_VERSION,
+    ControllerQualification,
+    ControllerQualificationEvidence,
+    ControllerQualificationPlan,
+    ControllerQualificationValidation,
     MotionCapabilityDocument,
     MotionCapabilityValidation,
+    QualificationCapabilityBinding,
+    QualificationIdentity,
+    QualificationTestEvidence,
+    QualificationTestSpec,
     SimulationProbeClient,
     SimulationProbeProfileError,
     build_simulation_probe_client,
+    canonical_controller_qualification,
     canonical_motion_capability,
     load_simulation_probe_profile,
     motion_capability_digest,
+)
+
+QUALIFICATION_TEST_IDS = (
+    "nominal_position_command",
+    "nominal_velocity_command",
+    "over_limit_velocity_command",
+    "contact_load",
+    "dropped_step",
+    "stop_path",
+    "error_path",
+    "reset_path",
 )
 
 
@@ -51,7 +77,9 @@ def _profile() -> dict[str, object]:
     }
 
 
-def _materialize_motion_capabilities(root: Path, request: dict[str, object]) -> None:
+def _materialize_motion_capabilities(
+    root: Path, request: dict[str, object]
+) -> dict[str, MotionCapabilityDocument]:
     checks = (
         "source_digests",
         "runtime_identity",
@@ -70,6 +98,7 @@ def _materialize_motion_capabilities(root: Path, request: dict[str, object]) -> 
         "simulator_source",
         "controller_source",
     )
+    capabilities = {}
     for binding in request["motion_capabilities"]:
         arm_id = binding["arm_id"]
         capability = MotionCapabilityDocument.model_validate(
@@ -146,6 +175,138 @@ def _materialize_motion_capabilities(root: Path, request: dict[str, object]) -> 
         )
         binding["sha256"] = capability_record["sha256"]
         binding["validation_sha256"] = validation_record["sha256"]
+        capabilities[arm_id] = capability
+    return capabilities
+
+
+def _materialize_controller_qualification(
+    root: Path,
+    request: dict[str, object],
+    capabilities: dict[str, MotionCapabilityDocument],
+) -> None:
+    provider = capabilities["left"].provider
+    identity = QualificationIdentity(
+        robot_identity="franka-panda",
+        arm_ids=("left", "right"),
+        simulator_id=provider.simulator_id,
+        simulator_version=provider.simulator_version,
+        controller_id=provider.controller_id,
+        controller_version=provider.controller_version,
+        runtime_python_version=provider.runtime_python_version,
+        robotwin_git_revision=provider.robotwin_git_revision,
+    )
+    binding = request["controller_qualification"]
+    capability_bindings = tuple(
+        QualificationCapabilityBinding.model_validate(item)
+        for item in request["motion_capabilities"]
+    )
+    tests = tuple(
+        QualificationTestSpec(
+            test_id=test_id,
+            command_family=(
+                "position_drive_target"
+                if test_id == "nominal_position_command"
+                else "velocity_drive_target"
+            ),
+            arm_ids=("left", "right"),
+        )
+        for test_id in QUALIFICATION_TEST_IDS
+    )
+    plan = ControllerQualificationPlan(
+        qualification_id=binding["qualification_id"],
+        producer_id="qualification-producer/v1",
+        created_at="2026-09-06T08:00:00+00:00",
+        identity=identity,
+        capability_bindings=capability_bindings,
+        source_manifest_ref="artifact://qualification/source-manifest",
+        source_manifest_sha256="9" * 64,
+        command_families=("position_drive_target", "velocity_drive_target"),
+        tests=tests,
+        required_signals=(
+            "commanded_joint_position",
+            "commanded_joint_velocity",
+            "observed_joint_position",
+            "observed_joint_velocity",
+            "observed_tcp_pose",
+            "derived_tcp_velocity",
+            "contacts",
+            "controller_status",
+            "simulator_step_and_time",
+            "stop_error_reset_status",
+        ),
+    )
+    plan_record = _artifact_record(
+        root, binding["plan_ref"], canonical_controller_qualification(plan)
+    )
+    evidence = ControllerQualificationEvidence(
+        qualification_id=plan.qualification_id,
+        producer_id=plan.producer_id,
+        plan_ref=binding["plan_ref"],
+        plan_sha256=plan_record["sha256"],
+        approval_ref="artifact://qualification/approval",
+        approval_sha256="a" * 64,
+        identity=identity,
+        status="passed",
+        tests=tuple(
+            QualificationTestEvidence(
+                test_id=spec.test_id,
+                command_family=spec.command_family,
+                outcome="pass",
+                evidence_ref=f"artifact://qualification/traces/{spec.test_id}",
+                evidence_sha256="b" * 64,
+                observed_max_joint_velocity_radps=1.0,
+                controller_status="ready",
+            )
+            for spec in tests
+        ),
+        world_change_started=True,
+        world_change_completed=True,
+        reset_completed=True,
+        outcome_known=True,
+        started_at="2026-09-06T08:01:00+00:00",
+        finished_at="2026-09-06T08:02:00+00:00",
+    )
+    evidence_record = _artifact_record(
+        root, binding["evidence_ref"], canonical_controller_qualification(evidence)
+    )
+    validation = ControllerQualificationValidation(
+        qualification_id=plan.qualification_id,
+        evidence_ref=binding["evidence_ref"],
+        evidence_sha256=evidence_record["sha256"],
+        validator_id="independent-validator/v1",
+        producer_id=plan.producer_id,
+        validated_at="2026-09-06T08:03:00+00:00",
+        status="validated_pass",
+        checks=("identity", "all_tests", "controller_enforcement", "reset"),
+        controller_enforced=True,
+    )
+    validation_record = _artifact_record(
+        root, binding["validation_ref"], canonical_controller_qualification(validation)
+    )
+    qualification = ControllerQualification(
+        qualification_id=plan.qualification_id,
+        plan_ref=binding["plan_ref"],
+        plan_sha256=plan_record["sha256"],
+        evidence_ref=binding["evidence_ref"],
+        evidence_sha256=evidence_record["sha256"],
+        validation_ref=binding["validation_ref"],
+        validation_sha256=validation_record["sha256"],
+        identity=identity,
+        status="approved_pass",
+        reviewer_id="human-reviewer",
+        reviewed_at="2026-09-06T08:04:00+00:00",
+        independent_execution_qualification=True,
+        controller_enforced=True,
+    )
+    qualification_record = _artifact_record(
+        root, binding["artifact_ref"], canonical_controller_qualification(qualification)
+    )
+    binding.update(
+        sha256=qualification_record["sha256"],
+        plan_sha256=plan_record["sha256"],
+        evidence_sha256=evidence_record["sha256"],
+        validation_sha256=validation_record["sha256"],
+    )
 
 
 def _approval(root: Path, request: dict[str, object]) -> str:
@@ -171,16 +332,20 @@ def _approval(root: Path, request: dict[str, object]) -> str:
     route_digest = route_geometry_digest(request)
     route_sha256 = hashlib.sha256((json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
     manifest = {
-        "schema_version": "paos-robotwin20-route-source-manifest/v3",
+        "schema_version": "paos-robotwin20-route-source-manifest/v4",
         "request_id": request["request_id"],
         "candidate_ref": request["candidates"][0]["candidate_ref"],
         "scene_revision": request["scene_revision"],
         "route_geometry_digest": route_digest,
         "route_request": {"sha256": route_sha256},
         "runtime_profile_sha256": "b" * 64,
+        "simulation_probe_worker_sha256": hashlib.sha256(
+            Path(probe_worker.__file__).read_bytes()
+        ).hexdigest(),
         "object_robot_target_transform": {"sha256": transform_digest},
         "placement_target": {"sha256": placement_digest},
         "motion_capabilities": request["motion_capabilities"],
+        "controller_qualification": request["controller_qualification"],
         "motion_authorized": False,
     }
     manifest_record = _artifact_record(root, "artifact://probe/source-manifest.json", (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode())
@@ -207,6 +372,13 @@ def _approval(root: Path, request: dict[str, object]) -> str:
         "runtime_profile_sha256": "b" * 64,
         "object_robot_target_transform_sha256": transform_digest,
         "placement_target_sha256": placement_digest,
+        "controller_qualification_ref": request["controller_qualification"][
+            "artifact_ref"
+        ],
+        "controller_qualification_sha256": request["controller_qualification"]["sha256"],
+        "simulation_probe_worker_sha256": hashlib.sha256(
+            Path(probe_worker.__file__).read_bytes()
+        ).hexdigest(),
     }
     record = _artifact_record(
         root,
@@ -238,6 +410,7 @@ def test_approval_record_is_strictly_bound(tmp_path: Path):
         (lambda value: value.update(producer_id="other"), "producer binding"),
         (lambda value: value.update(scene_revision="other-scene"), "scene binding"),
         (lambda value: value.update(calibration_sha256="0" * 64), "calibration_ref digest"),
+        (lambda value: value.update(simulation_probe_worker_sha256="0" * 64), "worker source binding"),
         (lambda value: value.update(reviewed_at="2026-09-05T00:00:00"), "timezone"),
     ],
 )
@@ -309,7 +482,7 @@ def test_route_input_artifacts_are_content_bound(tmp_path: Path):
         _validate_route_input_artifacts(tmp_path, request, candidate)
 
 
-def test_request_policies_validate_provider_capability_then_require_controller_qualification(
+def test_request_policies_accept_approved_controller_qualification(
     tmp_path: Path,
 ):
     request = _route_request(tmp_path)
@@ -336,11 +509,75 @@ def test_request_policies_validate_provider_capability_then_require_controller_q
             "failure_recovery": "reset_simulation",
         }, sort_keys=True, separators=(",", ":")) + "\n").encode(),
     )
-    _materialize_motion_capabilities(tmp_path, request)
-    with pytest.raises(
-        SimulationProbeError,
-        match="controller-enforced motion capability qualification is unavailable",
+    capabilities = _materialize_motion_capabilities(tmp_path, request)
+    _materialize_controller_qualification(tmp_path, request, capabilities)
+    policies = _validate_request_policies(
+        tmp_path,
+        request,
+        max_duration_s=12,
+        robot_identity="franka-panda",
+    )
+    assert policies["controller_qualification"]["qualification_id"] == "qualification-1"
+
+
+def test_request_policies_reject_tampered_controller_qualification(tmp_path: Path):
+    request = _route_request(tmp_path)
+    for ref, payload in (
+        (
+            request["joint_limits_ref"],
+            {
+                "schema_version": "paos-robotwin20-joint-limit-policy/v2",
+                "planner_profile": "curobo",
+                "joint_count": 7,
+                "require_runtime_position_limits": True,
+            },
+        ),
+        (
+            request["stop_policy_ref"],
+            {
+                "schema_version": "paos-robotwin20-stop-policy/v1",
+                "max_duration_s": 12,
+                "stop_file_required": True,
+                "poll_each_step": True,
+                "failure_recovery": "reset_simulation",
+            },
+        ),
     ):
+        _artifact_record(
+            tmp_path,
+            ref,
+            (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+        )
+    capabilities = _materialize_motion_capabilities(tmp_path, request)
+    _materialize_controller_qualification(tmp_path, request, capabilities)
+
+    with pytest.raises(SimulationProbeError, match="binding is invalid"):
+        _validate_request_policies(
+            tmp_path,
+            request,
+            max_duration_s=12,
+            robot_identity="other-robot",
+        )
+
+    capability_path = tmp_path / "blocks" / "motion-capability-left.json"
+    capability_payload = capability_path.read_bytes()
+    capability_path.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(SimulationProbeError, match="artifact is invalid"):
+        _validate_request_policies(
+            tmp_path,
+            request,
+            max_duration_s=12,
+            robot_identity="franka-panda",
+        )
+    capability_path.write_bytes(capability_payload)
+    qualification_path = tmp_path / "qualification" / "final.json"
+    value = json.loads(qualification_path.read_text(encoding="utf-8"))
+    value["reviewer_id"] = "tampered-reviewer"
+    qualification_path.write_text(
+        json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SimulationProbeError, match="qualification route binding is invalid"):
         _validate_request_policies(
             tmp_path,
             request,
@@ -377,27 +614,41 @@ def test_request_policies_reject_tampered_or_wrong_robot_capability(tmp_path: Pa
             ref,
             (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode(),
         )
-    _materialize_motion_capabilities(tmp_path, request)
 
-    with pytest.raises(SimulationProbeError, match="binding is invalid"):
-        _validate_request_policies(
-            tmp_path,
-            request,
-            max_duration_s=12,
-            robot_identity="other-robot",
+
+def test_route_controller_requires_the_exact_qualified_provider_source(tmp_path: Path):
+    request = _route_request(tmp_path)
+    capabilities = _materialize_motion_capabilities(tmp_path, request)
+
+    with pytest.raises(SimulationProbeError, match="qualified bounded provider"):
+        _guard_controller_source_binding(capabilities)
+
+    module_digest = hashlib.sha256(Path(probe_worker.__file__).with_name(
+        "robotwin_capability_controller.py"
+    ).read_bytes()).hexdigest()
+    qualified = {}
+    for arm_id, capability in capabilities.items():
+        value = capability.model_dump(mode="json")
+        value["provider"]["controller_id"] = (
+            "paos-robotwin-capability-bounded-drive-target"
         )
+        value["provider"]["controller_version"] = f"source-{module_digest[:16]}"
+        for source in value["sources"]:
+            if source["role"] == "controller_source":
+                source["sha256"] = module_digest
+        qualified[arm_id] = MotionCapabilityDocument.model_validate(value)
+    _guard_controller_source_binding(qualified)
 
-    capability_path = tmp_path / "blocks" / "motion-capability-left.json"
-    capability_path.write_text("{}\n", encoding="utf-8")
-    with pytest.raises(SimulationProbeError, match="artifact is invalid"):
-        _validate_request_policies(
-            tmp_path,
-            request,
-            max_duration_s=12,
-            robot_identity="franka-panda",
-        )
+    qualified["left"] = MotionCapabilityDocument.model_validate(
+        qualified["left"].model_dump(mode="json")
+        | {"provider": qualified["left"].provider.model_copy(
+            update={"controller_version": "source-0000000000000000"}
+        ).model_dump(mode="json")}
+    )
+    with pytest.raises(SimulationProbeError, match="source digest drifted"):
+        _guard_controller_source_binding(qualified)
 
-def test_execute_segment_passes_planner_velocity_to_robot_command():
+def test_execute_segment_passes_planner_velocity_through_bounded_controller(tmp_path: Path):
     np = pytest.importorskip("numpy")
 
     class Robot:
@@ -427,7 +678,26 @@ def test_execute_segment_passes_planner_velocity_to_robot_command():
             self.scene = Scene()
 
     task = Task()
-    execution_state = {"planner_object_attached": False, "simulator_steps": 0}
+    controller = CapabilityBoundedDriveController(
+        ControllerLimits(
+            joint_order=tuple(f"joint-{index}" for index in range(7)),
+            position_lower_rad=(-2.0,) * 7,
+            position_upper_rad=(2.0,) * 7,
+            velocity_lower_radps=(-1.0,) * 7,
+            velocity_upper_radps=(1.0,) * 7,
+        ),
+        lambda q, dq: task.robot.set_arm_joints(q, dq, "left"),
+    )
+    execution_state = {
+        "planner_object_attached": False,
+        "simulator_steps": 0,
+        "_controllers": {"left": controller},
+        "_artifact_root": tmp_path,
+        "_execution_input_digests": {},
+        "_controller_source_sha256": hashlib.sha256(
+            Path(probe_worker.__file__).with_name("robotwin_capability_controller.py").read_bytes()
+        ).hexdigest(),
+    }
     _execute_segment(
         task,
         "left",
@@ -447,8 +717,96 @@ def test_execute_segment_passes_planner_velocity_to_robot_command():
     assert np.allclose(position, 0.0)
     assert np.allclose(velocity, 0.8)
     assert execution_state["simulator_steps"] == 1
+    assert controller.counters["settled_steps"] == 1
+
+
+def test_gripper_step_uses_bounded_arm_hold_and_rejects_invalid_target(tmp_path: Path):
+    np = pytest.importorskip("numpy")
+
+    class Entity:
+        def get_qpos(self):
+            return np.zeros(9, dtype=np.float64)
+
+    class Robot:
+        left_entity = Entity()
+        right_entity = Entity()
+
+        def __init__(self):
+            self.arm_commands = []
+            self.gripper_commands = []
+
+        def set_arm_joints(self, position, velocity, arm):
+            self.arm_commands.append((list(position), list(velocity), arm))
+
+        def set_gripper(self, value, arm):
+            self.gripper_commands.append((value, arm))
+
+    class Scene:
+        def step(self):
+            pass
+
+        def get_contacts(self):
+            return []
+
+    class Task:
+        def __init__(self):
+            self.robot = Robot()
+            self.scene = Scene()
+
+    task = Task()
+    controller = CapabilityBoundedDriveController(
+        ControllerLimits(
+            joint_order=tuple(f"joint-{index}" for index in range(7)),
+            position_lower_rad=(-2.0,) * 7,
+            position_upper_rad=(2.0,) * 7,
+            velocity_lower_radps=(-1.0,) * 7,
+            velocity_upper_radps=(1.0,) * 7,
+        ),
+        lambda q, dq: task.robot.set_arm_joints(q, dq, "left"),
+    )
+    state = {
+        "planner_object_attached": False,
+        "simulator_steps": 0,
+        "_controllers": {"left": controller},
+        "_artifact_root": tmp_path,
+        "_execution_input_digests": {},
+        "_controller_source_sha256": hashlib.sha256(
+            Path(probe_worker.__file__).with_name("robotwin_capability_controller.py").read_bytes()
+        ).hexdigest(),
+    }
+    _set_gripper(
+        task,
+        "left",
+        1.0,
+        phase="release",
+        deadline=time.monotonic() + 1.0,
+        stop_file=None,
+        contacts=[],
+        execution_state=state,
+    )
+    assert len(task.robot.arm_commands) == 20
+    assert len(task.robot.gripper_commands) == 20
+    assert controller.counters["settled_steps"] == 20
+    with pytest.raises(SimulationProbeError, match="normalized bounds"):
+        _set_gripper(
+            task,
+            "left",
+            1.1,
+            phase="release",
+            deadline=time.monotonic() + 1.0,
+            stop_file=None,
+            contacts=[],
+            execution_state=state,
+        )
 
 def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch):
+    class Controller:
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+
     class MotionGen:
         def __init__(self):
             self.detached = False
@@ -480,8 +838,10 @@ def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch)
             "state_digest": "b" * 64,
         },
     )
+    controller = Controller()
     execution_state = {
         "_planner": Planner(),
+        "_controllers": {"left": controller},
         "planner_object_attached": True,
         "world_change_started": True,
         "phase": "finalizing",
@@ -514,6 +874,8 @@ def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch)
     failure = json.loads((tmp_path / "probe/request/candidate/failure.json").read_text())
     assert failure["failed_phase"] == "finalizing"
     assert failure["simulation_reset_status"] == "completed"
+    assert failure["controller_stop_status"] == "stopped"
+    assert controller.stopped is True
     assert failure["linear_speed_violation"] is None
 
     no_step_state = {
@@ -708,8 +1070,11 @@ def test_worker_is_single_use_after_an_authorized_attempt(tmp_path: Path, monkey
         lambda *args, **kwargs: {
             "joint_limit_policy": {},
             "stop_policy": {},
+            "motion_capability_documents": {},
+            "execution_input_digests": {},
         },
     )
+    monkeypatch.setattr(probe_worker, "_build_route_controllers", lambda *args: {})
     monkeypatch.setattr(probe_worker, "_load_json_artifact", lambda *args: {})
     monkeypatch.setattr(
         probe_worker,
@@ -755,6 +1120,7 @@ def test_worker_is_single_use_after_an_authorized_attempt(tmp_path: Path, monkey
         max_duration_s=1,
         stop_file=tmp_path / "control" / "stop",
     )
+    _artifact_record(tmp_path, "artifact://probe/approval.json", b"approval\n")
     (tmp_path / "control").mkdir()
     message = {
         "request_id": request["request_id"],

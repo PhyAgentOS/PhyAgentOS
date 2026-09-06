@@ -515,3 +515,10 @@ Repeat for `--arm right` and pass all four files to
 `validated_planner_constraints`; it intentionally keeps
 `independent_execution_qualification=false`, `controller_enforced=false`, and
 `motion_authorized=false`.
+The simulation probe now uses the qualified bounded controller as its only route execution
+boundary. It verifies the imported source digest and version against MotionCapability before
+the first step and on every step. Trajectory commands settle through
+`command -> before_step -> scene.step -> after_step`; gripper phases issue a qualified
+zero-velocity arm hold. Native controller, changed source, stale approval, input digest drift,
+or normalized gripper values outside `[0, 1]` fail closed. This remains simulation-only and
+never grants PAOS Gateway, benchmark, or hardware motion authority.

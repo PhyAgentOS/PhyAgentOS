@@ -40,6 +40,8 @@ def _setup(tmp_path: Path) -> tuple[Namespace, dict[str, object], Path]:
     )
     simulation_profile = tmp_path / "simulation-probe.yaml"
     simulation_profile.write_text("profile: probe-v1\n", encoding="utf-8")
+    simulation_worker = tmp_path / "simulation-probe-worker.py"
+    simulation_worker.write_text("# immutable worker\n", encoding="utf-8")
     candidate = request["candidates"][0]
     artifact_values = {
         request["calibration_ref"]: b"calibration\n",
@@ -47,16 +49,24 @@ def _setup(tmp_path: Path) -> tuple[Namespace, dict[str, object], Path]:
         request["stop_policy_ref"]: b"stop-policy\n",
         candidate["attached_object"]["transform_provenance_ref"]: b"transform\n",
         candidate["placement_target"]["provenance_ref"]: b"placement\n",
+        request["controller_qualification"]["artifact_ref"]: b"qualification\n",
         "artifact://blocks/source-manifest": b"manifest\n",
     }
     digests = {
         ref: _artifact_record(tmp_path, ref, payload)["sha256"]
         for ref, payload in artifact_values.items()
     }
+    request["controller_qualification"]["sha256"] = digests[
+        request["controller_qualification"]["artifact_ref"]
+    ]
+    route_path.write_text(
+        json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
     route_digest = APPROVAL.route_geometry_digest(request)
     route_sha = hashlib.sha256(route_path.read_bytes()).hexdigest()
     review = {
-        "schema_version": "paos-robotwin20-simulation-probe-review-request/v2",
+        "schema_version": "paos-robotwin20-simulation-probe-review-request/v3",
         "decision": "pending_human_review",
         "motion_authorized": False,
         "request_id": request["request_id"],
@@ -76,6 +86,11 @@ def _setup(tmp_path: Path) -> tuple[Namespace, dict[str, object], Path]:
         "calibration_sha256": digests[request["calibration_ref"]],
         "joint_limits_sha256": digests[request["joint_limits_ref"]],
         "stop_policy_sha256": digests[request["stop_policy_ref"]],
+        "controller_qualification_ref": request["controller_qualification"]["artifact_ref"],
+        "controller_qualification_sha256": digests[
+            request["controller_qualification"]["artifact_ref"]
+        ],
+        "simulation_probe_worker_sha256": _sha(simulation_worker),
         "required_decision": "approved_independent_simulation_probe",
         "required_reviewer": "human",
         "simulation_only": True,
@@ -91,6 +106,7 @@ def _setup(tmp_path: Path) -> tuple[Namespace, dict[str, object], Path]:
         review_request=review_path,
         runtime_profile=runtime_path,
         simulation_probe_profile=simulation_profile,
+        simulation_probe_worker=simulation_worker,
         reviewer_id="human-reviewer-1",
         confirm_route_digest=route_digest,
         confirm_source_manifest_digest=review["source_manifest_sha256"],
