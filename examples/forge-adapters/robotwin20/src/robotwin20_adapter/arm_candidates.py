@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import math
 import os
 from collections.abc import Callable, Mapping, Sequence
@@ -242,7 +241,7 @@ def enumerate_arm_candidates(
     max_options = profile["selection_policy"]["max_options"]
     if len(candidates) * len(arm_groups) > max_options:
         raise ArmPlanningError("arm candidate enumeration exceeds configured max_options")
-    for candidate in candidates:
+    for candidate_index, candidate in enumerate(candidates):
         if not isinstance(candidate, Mapping):
             raise ArmPlanningError("arm candidate must be an object")
         candidate_ref = candidate.get("candidate_ref")
@@ -278,9 +277,11 @@ def enumerate_arm_candidates(
             raise ArmPlanningError("candidate route frame does not match embodiment profile")
         for arm_ids in arm_groups:
             option = {
-                "option_id": hashlib.sha256(
-                    f"{intent.task_id}\n{intent.revision_id}\n{intent.node_id}\n{candidate_ref}\n{','.join(arm_ids)}".encode()
-                ).hexdigest()[:24],
+                # This identifier is local to one enumeration result.  The
+                # candidate_ref, task/revision and arm bindings carried beside
+                # it provide the durable attribution; no content hash is
+                # needed for this in-memory key.
+                "option_id": f"option-{candidate_index}-{'-'.join(arm_ids)}",
                 "candidate_ref": candidate_ref,
                 "entity_ref": entity_ref,
                 "task_id": intent.task_id,

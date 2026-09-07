@@ -42,7 +42,8 @@ def test_start_exposes_only_declared_next_tool_and_immutable_steps():
     ]
     assert "coordinates" not in json.dumps(snapshot).lower()
     assert "robotwin" not in json.dumps(snapshot).lower()
-    assert snapshot["dag_digest"] == WORKFLOW_DAG.dag_digest
+    assert snapshot["dag_version"] == WORKFLOW_DAG.version
+    assert "dag_digest" not in snapshot
 
 
 def test_skill_dag_projects_dependencies_without_execution():
@@ -124,7 +125,7 @@ def test_dag_and_state_binding_validation_fail_closed():
         )
 
     workflow = LongHorizonWorkflow.start("task-1", "revision-1")
-    stale = replace(workflow.state, dag_digest="0" * 64)
+    stale = replace(workflow.state, dag_version="obsolete-dag-version")
     with pytest.raises(WorkflowBindingError, match="DAG binding"):
         LongHorizonWorkflow(stale)
     impossible = WorkflowState(

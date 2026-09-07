@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -60,7 +58,6 @@ class WorkflowNodeSpec:
     depends_on: tuple[str, ...] = ()
     required_bindings: tuple[str, ...] = ()
     resource_requirement: ResourceRequirement | None = None
-    node_digest: str = field(init=False)
 
     def __post_init__(self) -> None:
         if (
@@ -83,24 +80,6 @@ class WorkflowNodeSpec:
             or set(self.required_bindings) - _KNOWN_BINDINGS
         ):
             raise WorkflowBindingError("workflow DAG required bindings are invalid")
-        payload = {
-            "node_id": self.node_id,
-            "tool_id": self.tool_id,
-            "semantics": self.semantics,
-            "depends_on": list(self.depends_on),
-            "required_bindings": list(self.required_bindings),
-            "resource_requirement": (
-                self.resource_requirement.model_dump(mode="json")
-                if self.resource_requirement is not None else None
-            ),
-        }
-        object.__setattr__(
-            self,
-            "node_digest",
-            hashlib.sha256(
-                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-            ).hexdigest(),
-        )
 
 
 @dataclass(frozen=True)
@@ -110,7 +89,6 @@ class WorkflowDag:
     version: str
     workflow_id: str
     nodes: tuple[WorkflowNodeSpec, ...]
-    dag_digest: str = field(init=False)
 
     def __post_init__(self) -> None:
         if self.version != WORKFLOW_DAG_VERSION or self.workflow_id != WORKFLOW_ID:
@@ -142,19 +120,6 @@ class WorkflowDag:
 
         for node_id in node_ids:
             visit(node_id)
-        payload = {
-            "version": self.version,
-            "workflow_id": self.workflow_id,
-            "nodes": [
-                {"node_id": node.node_id, "node_digest": node.node_digest}
-                for node in self.nodes
-            ],
-        }
-        digest = hashlib.sha256(
-            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-        object.__setattr__(self, "dag_digest", digest)
-
     def ready_nodes(self, completed: set[str]) -> tuple[WorkflowNodeSpec, ...]:
         """Return deterministic ready nodes without executing or mutating a task."""
 
@@ -259,7 +224,6 @@ class WorkflowState:
     version: str
     workflow_id: str
     dag_version: str
-    dag_digest: str
     task_id: str
     revision_id: str
     status: Literal["ready", "running", "blocked", "succeeded"]
@@ -321,7 +285,6 @@ class LongHorizonWorkflow:
         _safe_id(state.revision_id, "revision_id")
         if (
             state.dag_version != WORKFLOW_DAG.version
-            or state.dag_digest != WORKFLOW_DAG.dag_digest
         ):
             raise WorkflowBindingError("workflow state DAG binding is stale or invalid")
         if not isinstance(state.steps, tuple) or any(
@@ -356,7 +319,6 @@ class LongHorizonWorkflow:
                 version=WORKFLOW_VERSION,
                 workflow_id=WORKFLOW_ID,
                 dag_version=WORKFLOW_DAG.version,
-                dag_digest=WORKFLOW_DAG.dag_digest,
                 task_id=task_id,
                 revision_id=revision_id,
                 status="ready",
@@ -510,7 +472,6 @@ class LongHorizonWorkflow:
                 version=self._state.version,
                 workflow_id=self._state.workflow_id,
                 dag_version=self._state.dag_version,
-                dag_digest=self._state.dag_digest,
                 task_id=self._state.task_id,
                 revision_id=revision_id,
                 status="running" if completed else "ready",
@@ -525,7 +486,6 @@ class LongHorizonWorkflow:
         return {
             "version": self._state.version,
             "dag_version": self._state.dag_version,
-            "dag_digest": self._state.dag_digest,
             "workflow_id": self._state.workflow_id,
             "task_id": self._state.task_id,
             "revision_id": self._state.revision_id,

@@ -254,6 +254,10 @@ tools:
 
 ## 7. Write workflow guidance
 
+### 7.1 Stop That Shit / Anti-OverDefense scope gate
+
+Before editing, ask whether the user explicitly requested the change, whether it is necessary for the current result, and whether reachable evidence proves that need. Extend only when all three are true; otherwise do not add hashes/SHA, frozen contracts, baselines, gates, speculative hardening, unnecessary dependencies, or repeated audits. Only an explicit `change` request permits edits; `review`, `answer`, and `monitor` are read-only by default. Do not remove existing safety measures. Put gates only at irreversible, cross-system, safety, or formal-release boundaries, and do not let prechecks displace real code execution, simulation, or measurement.
+
 `SKILL.md` should tell the Agent when to activate the Skill, which contexts to inspect, the Query →
 Action/Session ordering, task binding, ownership, terminal reconciliation, verification checkpoints, and safe recovery
 rules. It must not embed secrets, Registry URLs, task-specific coordinates, or instructions to

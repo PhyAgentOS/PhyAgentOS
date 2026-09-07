@@ -239,6 +239,10 @@ tools:
 
 ## 7. 编写工作流说明
 
+### 7.1 Stop That Shit / Anti-OverDefense 范围闸门
+
+开始改动前先回答：用户是否明确要求、该改动是否为完成当前结果所必需、是否有可达证据证明必要性。只有三者都成立才扩展；否则不新增 hash/SHA、冻结 contract、baseline、gate、speculative hardening、无必要依赖或重复审计。只有明确的 `change` 请求允许修改；`review`、`answer`、`monitor` 默认只读。不得删除已有安全措施，门禁只放在不可逆、跨系统、安全或正式发布边界；前置检查不得挤掉真正的代码执行、模拟或测量。
+
 `SKILL.md` 应说明何时激活、检查哪些 context、Query → Action/Session 顺序、task binding、
 ownership、终态核对、
 verification checkpoint 与安全恢复规则。不得嵌入 secret、Registry URL、任务特定坐标或绕过
