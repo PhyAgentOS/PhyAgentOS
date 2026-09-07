@@ -207,3 +207,18 @@ deduplicated by base/proposed policy digests, require support from distinct
 episodes and passing independent replay receipts before human approval, and
 cannot be promoted without an explicit Skill Runtime callback returning an
 `artifact://` receipt. No candidate transition mutates an active AgentTask.
+
+## Collision-world admission boundary (2026-09-07)
+
+`SceneCollisionWorld` is an adapter-owned evidence dependency of
+`manipulation.prepare`; it is not a planning Tool, Skill step, or Curobo handle exposed to the
+Agent. The planning module may validate its reference, digest, scene/world revision, coverage,
+and phase-scoped target exclusion, then return an admission or stale/invalidation result. It
+must not build a Curobo `WorldConfig`, call `MotionGen.update_world()`, execute `scene.step()`,
+or create a `PlanRevision`.
+
+When a world revision changes, `AgentLoop`/`AgentTaskCoordinator`—not this library—creates the
+next revision and rebinds a fresh collision-world artifact. The adapter must update both
+`motion_gen` and `motion_gen_batch` from the same world digest. Partial/unknown perception
+coverage, missing geometry/provenance, cache-capacity overflow, or update failure remains
+fail-closed and cannot be converted into a ready or motion-authorized result.

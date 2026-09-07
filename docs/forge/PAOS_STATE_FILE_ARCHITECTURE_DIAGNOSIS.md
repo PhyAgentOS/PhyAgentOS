@@ -1369,3 +1369,63 @@ candidate-1 在真实 descent 中首次暴露 `panda_hand ↔ block-blue-1` 接�
 digest 为 `0c70ba501db1a0e2962a5dff3e839fc58b8b1c0dbe0f6cf05d255ad8baee1b8`，当前仍
 `pending_human_review` 且 `motion_authorized=false`。v6.7.2 approval 不得复用；只有新
 审批后才能验证 candidate-0 的真实接触与语义结果。
+
+## 32.24 已观测实体碰撞世界诊断的五维复核（2026-09-07）
+
+本节对 32.23 的根因诊断和 `SceneCollisionWorld` 方案进行独立复核。复核依据包括：
+
+- RoboTwin Curobo provider 在 `RoboTwin/envs/robot/planner.py:L58-L91` 初始化的
+  `world_config` 只有 `table`；同一份配置分别用于 `motion_gen` 与
+  `motion_gen_batch`。
+- 当前 probe 在 `robotwin_simulation_probe_worker.py:L790-L829` 只通过
+  `attach_external_objects_to_robot()` 注册当前目标物体，不能把其它实体变成静态
+  planner obstacle。
+- Curobo `MotionGen.update_world()`（`motion_gen.py:L1825-L1838`）要求更新后的
+  obstacle 数量不超过初始化时的 collision-cache 容量，并会使 graph planner buffer
+  失效。
+
+### 审核发现与修订
+
+原诊断没有 Blocker，但有三处必须在方案中明确的语义修订；若不修订，后续实现会产生
+错误的“观测完整即碰撞安全”结论：
+
+1. **未知空间边界（Major-risk，已通过文档修订降级为显式门禁）。** 观测到的实体集合
+   不是完整世界证明。遮挡、深度空洞、透明/反光物体或传感器视野外区域必须产生
+   `unknown_space`/coverage 状态；缺失的 geometry、pose、frame、calibration 或
+   coverage 证据时，`manipulation.prepare` 必须返回 unavailable/stale，而不是把
+   部分障碍物列表当成完整碰撞世界。仿真 actor truth 只能作为独立对照证据。
+2. **目标排除必须按阶段限定（Major-risk，已修订）。** 当前目标可从 approach/contact
+   的静态 obstacle 集合排除，但这不是全程排除：close 后必须由 attached-object
+   模型表示，release 后必须 detach 并重新加入静态世界；每个 route phase 必须记录
+   `excluded_target_entity` 和允许的接触语义，防止把目标排除误解为任意碰撞豁免。
+3. **重规划触发者边界（Major-risk，已修订）。** planning library 只返回 admission
+   与 stale/invalidation 结果；它不自行“触发” revision。`AgentLoop`/`AgentTaskCoordinator`
+   读取结果后创建新的 `PlanRevision`，并重新绑定 collision-world digest。这样不会
+   产生第二套 DAG 或任务生命周期。
+
+### 五个维度结论
+
+| 维度 | 结论 | 必须保持的门禁 |
+|---|---|---|
+| 架构集成 | 通过（无 Blocker/Major） | `SceneCollisionWorldBuilder`、Curobo world port 和 world-update receipt 留在 RoboTwin adapter/provider；PAOS planning 只校验抽象 artifact/readiness，不导入 Curobo、不执行 `scene.step`。 |
+| 失败路径 | 通过（实现前置条件） | 缺失/过期/篡改 scene facts、未知空间、frame/calibration 不一致、目标重复注册、cache capacity 不足、任一 `update_world` 失败、world revision 漂移、unknown result 均 fail-closed；左右两套 `MotionGen` 必须一致更新。 |
+| 权威边界 | 通过（无越权） | collision-world 是 provider projection；planner 结果只是 readiness evidence；SAPIEN contact/after-semantic 是独立执行事实；Gateway 仍是唯一生产动作 authority；任何 artifact 都保持 `motion_authorized=false`。 |
+| 配置与 provenance | 通过（需冻结） | 绑定 `scene_revision`、`world_revision`、source facts/geometry/calibration digest、planner/runtime identity、obstacle 集合、excluded target、frame/quaternion convention 和 cache capacity；不得把方块坐标或 Curobo API 写入 PAOS Core/Skill。 |
+| 可维护性 | 通过（模块边界清晰） | 纯 builder 不导入 Curobo；provider port 负责 `WorldConfig`/双 `MotionGen`；route-readiness 负责引用/digest；probe 负责接触和恢复；planning 负责通用 admission；每层均有可重复的 no-motion 测试。 |
+
+复核结论：**诊断方向正确，修订后的方案无 Blocker/Major；但功能尚未实现。** candidate-0
+替换只能作为对照，不能关闭上述门禁。下一步仍应先实现并验证 provider-owned
+`SceneCollisionWorld` artifact，再重新生成 route、获取全新的 simulation-only approval，
+最后以独立 probe 证明 attached-object collision、完整 transport/descent/release/retreat、
+接触动力学和语义结果。不得复用 v6.7.2/v6.7.3 approval，也不得在新 approval 前运行
+`scene.step`、benchmark、Gateway、Dora、Action 或硬件。
+
+### English review summary
+
+The diagnosis is correct after three explicit clarifications: observed entities do not prove
+complete coverage (unknown space is fail-closed), target exclusion is phase-scoped (static
+obstacle → attached model → static obstacle), and replanning is requested by AgentLoop/
+AgentTaskCoordinator rather than performed by the planning library. All five dimensions pass
+without a blocker, but this is a design gate—not implementation or motion evidence. Both
+`motion_gen` and `motion_gen_batch` must receive the same provider-owned world projection, and
+every world/revision/digest drift must invalidate readiness.

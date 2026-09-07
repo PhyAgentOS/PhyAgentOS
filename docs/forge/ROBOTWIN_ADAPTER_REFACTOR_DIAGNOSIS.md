@@ -570,3 +570,80 @@ PAOS 的 Skill、任务生命周期、Gateway contract 和经验事实源保持�
 scene/observation no-motion 链路。必须先获得真实或独立验证的 readiness
 worker evidence 并完成人工审核，才可进入 Action/Gateway wiring；不能因
 上游 RoboTwin 支持 Franka 就宣称 PAOS 已完成 Franka policy 或抓取放置闭环。
+
+## 14. SceneCollisionWorld 诊断复核与 provider 协议（2026-09-07）
+
+### 五维审核结论
+
+对“将已观测物体纳入 Curobo 碰撞世界”的诊断复核结果为：无 Blocker/Major，允许进入
+协议设计；尚未实现，不构成动作准入。需要保留以下修订：
+
+- 观测实体不是完整覆盖证明。builder 必须输出 coverage/`unknown_space` 状态；未知或
+  遮挡区域、缺失 geometry/pose/frame/calibration 时 fail-closed。
+- 目标排除是 route-phase 语义，而非永久豁免：approach/contact 使用显式允许接触；
+  close 后使用 attached object；release 后 detach 并重新纳入静态世界。
+- planning library 只计算 admission/stale/invalidation；`AgentLoop` 或
+  `AgentTaskCoordinator` 负责创建新 `PlanRevision`，避免第二套生命周期。
+- RoboTwin provider 同时维护 `motion_gen` 和 `motion_gen_batch`；二者必须加载同一
+  world digest，不能只更新其中一个实例。
+
+### Provider-owned artifact
+
+建议由 `robotwin20_adapter.collision_world` 生成不可变 JSON artifact：
+
+```yaml
+schema_version: paos-robotwin20-collision-world/v1
+scene_revision: blocks_ranking_rgb-0-1
+world_revision: 3
+route_frame_id: world
+pose_convention: position_m + orientation_xyzw
+source_scene_facts_ref: artifact://scene-facts/...
+source_scene_facts_sha256: <sha256>
+calibration_ref: artifact://calibration/...
+planner_provider: curobo
+planner_profile: franka-panda
+coverage: complete|partial|unknown
+obstacles:
+  - entity_ref: entity://block-red-1
+    geometry_ref: artifact://geometry/...
+    geometry_sha256: <sha256>
+    shape: cuboid
+    half_extents_m: [.., .., ..]
+    world_T_entity: {frame_id: world, position_m: [.., .., ..], orientation_xyzw: [.., .., .., ..]}
+    state: static
+    provenance: [artifact://...]
+excluded_entities: [entity://block-green-1]
+target_entity_ref: entity://block-green-1
+obstacle_count: 2
+cache_capacity: 8
+world_digest: <sha256>
+motion_authorized: false
+```
+
+The artifact must reject duplicate entity names, non-normalized quaternions, mixed scene or
+frame revisions, non-finite dimensions, and a target appearing in both static and attached
+sets. `coverage=partial|unknown` is never sufficient for `manipulation.prepare` readiness.
+
+### Adapter implementation seam
+
+```text
+robotwin20_adapter/collision_world.py   # pure validation/projection; no Curobo import
+runtime/CuroboWorldPort                 # WorldConfig and dual MotionGen update
+route_readiness.py                      # artifact/digest/revision admission
+robotwin_simulation_probe_worker.py     # scene.step, contacts, detach/reset evidence
+PhyAgentOS/planning                     # generic evidence/admission only
+```
+
+`CuroboWorldPort` may either initialize MotionGen with the complete world or call
+`update_world()` when the preallocated cache capacity is sufficient. It must record an update
+receipt for each arm and invalidate routes on `world_revision` drift. The target obstacle is
+phase-scoped; after another arm changes the scene, both projections are rebuilt and old
+readiness becomes stale.
+
+### English summary
+
+The provider projection is a `manipulation.prepare` dependency, not a new Skill or an Agent-
+visible Curobo tool. Unknown-space coverage, phase-scoped target exclusion, synchronized
+updates of both MotionGen instances, and revision/digest invalidation are mandatory. PAOS
+planning remains provider-neutral and motionless; Gateway remains the sole production execution
+authority.

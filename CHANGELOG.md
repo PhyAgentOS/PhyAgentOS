@@ -2,6 +2,16 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.7.4] - 2026-09-07
+
+Reviewed the diagnosis that observed entities were missing from the RoboTwin/Curobo planning world. Five-dimension review found no blocker after clarifying unknown-space coverage, phase-scoped target exclusion, synchronized dual-MotionGen updates, and Coordinator-owned replanning. Recorded the provider-owned `SceneCollisionWorld` contract and fail-closed gates; no runtime motion or execution surface was changed.
+
+复核已观测实体未进入 RoboTwin/Curobo 规划碰撞世界的诊断。五维审核在补充未知空间覆盖、阶段化目标排除、双 MotionGen 同步更新和 Coordinator 负责重规划后未发现阻塞项。已记录 provider-owned `SceneCollisionWorld` 协议及 fail-closed 门禁；未修改运行时动作或执行面。
+
+Files: `docs/forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md:L1373-L1431`, `docs/forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md:L574-L649`, `docs/forge/PLANNING_MODULE_DESIGN.md:L211-L224`.
+
+Validation: `git diff --check` passed; read-only document consistency checks passed. No `scene.step`, benchmark, Gateway, Dora, Action, or hardware was run.
+
 ## [v6.7.1] - 2026-09-07
 
 Materialized a fresh immutable RoboTwin/Franka simulation-only route package from the v6.7 sources. The package binds q4 controller qualification, both-arm MotionCapability artifacts, runtime, GraspGen provenance, placement/geometry artifacts, and current worker/controller source digests. No simulation step, benchmark, Gateway, Dora, Action, or hardware motion was executed; the package remains pending fresh human approval.
